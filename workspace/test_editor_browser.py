@@ -11,7 +11,7 @@ def main():
         page=browser.new_page(viewport={'width':1600,'height':1050})
         errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
         page.goto('http://127.0.0.1:8741')
-        page.locator('#target').fill('10.10.0.181:5555');page.locator('#connect').click()
+        page.locator('#manual-connection summary').click();page.locator('#target').fill('10.10.0.181:5555');page.locator('#connect').click()
         expect(page.locator('#workspace')).to_be_visible(timeout=65000)
         page.locator('#nav-editor').click()
         expect(page.locator('#core-canvas .canvas-widget').first).to_be_visible(timeout=30000)

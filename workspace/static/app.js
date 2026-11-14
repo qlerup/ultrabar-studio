@@ -15,13 +15,13 @@ async function api(path, options={}) {
   if(!response.ok) {const data=await response.json().catch(()=>({}));throw new Error(data.error || 'The request could not be completed.');}
   return response;
 }
-function controls() { $('connect').disabled=busy||layoutSaving; $('refresh').disabled=busy||layoutSaving||!snapshot; $('screen-button').disabled=busy||screenPolling||!snapshot; $('backup').disabled=busy||!snapshot; }
-async function load(connect) {
+function controls() { $('connect').disabled=busy||layoutSaving;$('discovery-connect').disabled=busy||layoutSaving||!selectedDiscoveryTarget; $('refresh').disabled=busy||layoutSaving||!snapshot; $('screen-button').disabled=busy||screenPolling||!snapshot; $('backup').disabled=busy||!snapshot; }
+async function load(connect, target=$('target').value) {
   if(window.studioEditor?.hasUnsaved()&&!confirm('There are unsaved editor changes. Save the draft before changing devices or refreshing. Continue?'))return;
   if(busy||layoutSaving||layoutDrag)return; busy=true;connectionGeneration++;clearScreen();clearCubeImages();controls();notice(connect?'Connecting and loading your setup …':'Reading your current setup …');
   const profileId=snapshot?.profiles[selectedProfile]?.id;
   try {
-    const response=await api(connect?'/api/connect':'/api/refresh',{method:'POST',body:connect?JSON.stringify({target:$('target').value}):undefined});
+    const response=await api(connect?'/api/connect':'/api/refresh',{method:'POST',body:connect?JSON.stringify({target}):undefined});
     snapshot=await response.json();selectedProfile=Math.max(0,snapshot.profiles.findIndex(p=>p.id===profileId));selectedModule=0;
     connectionStatus(true); if($('connection-dialog').open)$('connection-dialog').close();
     $('empty').hidden=true;$('workspace').hidden=false;
@@ -180,7 +180,7 @@ function connectionStatus(connected) {
   $('connection-badge').classList.toggle('connected',connected);
   $('connection-open').textContent=connected?'Manage connection':'Connect device';
 }
-function openConnection(){if(!$('connection-dialog').open)$('connection-dialog').showModal();}
+function openConnection(){if($('connection-dialog').open)return;$('manual-connection').open=false;$('connection-notice').textContent='';$('connection-dialog').showModal();discoverDevices();}
 $('connection-open').onclick=openConnection;
 function markHardwareUnknown(message) {
   connectionStatus(false);
@@ -294,24 +294,38 @@ $('backup').onclick=async()=>{
 };
 let discovering=false,targetEdited=false;
 $('target').addEventListener('input',()=>{targetEdited=true;});
+let selectedDiscoveryTarget=null, discoveryGeneration=0;
+function clearDiscoverySelection(){selectedDiscoveryTarget=null;$('discovery-selection').hidden=true;controls();}
 async function discoverDevices(){
-  if(discovering)return;discovering=true;$('discover').disabled=true;$('discover').textContent='Searching…';
-  const results=$('discovery-results');results.replaceChildren(el('p','muted','Looking for CoreBAR devices on your local network…'));
+  if(discovering)return;
+  discovering=true;const generation=++discoveryGeneration;clearDiscoverySelection();
+  $('discover').disabled=true;$('discover').textContent='Searching...';
+  const results=$('discovery-results');results.replaceChildren(el('p','muted','Looking for CoreBAR devices on your local network...'));
   try{
-    const response=await api('/api/discover'),data=await response.json();results.replaceChildren();
-    if(!data.devices.length)results.append(el('p','muted','No CoreBAR found. Check that it is on the same network, or enter its IP address manually.'));
+    const data=await(await api('/api/discover')).json();
+    if(generation!==discoveryGeneration)return;
+    results.replaceChildren();
+    if(!data.devices.length)results.append(el('p','muted','No CoreBAR found. Check the network and try Find devices again, or use Manual connection below.'));
     for(const device of data.devices){
-      const button=el('button','discovered-device',`${device.name} · ${device.ip} · ${device.serial}`);
-      button.onclick=()=>{if(busy||layoutSaving)return;$('target').value=device.target;targetEdited=true;load(true);};results.append(button);
+      const button=el('button','discovered-device');button.type='button';button.setAttribute('aria-pressed','false');
+      button.append(el('strong','',device.name||'CoreBAR'),el('span','muted',device.ip+' / '+device.serial));
+      button.onclick=()=>{
+        if(busy||layoutSaving)return;
+        selectedDiscoveryTarget=device.target;
+        for(const item of results.querySelectorAll('.discovered-device'))item.setAttribute('aria-pressed',String(item===button));
+        $('discovery-selected-name').textContent=(device.name||'CoreBAR')+' / '+device.ip;
+        $('discovery-selection').hidden=false;controls();
+      };results.append(button);
     }
-    if(data.devices.length===1&&!snapshot&&!busy&&!targetEdited&&document.activeElement!==$('target'))$('target').value=data.devices[0].target;
-    if(data.devices.length)results.append(el('p','muted','Select a device to connect. WiFi ADB must be enabled on CoreBAR.'));
-  }catch(error){results.replaceChildren(el('p','muted',error.message));}
-  finally{discovering=false;$('discover').disabled=false;$('discover').textContent='Find devices';}
+    if(data.devices.length)results.append(el('p','muted','Select a CoreBAR, then click Connect.'));
+  }catch(error){if(generation===discoveryGeneration)results.replaceChildren(el('p','error',error.message+' Use Find devices to retry, or Manual connection below.'));}
+  finally{if(generation===discoveryGeneration){discovering=false;$('discover').disabled=false;$('discover').textContent='Find devices';}}
 }
+$('discovery-connect').onclick=()=>{if(selectedDiscoveryTarget)load(true,selectedDiscoveryTarget);};
+$('connection-dialog').addEventListener('close',()=>{discoveryGeneration++;discovering=false;clearDiscoverySelection();$('discover').disabled=false;$('discover').textContent='Find devices';});
 $('discover').onclick=discoverDevices;
 document.querySelectorAll('.setup-guide-trigger').forEach(button=>button.addEventListener('click',()=>{if(!$('setup-guide').open)$('setup-guide').showModal();}));
-$('guide-find-devices').onclick=()=>{$('setup-guide').close();openConnection();discoverDevices();};
+$('guide-find-devices').onclick=()=>{$('setup-guide').close();openConnection();};
 $('setup-guide').addEventListener('close',()=>{api('/api/setup-seen',{method:'POST'}).catch(()=>{});});
 api('/api/preferences').then(response=>response.json()).then(data=>{if(!busy&&!snapshot&&!targetEdited&&document.activeElement!==$('target'))$('target').value=data.target; if(!data.setup_seen&&!$('setup-guide').open)$('setup-guide').showModal();}).catch(()=>{});
 

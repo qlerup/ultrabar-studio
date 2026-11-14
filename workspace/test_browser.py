@@ -21,6 +21,7 @@ def main():
             page.locator('#discover').click()
         expect(page.locator('.discovered-device').first).to_be_visible(timeout=20000)
         page.locator('.discovered-device').first.click()
+        page.locator('#discovery-connect').click()
         expect(page.locator('#connection-badge')).to_have_class('badge connected', timeout=65000)
         assert page.locator('.module-card').count() >= 1
         assert page.locator('.widget').count() >= 1

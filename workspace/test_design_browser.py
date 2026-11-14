@@ -30,7 +30,7 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[])))
       page.route('**/api/pc/**',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
-      page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
+      page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#manual-connection summary').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
       expect(page.locator('#workspace')).to_be_visible();expect(page.locator('#connection-dialog')).not_to_be_visible()
       page.route('**/api/layout',lambda r:r.fulfill(json=dict(ok=True)))
       page.set_viewport_size(dict(width=1920,height=960))

@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.21 Windows
+# UltraBar Studio — 0.22 Windows
+
+## 0.22 update
+
+- Opening Connect device/Manage connection starts discovery automatically. Find devices remains available for rescans.
+- Discovered devices form a selectable list; selection alone never connects. A separate Connect button uses the selected Core address.
+- Manual IP/port and Connect are in a collapsed Manual connection disclosure below the list. It starts collapsed each time the dialog opens.
+- Closing the dialog invalidates in-flight scan results. Empty/error states keep rescan and manual options available.
+- Browser tests cover automatic scan, reopen, multiple devices, selected-target connection, no connection on selection, manual fallback, rescan/error handling and narrow layouts.
 
 ## 0.21 update
 

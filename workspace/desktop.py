@@ -64,7 +64,7 @@ def main():
                                 break
                             time.sleep(0.25)
                         result = result and window.evaluate_js("!!document.querySelector('.discovered-device')")
-                        window.evaluate_js("document.querySelector('.discovered-device')?.click()")
+                        window.evaluate_js("document.querySelector('.discovered-device')?.click();document.querySelector('#discovery-connect')?.click()")
                         deadline = time.monotonic() + 55
                         while time.monotonic() < deadline:
                             if window.evaluate_js("document.querySelectorAll('.hardware-unit').length > 1"):
