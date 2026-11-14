@@ -6,6 +6,8 @@ import json
 import re
 import time
 import uuid
+import threading
+from functools import wraps
 
 from flask import jsonify, request
 import bridge
@@ -266,7 +268,32 @@ def register_editor(server):
             atomic_json(draft_path(server, latest['device_id']), draft)
             return jsonify(draft=draft, snapshot=latest)
 
+    progress_lock = threading.Lock()
+    progress = dict(request_id=None, state='idle', message='')
+    def stage(message):
+        with progress_lock: progress.update(message=message)
+    @app.get('/api/editor/deploy-status')
+    def deploy_status():
+        with progress_lock:return jsonify(dict(progress))
+    def tracked(fn):
+        @wraps(fn)
+        def wrapper():
+            body=request.get_json(silent=True) or {}
+            with progress_lock:
+                if progress['state']=='running':return jsonify(error='A deployment is already running.'),409
+                progress.update(request_id=body.get('request_id'),state='running',message='Checking the saved draft?')
+            try:
+                response=app.make_response(fn())
+                data=response.get_json() or {}
+                with progress_lock:progress.update(state='done' if response.status_code<400 else 'error',message=data.get('message') or data.get('error','Deployment finished.'))
+                return response
+            except Exception as exc:
+                with progress_lock:progress.update(state='error',message='Deployment stopped. Check the connection and the saved draft.')
+                raise
+        return wrapper
+
     @app.post('/api/editor/deploy')
+    @tracked
     def deploy():
         body = request.get_json(silent=True) or {}
         with server.device_lock:
@@ -276,20 +303,25 @@ def register_editor(server):
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
             validate(draft['profiles'], draft['base_profiles'])
             payload = to_wire(draft['profiles'])
+            stage('Reading Core settings and creating a backup?')
             latest = server.read_snapshot(server.connection['target'])  # Also saves original XML before any write.
             if latest['device_id'] != draft['device_id'] or digest(latest['profiles']) != draft['base_hash']:
                 return jsonify(error='Settings changed on CoreBAR since this draft was started. Download your draft, then reload from Core before editing again.'), 409
             rollback = dict(device_id=latest['device_id'], profiles=latest['profiles'], backup=latest['backup'])
             rollback_path = draft_path(server, latest['device_id']).with_suffix('.rollback.json')
             atomic_json(rollback_path, rollback)
+            stage('Waking Core and waiting for the screen?')
             wake_for_deploy(server, server.connection['target'])
+            stage('Preparing the widget runtime on Core?')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'])
             # A timeout is ambiguous: always read back, and never blindly resend a write.
+            stage('Sending the layout and settings to Core?')
             acknowledged = True
             try:
                 bridge.request(server.connection['target'], server.adb, server.ROOT, 1108, payload)
             except Exception:
                 acknowledged = False
+            stage('Reading back and verifying the saved settings?')
             verified = None
             for attempt in range(4):
                 if attempt:
@@ -311,6 +343,7 @@ def register_editor(server):
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
+            stage('Restarting the Core home screen?')
             activated = False
             try:
                 result = server.adb('-s', server.connection['target'], 'shell', 'am', 'start', '-W', '-S', '-n',
@@ -318,6 +351,7 @@ def register_editor(server):
                 activated = isinstance(result, str) and 'Status: ok' in result
             except server.DeviceError:
                 pass
+            stage('Waiting for widgets to become ready?')
             server.native_widgets.configure(verified, server.connection['target'])
             if server.native_widgets.specs:
                 server.native_widgets.ready.wait(8)

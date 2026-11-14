@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.26 Windows
+# UltraBar Studio — 0.27 Windows
+
+## 0.27 update
+
+- Deploy displays a modal with live backend stages and elapsed time, including wake, runtime preparation, sending, verification and restart. Errors and results stay visible until closed.
 
 ## 0.26 update
 

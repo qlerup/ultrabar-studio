@@ -316,7 +316,26 @@
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
   $('draft-deploy').onclick=()=>{if(!draft||working)return;const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','No draft changes. This will verify and resend the current profile package.'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
-  $('deploy-confirm').onclick=()=>{$('deploy-dialog').close();operation(async()=>{await save();message('Deploying settings and verifying Core…');const data=await (await api('/api/editor/deploy',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);setTimeout(()=>{captureScreen();captureCubes();},1000);});};
+  $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
+  $('deploy-progress-close').onclick=()=>$('deploy-progress').close();
+  $('deploy-confirm').onclick=()=>{$('deploy-dialog').close();operation(async()=>{
+    const box=$('deploy-progress'),label=$('deploy-progress-message'),close=$('deploy-progress-close'),spinner=$('deploy-progress-spinner');
+    const requestId=crypto.randomUUID(),started=Date.now();let polling=false,finished=false;
+    close.disabled=true;spinner.hidden=false;label.textContent='Saving the draft?';box.showModal();
+    const timer=setInterval(async()=>{
+      $('deploy-progress-time').textContent=Math.floor((Date.now()-started)/1000)+' seconds elapsed';
+      if(polling||finished)return;polling=true;
+      try{const status=await(await api('/api/editor/deploy-status')).json();if(!finished&&status.request_id===requestId)label.textContent=status.message;}catch(error){if(!finished)label.textContent='Waiting for a status response from Studio?';}finally{polling=false;}
+    },750);
+    try{
+      await save();label.textContent='Contacting Core?';
+      const response=await fetch('/api/editor/deploy',{method:'POST',headers:{'X-Studio-Token':token,'Content-Type':'application/json'},body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,request_id:requestId})});
+      const data=await response.json();if(!response.ok)throw new Error(data.error||'Deployment failed.');
+      draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);label.textContent=data.message;
+      setTimeout(()=>{captureScreen();captureCubes();},1000);
+    }catch(error){label.textContent=error.message;message(error.message,true);}
+    finally{finished=true;clearInterval(timer);spinner.hidden=true;close.disabled=false;}
+  });};
   $('draft-reset').onclick=()=>{if(!confirm('Replace the local draft with current Core settings? Download the draft first if you want to keep it.'))return;operation(async()=>{const data=await (await api('/api/editor/reset',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Draft reloaded from Core.');});};
   $('draft-restore').onclick=()=>{if(!confirm('Replace this draft with the saved pre-deploy settings? Core changes only when you deploy.'))return;operation(async()=>{const data=await (await api('/api/editor/restore-draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Pre-deploy settings loaded as a draft. Review, then deploy to restore Core.');});};
   $('draft-export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(draft,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='ultrabar-studio-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};

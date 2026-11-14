@@ -117,6 +117,13 @@ class DesignTests(unittest.TestCase):
       monitors=[w['param']['payload']['params'] for p in saved['profiles'] for w in p['homeData'] if w.get('param',{}).get('payload',{}).get('params',{}).get('packageId')=='studio.system.widget']
       assert sorted(w['kind'] for w in monitors)==['cpu','cpu','cpu','gpu','memory'],monitors
       assert all(w['kindOptions']==['cpu','memory','gpu'] for w in monitors)
+      page.route('**/api/editor/deploy-status',lambda r:r.fulfill(json=dict(request_id='other',state='running',message='Other request')))
+      page.route('**/api/editor/deploy',lambda r:r.fulfill(status=502,json=dict(error='Core did not wake. No settings were sent.')))
+      page.locator('#draft-deploy').click();page.locator('#deploy-confirm').click()
+      expect(page.locator('#deploy-progress')).to_be_visible()
+      expect(page.locator('#deploy-progress-message')).to_have_text('Core did not wake. No settings were sent.')
+      expect(page.locator('#deploy-progress-close')).to_be_enabled()
+      page.locator('#deploy-progress-close').click()
       assert not errors,errors
       browser.close()
     finally:http.shutdown()
