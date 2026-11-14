@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.25 Windows
+# UltraBar Studio — 0.26 Windows
+
+## 0.26 update
+
+- Studio stays maximized: resizing and the restore button are disabled, and OS restore requests maximize the window again. Minimize and close remain available.
 
 ## 0.25 update
 
