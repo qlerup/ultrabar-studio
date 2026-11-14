@@ -124,3 +124,14 @@ class IconTests(unittest.TestCase):
             with patch.object(store,'fetch',return_value=raw) as download:
                 self.assertEqual(service.icon(icon['sha256']),raw);self.assertEqual(service.icon(icon['sha256']),raw);download.assert_called_once()
             with self.assertRaises(store.StoreError):service.icon('a'*64)
+
+
+class MeasurementOptionsTests(unittest.TestCase):
+    def test_supported_choices_and_invalid_defaults(self):
+        import copy
+        w=dict(id='system-monitor',name='System Monitor',kind='cpu',kindOptions=['cpu','memory','gpu'])
+        def parse(widget):return store.widget_package(json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[widget])).encode())
+        self.assertEqual(parse(w)[0]['kindOptions'],['cpu','memory','gpu'])
+        for options in ([],['cpu'],['cpu','cpu'],['cpu','disk'],['memory','gpu'],'cpu'):
+            bad=copy.deepcopy(w);bad['kindOptions']=options
+            with self.assertRaises(store.StoreError):parse(bad)

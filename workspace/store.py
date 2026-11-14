@@ -134,7 +134,7 @@ def widget_package(raw):
     if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
     result=[];ids=set()
     for w in widgets:
-        if not isinstance(w,dict) or set(w)-{'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate'}:raise StoreError('Unsupported widget field. Executable code is not supported.')
+        if not isinstance(w,dict) or set(w)-{'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}:raise StoreError('Unsupported widget field. Executable code is not supported.')
         key=w.get('id')
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
@@ -142,6 +142,10 @@ def widget_package(raw):
         plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
         if w.get('hourFormat','24') not in ('12','24') or any(type(w[k]) is not bool for k in ('showSeconds','showDate') if k in w):raise StoreError('Invalid clock settings.')
         if w['kind']!='clock' and any(k in w for k in ('hourFormat','showSeconds','showDate')):raise StoreError('Clock settings require a clock widget.')
+        if 'kindOptions' in w:
+            options=w['kindOptions']
+            if not isinstance(options,list) or not 2<=len(options)<=3 or any(k not in ('cpu','memory','gpu') for k in options) or len(set(options))!=len(options) or w['kind'] not in options:
+                raise StoreError('Choose 2-3 distinct CPU, RAM or GPU kinds including the default kind.')
         result.append(dict(w,_widgetPackage=True))
     return result
 

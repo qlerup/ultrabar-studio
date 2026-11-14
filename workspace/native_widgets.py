@@ -43,6 +43,10 @@ def specifications(profiles):
                 raise EditError('Invalid native widget ID or type.')
             if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock'):
                 raise EditError('Choose a supported Studio widget.')
+            if 'kindOptions' in spec:
+                options=spec['kindOptions']
+                if not isinstance(options,list) or not 2<=len(options)<=3 or any(k not in ('cpu','memory','gpu') for k in options) or len(set(options))!=len(options) or spec['kind'] not in options:
+                    raise EditError('Invalid widget measurement options.')
             if spec['kind'] == 'clock':
                 if spec.get('hourFormat','24') not in ('12','24') or any(type(spec[k]) is not bool for k in ('showSeconds','showDate') if k in spec):
                     raise EditError('Invalid clock display settings.')

@@ -51,6 +51,7 @@
       storePresets=(data.widgets||[]).map((w,i)=>{
         const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
+        if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
@@ -60,7 +61,7 @@
     }catch(error){message('Could not load installed store presets. '+error.message,true);}
   }
   window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});
-  function stock(){return [nativeTemplate('cpu','CPU usage'),nativeTemplate('memory','RAM usage'),nativeTemplate('gpu','GPU usage'),{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
+  function stock(){return [{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
     const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>!nativeSpec(w));const seen=new Set();
     return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
@@ -232,6 +233,12 @@
       if(spec.kind==='clock'){
         const wrap=el('label','property-field','Time format'),select=el('select');select.id='widget-hour-format';option(select,'24','24 hours');option(select,'12','12 hours');select.value=spec.hourFormat||'24';select.onchange=()=>change(()=>spec.hourFormat=select.value);wrap.append(select);panel.append(wrap);
         for(const [key,label] of [['showSeconds','Show seconds'],['showDate','Show date']]){const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='widget-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);}
+      }
+      if(spec.kindOptions?.length){
+        const wrap=el('label','property-field','Show'),select=el('select');select.id='widget-kind';
+        const labels={cpu:'CPU usage',memory:'RAM usage',gpu:'GPU usage'};
+        for(const kind of spec.kindOptions)option(select,kind,labels[kind]||kind);
+        select.value=spec.kind;select.onchange=()=>change(()=>{spec.kind=select.value;});wrap.append(select);panel.append(wrap);
       }
       if(spec.kind==='disk'){
         const wrap=el('label','property-field','Drive'),select=el('select');select.id='widget-drive';option(select,'all','All drives (2 at a time)');
