@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.18 Windows
+# UltraBar Studio — 0.19 Windows
+
+## 0.19 update
+
+- Download Studio updates directly in the app with progress, exact size and GitHub SHA-256 verification, and an explicit Start installation button.
+- The existing installer AppId and installation directory are retained. It updates program files; persistent data in `%LOCALAPPDATA%/UltraBar Studio` is separate and is not removed or replaced. Save unsaved drafts before starting installation and close Studio when requested.
+- Versions through 0.18 still open GitHub: install 0.19 manually once to gain the integrated downloader. Installer execution is user-initiated, not silent.
 
 ## 0.18 update
 

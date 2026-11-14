@@ -45,3 +45,41 @@ class UpdateTests(unittest.TestCase):
         with patch.object(server.webbrowser,'open',return_value=True) as browser:
             self.assertEqual(client.post('/api/updates/open',json={'url':'https://evil.example'},headers=headers).status_code,200)
             browser.assert_called_once_with(updates.RELEASES_URL+'/latest')
+
+class DownloadTests(unittest.TestCase):
+    def test_download_verify_launch_and_keep_data(self):
+        import tempfile,hashlib
+        from pathlib import Path
+        data=b'MZ-test-installer'
+        release=dict(update_available=True,download_available=True,latest_version='99.0.0',download_url='https://github.com/qlerup/ultrabar-studio/releases/download/v99.0.0/UltraBarStudio-Setup-99.0.0.exe',size=len(data),sha256=hashlib.sha256(data).hexdigest())
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);saved=root/'draft.json';saved.write_text('keep me')
+            updater=updates.Updater()
+            with patch.object(updates,'check_latest',return_value=release),patch.object(updates,'build_opener') as opener:
+                opener.return_value.open.return_value=io.BytesIO(data)
+                updater.download(root/'updates')
+            self.assertEqual(updater.status()['state'],'ready')
+            with patch.object(updates.subprocess,'Popen') as launch:
+                updater.launch();launch.assert_called_once()
+                self.assertEqual(launch.call_args.args[0],[str(updater.path)])
+            self.assertEqual(saved.read_text(),'keep me')
+            updater.job['state']='ready';updater.path.write_bytes(b'tampered')
+            with patch.object(updates.subprocess,'Popen') as launch:
+                with self.assertRaises(updates.UpdateError):updater.launch()
+                launch.assert_not_called()
+    def test_corrupt_download_never_ready(self):
+        import tempfile
+        from pathlib import Path
+        release=dict(update_available=True,download_available=True,latest_version='99.0.0',download_url='https://github.com/x',size=3,sha256='0'*64)
+        with tempfile.TemporaryDirectory() as tmp,patch.object(updates,'check_latest',return_value=release),patch.object(updates,'build_opener') as opener:
+            opener.return_value.open.return_value=io.BytesIO(b'bad')
+            updater=updates.Updater();updater.download(Path(tmp))
+            self.assertEqual(updater.status()['state'],'error')
+            self.assertFalse(list(Path(tmp).iterdir()))
+    def test_update_routes_require_token(self):
+        client=server.app.test_client()
+        for route in ['download','install']:
+            self.assertEqual(client.post('/api/updates/'+route,headers={'Host':'127.0.0.1:8741'}).status_code,403)
+    def test_redirect_rejects_untrusted_host(self):
+        with self.assertRaises(updates.UpdateError):
+            updates.ReleaseRedirect().redirect_request(None,None,302,'',{},'https://evil.example/installer.exe')

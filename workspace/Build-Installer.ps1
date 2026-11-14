@@ -13,5 +13,5 @@ if ($LASTEXITCODE -ne 0) { throw 'Native widget build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'App-build fejlede.' }
 & $studioCompiler installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer-build fejlede.' }
-Get-FileHash 'release/UltraBarStudio-Setup-0.18.0.exe' -Algorithm SHA256
+Get-FileHash 'release/UltraBarStudio-Setup-0.19.0.exe' -Algorithm SHA256
 

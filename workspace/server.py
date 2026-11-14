@@ -176,6 +176,23 @@ def check_updates():
         return jsonify(error=str(exc)), 502
 
 
+updater = updates.Updater()
+
+@app.get('/api/updates/status')
+def update_status():
+    return jsonify(updater.status())
+
+@app.post('/api/updates/download')
+def download_update():
+    try:return jsonify(updater.start(DATA_DIR / 'updates')),202
+    except updates.UpdateError as exc:return jsonify(error=str(exc)),409
+
+@app.post('/api/updates/install')
+def install_update():
+    try:return jsonify(updater.launch())
+    except updates.UpdateError as exc:return jsonify(error=str(exc)),409
+
+
 @app.post('/api/updates/open')
 def open_updates():
     # Open only the fixed release page in the system browser, outside the app.

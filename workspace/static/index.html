@@ -60,8 +60,8 @@
   <dialog id="updates-dialog" aria-labelledby="updates-title">
     <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO / __APP_VERSION__</div><h2 id="updates-title">App updates</h2></div><form method="dialog"><button>Close</button></form></div>
     <p id="updates-status" role="status" aria-live="polite"></p>
-    <p class="muted">Download the installer from GitHub, close Studio, then run the installer. Your saved profiles and drafts are kept.</p>
-    <div class="editor-buttons"><button id="updates-check">Check again</button><button id="updates-download" class="primary" hidden>Open download page</button></div>
+    <p class="muted">Studio downloads and verifies the installer. Save draft changes before starting it, then close Studio when requested. Program files are updated; saved profiles, drafts and backups are kept.</p>
+    <div class="editor-buttons"><button id="updates-check">Check again</button><button id="updates-download" class="primary" hidden>Download update</button><button id="updates-install" class="primary" hidden>Start installation</button></div>
   </dialog>
   <dialog id="connection-dialog" aria-labelledby="connection-title"><div class="guide-heading"><div><div class="eyebrow">COREBAR CONNECTION</div><h2 id="connection-title">Connect your device</h2></div><form method="dialog"><button aria-label="Close connection dialog">Close</button></form></div>
     <form id="connect-form" class="connect-panel"><div><label for="target">Connect to your CoreBAR</label><p class="muted">Enable WiFi ADB on CoreBAR, then find your device.</p><button type="button" class="setup-guide-trigger guide-link" aria-haspopup="dialog">Setup guide</button></div><div class="connect-fields"><button type="button" id="discover">Find devices</button><input id="target" name="target" placeholder="192.168.1.148:5555" required autocomplete="off" spellcheck="false" aria-label="IP address and ADB port"><button class="primary" id="connect" type="submit">Connect <span>→</span></button></div></form>

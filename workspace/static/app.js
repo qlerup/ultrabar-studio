@@ -315,23 +315,47 @@ $('guide-find-devices').onclick=()=>{$('setup-guide').close();openConnection();d
 $('setup-guide').addEventListener('close',()=>{api('/api/setup-seen',{method:'POST'}).catch(()=>{});});
 api('/api/preferences').then(response=>response.json()).then(data=>{if(!busy&&!snapshot&&!targetEdited&&document.activeElement!==$('target'))$('target').value=data.target; if(!data.setup_seen&&!$('setup-guide').open)$('setup-guide').showModal();}).catch(()=>{});
 
+let updateJob={state:'idle'};
+function showUpdateJob(job){
+  updateJob=job;
+  const active=job.state==='downloading';
+  $('updates-check').disabled=active;
+  $('updates-download').disabled=active;
+  $('updates-install').hidden=job.state!=='ready';
+  if(job.state!=='idle'){
+    $('updates-status').textContent=job.message+(active&&job.total?' '+Math.floor(100*job.received/job.total)+'%':'');
+    $('updates-download').hidden=!['error'].includes(job.state);
+  }
+}
 async function checkUpdates(){
-  $('updates-check').disabled=true;$('updates-download').hidden=true;
+  $('updates-check').disabled=true;$('updates-download').hidden=true;$('updates-install').hidden=true;
   $('updates-status').textContent='Checking GitHub for updates...';
   try{
-    const data=await (await api('/api/updates')).json();
-    $('updates-status').textContent=data.update_available
-      ? `Version ${data.latest_version} is available. You have ${data.current_version}.`+(data.installer_available?'':' The installer is not available yet.')
-      : `You are up to date. Installed version: ${data.current_version}.`;
-    $('updates-download').hidden=!data.update_available||!data.installer_available;
+    const job=await(await api('/api/updates/status')).json();
+    if(['downloading','ready','launched'].includes(job.state)){showUpdateJob(job);return;}
+    const data=await(await api('/api/updates')).json();
+    $('updates-status').textContent=data.update_available?`Version ${data.latest_version} is available. You have ${data.current_version}.`+(data.download_available?'':' A verified installer is not available yet.'):`You are up to date. Installed version: ${data.current_version}.`;
+    $('updates-download').hidden=!data.update_available||!data.download_available;
+    $('updates-download').disabled=false;
   }catch(error){$('updates-status').textContent=error.message;}
-  finally{$('updates-check').disabled=false;}
+  finally{$('updates-check').disabled=updateJob.state==='downloading';}
 }
 $('updates-open').onclick=()=>{$('updates-dialog').showModal();checkUpdates();};
 $('updates-check').onclick=checkUpdates;
 $('updates-download').onclick=async()=>{
   $('updates-download').disabled=true;
-  try{await api('/api/updates/open',{method:'POST'});}
-  catch(error){$('updates-status').textContent=error.message;}
-  finally{$('updates-download').disabled=false;}
+  try{showUpdateJob(await(await api('/api/updates/download',{method:'POST'})).json());}
+  catch(error){$('updates-status').textContent=error.message;$('updates-download').disabled=false;}
 };
+$('updates-install').onclick=async()=>{
+  if(!confirm('Save your draft changes before continuing. Start the installer now? Your saved data will be kept.'))return;
+  $('updates-install').disabled=true;
+  try{showUpdateJob(await(await api('/api/updates/install',{method:'POST'})).json());}
+  catch(error){$('updates-status').textContent=error.message;}
+  finally{$('updates-install').disabled=false;}
+};
+setInterval(async()=>{
+  if(updateJob.state!=='downloading')return;
+  try{showUpdateJob(await(await api('/api/updates/status')).json());}
+  catch(error){$('updates-status').textContent=error.message;}
+},1000);
