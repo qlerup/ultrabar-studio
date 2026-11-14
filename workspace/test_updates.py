@@ -83,3 +83,22 @@ class DownloadTests(unittest.TestCase):
     def test_redirect_rejects_untrusted_host(self):
         with self.assertRaises(updates.UpdateError):
             updates.ReleaseRedirect().redirect_request(None,None,302,'',{},'https://evil.example/installer.exe')
+
+
+class UpdateHandoffTests(unittest.TestCase):
+    def test_verified_installer_is_queued_before_any_process_launch(self):
+        import tempfile,hashlib
+        from pathlib import Path
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'setup.exe';path.write_bytes(b'test')
+            u=updates.Updater();u.path=path;u.digest=hashlib.sha256(b'test').hexdigest();u.job={'state':'ready'}
+            queued=[]
+            with patch.object(updates.subprocess,'Popen') as launch:
+                u.launch(queued.append)
+                self.assertEqual(queued,[path]);launch.assert_not_called()
+                self.assertEqual(u.status()['state'],'launched')
+    def test_store_install_blocks_app_shutdown(self):
+        client=server.app.test_client();headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
+        with patch.object(server.store,'status',return_value={'state':'running'}),patch.object(server.updater,'launch') as launch:
+            self.assertEqual(client.post('/api/updates/install',headers=headers).status_code,409)
+            launch.assert_not_called()

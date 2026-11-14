@@ -348,9 +348,9 @@ $('updates-download').onclick=async()=>{
   catch(error){$('updates-status').textContent=error.message;$('updates-download').disabled=false;}
 };
 $('updates-install').onclick=async()=>{
-  if(!confirm('Save your draft changes before continuing. Start the installer now? Your saved data will be kept.'))return;
+  if(!confirm('Save your draft and close Studio to install the update? Your saved data will be kept.'))return;
   $('updates-install').disabled=true;
-  try{showUpdateJob(await(await api('/api/updates/install',{method:'POST'})).json());}
+  try{await window.studioEditor?.saveBeforeUpdate();showUpdateJob(await(await api('/api/updates/install',{method:'POST'})).json());}
   catch(error){$('updates-status').textContent=error.message;}
   finally{$('updates-install').disabled=false;}
 };

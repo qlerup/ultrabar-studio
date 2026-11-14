@@ -4,7 +4,7 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = '0.20.0'
+VERSION = '0.21.0'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
 
@@ -116,14 +116,15 @@ class Updater:
         except Exception as exc:
             if partial:partial.unlink(missing_ok=True)
             self.set(state='error',message=str(exc) if isinstance(exc,UpdateError) else 'Download failed. Check your connection and try again.')
-    def launch(self):
+    def launch(self, launcher=None):
         with self.lock:
             if self.job['state']!='ready' or not self.path:raise UpdateError('Download and verify the update first.')
             if not self.path.is_file() or hashlib.sha256(self.path.read_bytes()).hexdigest()!=self.digest:
                 self.job=dict(state='error',message='Downloaded installer changed. Download it again.')
                 raise UpdateError(self.job['message'])
             try:
-                subprocess.Popen([str(self.path)],cwd=str(self.path.parent))
+                if launcher:launcher(self.path)
+                else:subprocess.Popen([str(self.path)],cwd=str(self.path.parent))
             except OSError as exc:raise UpdateError('Could not start the installer. Try again.') from exc
-            self.job=dict(state='launched',message='Installer opened. Close Studio when requested; your saved data is kept.')
+            self.job=dict(state='launched',message='Closing Studio to install the update. Your saved data is kept.' if launcher else 'Installer opened. Use its option to close Studio automatically.')
             return dict(self.job)

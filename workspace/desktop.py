@@ -27,6 +27,7 @@ def main():
         kernel.CloseHandle(handle)
         return
     http = None
+    pending_update = []
     try:
         http = create_server(server.app, host='127.0.0.1', port=0, threads=4)
         port = http.effective_port
@@ -37,6 +38,12 @@ def main():
         webview.settings['ALLOW_FILE_URLS'] = False
         window = webview.create_window('UltraBar Studio', f'http://127.0.0.1:{port}',
                                       width=1440, height=960, min_size=(640, 520), maximized=True, background_color='#101116')
+        def queue_update(path):
+            pending_update.append(Path(path))
+            timer = threading.Timer(0.5, window.destroy)
+            timer.daemon = True
+            timer.start()
+        server.update_launcher = queue_update
         server.program_picker = lambda: window.create_file_dialog(file_types=('Programs (*.exe)',))
         # Used when reopening Studio after an update; normal launches still show discovery.
         if '--resume-editor' in sys.argv:
@@ -79,6 +86,15 @@ def main():
                 server.native_widgets.thread.join(5)
             http.close()
         kernel.CloseHandle(handle)
+    if pending_update:
+        # Launch only after the WebView and backend have shut down. Inno's
+        # Restart Manager handles any remaining process/file handles normally.
+        import hashlib
+        import subprocess
+        installer = pending_update[0]
+        if hashlib.sha256(installer.read_bytes()).hexdigest() != server.updater.digest:
+            raise RuntimeError('The downloaded installer changed after verification.')
+        subprocess.Popen([str(installer)], cwd=str(installer.parent))
 
 
 if __name__ == '__main__':

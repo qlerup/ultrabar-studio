@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.20 Windows
+# UltraBar Studio — 0.21 Windows
+
+## 0.21 update
+
+- Save & install update saves the active dirty draft, aborts on save failure, queues the verified installer, closes the desktop and starts setup after backend shutdown. Active store installs block the handoff.
+- Removed the installer's startup AppMutex blockade. Interactive setup can use Windows Restart Manager to offer closing an older running Studio.
+- Just before replacing files, setup stops only adb.exe processes whose executable path matches this installation's bundled ADB. Other Android SDK installations are not targeted. Program replacement leaves saved data untouched.
+- Automated tests cover save failure, explicit confirmation and deferred installer handoff. Installer compiles; a complete native upgrade has not been run against the user's installation.
 
 ## 0.20 update
 

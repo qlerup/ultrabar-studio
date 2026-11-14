@@ -189,7 +189,10 @@ def download_update():
 
 @app.post('/api/updates/install')
 def install_update():
-    try:return jsonify(updater.launch())
+    try:
+        if store.status() and store.status().get('state')=='running':
+            return jsonify(error='Wait for the current store installation to finish.'),409
+        return jsonify(updater.launch(getattr(sys.modules[__name__], 'update_launcher', None)))
     except updates.UpdateError as exc:return jsonify(error=str(exc)),409
 
 
