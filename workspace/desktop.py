@@ -36,7 +36,7 @@ def main():
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['ALLOW_FILE_URLS'] = False
         window = webview.create_window('UltraBar Studio', f'http://127.0.0.1:{port}',
-                                      width=1440, height=960, min_size=(640, 520), background_color='#101116')
+                                      width=1440, height=960, min_size=(640, 520), maximized=True, background_color='#101116')
         server.program_picker = lambda: window.create_file_dialog(file_types=('Programs (*.exe)',))
         # Used when reopening Studio after an update; normal launches still show discovery.
         if '--resume-editor' in sys.argv:

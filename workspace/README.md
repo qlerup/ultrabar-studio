@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.16 Windows
+# UltraBar Studio — 0.17 Windows
+
+## 0.17 update
+
+- Studio starts maximized on every launch, retaining the normal Windows title bar and window controls.
 
 ## 0.16 update
 
