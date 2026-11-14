@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.27 Windows
+# UltraBar Studio — 0.28 Windows
+
+## 0.28 update
+
+Store installation supports private, device-specific setup for the reviewed Vivo Screen Sync Core app. It discovers online VivoCubes, keeps credentials out of the package and PC files, preserves existing Android app settings, and leaves first activation to the user. Requires the separately approved Store listing and existing root ADB/Studio bridge authorization. The new setup path still requires physical owner testing before package approval.
 
 ## 0.27 update
 

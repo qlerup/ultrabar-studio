@@ -51,6 +51,7 @@
   function confirmInstall(p){
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256,device_id:p.type==='corebar-app'?snapshot?.device_id:null};
     const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?`Install on CoreBAR ${snapshot?.target}.`:p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
+    if(p.id==='studio.vivo.screensync')box.append(el('p','', 'Setup uses root ADB to copy your existing approved Studio bridge credential into this app?s private storage and configure all currently online VivoCubes. Choose Follow Core in the app to enable it. Reinstall refreshes the cube list and preserves your settings.'));
     $('store-install-dialog').showModal();
   }
   $('store-install-confirm').onclick=async()=>{const body=pending;if(!body)return;pending=null;$('store-install-dialog').close();try{job=await(await api('/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();}catch(e){status(e.message,true);}};

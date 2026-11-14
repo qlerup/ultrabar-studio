@@ -278,11 +278,16 @@ class Store:
                             dump=server.adb('-s',target,'shell','dumpsys','package','com.ultrabar.launch').split('Hidden system packages:',1)[0]
                             version=re.search(r'^\s*versionName=(\S+)',dump,re.M)
                             if not version or version.group(1) not in c['lineosVersions']:raise StoreError('This app does not support the connected LineOS version.')
+                        import screen_sync
+                        prepared = screen_sync.prepare(server, target, p) if screen_sync.applies(p) else None
                         self.update_job(message='Installing on CoreBAR. Keep the connection open...')
                         result=subprocess.run([str(server.ADB),'-s',target,'install','-r',str(path)],capture_output=True,timeout=120,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
                         if result.returncode or 'Success' not in result.stdout.decode(errors='replace'):raise StoreError('Android rejected the installation. The existing app was not uninstalled. Check its signing identity, version and available storage.')
                         dump=server.adb('-s',target,'shell','dumpsys','package',p['android']['packageId']).split('Hidden system packages:',1)[0]
                         if not re.search(r'\bversionCode='+str(p['android']['versionCode'])+r'\b',dump):raise StoreError('Installation completed but its version could not be verified. Check Core before retrying.')
+                        if prepared is not None:
+                            self.update_job(message='Configuring Screen Sync for your connected VivoCubes...')
+                            screen_sync.configure(server, target, prepared)
                         record['android']=p['android']
                 with self.lock:
                     records=self.records();records[self.key(p,device)]=record;self.save(records)
