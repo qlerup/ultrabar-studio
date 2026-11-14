@@ -60,9 +60,9 @@
     }catch(error){message('Could not load installed store presets. '+error.message,true);}
   }
   window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});
-  function stock(){return [nativeTemplate('disk','Disk usage'),...(pcMetrics.disks||[]).map(d=>nativeTemplate('disk','Disk '+d.name.slice(0,2),d.name)),nativeTemplate('cpu','CPU usage'),nativeTemplate('memory','RAM usage'),nativeTemplate('gpu','GPU usage'),{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
+  function stock(){return [nativeTemplate('cpu','CPU usage'),nativeTemplate('memory','RAM usage'),nativeTemplate('gpu','GPU usage'),{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
-    const existing=draft.profiles.flatMap(p=>p.homeData||[]);const seen=new Set();
+    const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>nativeSpec(w)?.kind!=='disk');const seen=new Set();
     return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
   // Pointer-based dragging avoids native HTML5/WebView drag restrictions and

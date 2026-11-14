@@ -11,6 +11,7 @@ class DesignTests(unittest.TestCase):
   from test_editor import profiles as fixture_profiles
   profiles=fixture_profiles()
   profiles[0]['homeData'] += [
+   dict(id='studio_native_abcdef0123456789abcdef0123456789',type='PC_CONTROL',name='Legacy drive',param=dict(payload=dict(action='studioNative',params=dict(kind='disk',drive='all',accent='#94d9bb')))),
    dict(id='legacy-pc',type='PC_CONTROL',name='Original PC widget',param=dict(payload=dict(action='vendorAction',params={}))),
    dict(id='studio_native_0123456789abcdef0123456789abcdef',type='PC_CONTROL',name='Existing Store Clock',param=dict(payload=dict(action='studioNative',params=dict(kind='clock',packageId='studio.clock',widgetKey='clock',hourFormat='24',accent='#94d9bb'))))]
 
@@ -30,8 +31,9 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/hardware',lambda r:r.fulfill(json=dict(target=snapshot['target'],hardware=snapshot['hardware'])))
       page.route('**/api/screen*',lambda r:r.fulfill(status=502,json=dict(error='Preview unavailable in offline test')))
       page.route('**/api/cube-previews',lambda r:r.fulfill(json=dict(previews={})))
-      page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True)])))
+      page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True),dict(id='drive-usage',name='Drive usage',kind='disk',_widgetPackage=True,_storePackage='studio.drive.widget',_storeVersion='1.0.0')])))
       page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[])))
+      page.route('**/api/pc',lambda r:r.fulfill(json=dict(actions=[],metrics=dict(disks=[dict(name='C:\\',percent=25,used_gb=25,total_gb=100)]),status='Test',native_status='Test')))
       page.route('**/api/pc/**',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
       page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#manual-connection summary').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
@@ -59,16 +61,20 @@ class DesignTests(unittest.TestCase):
        page.locator('#connection-open').click();expect(page.locator('#discover')).to_be_visible();page.keyboard.press('Escape')
       page.set_viewport_size(dict(width=1440,height=960))
       page.locator('#nav-editor').click()
-      expect(page.locator('details[data-group="store"] .library-item')).to_have_count(1)
+      expect(page.locator('details[data-group="store"] .library-item')).to_have_count(2)
       expect(page.locator('details[data-group="installed"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(1)
       expect(page.locator('details[data-group="studio"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(0)
+      expect(page.locator('details[data-group="studio"]').get_by_role('button',name='Disk usage',exact=True)).to_have_count(0)
+      expect(page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True)).to_be_visible()
+      expect(page.locator('#widget-library').get_by_role('button',name='Legacy drive',exact=True,include_hidden=True)).to_have_count(0)
+      expect(page.locator('#core-canvas').get_by_role('button',name='Legacy drive',exact=True)).to_have_count(1)
       stock=page.locator('details[data-group="ultrabar"]')
       studio=page.locator('details[data-group="studio"]')
       expect(stock.get_by_role('button',name='Clock',exact=True).first).to_be_visible()
-      expect(studio.get_by_role('button',name='Disk usage',exact=True)).to_be_visible()
+      expect(studio.get_by_role('button',name='RAM usage',exact=True)).to_be_visible()
       studio.locator('summary').click()
       expect(studio).not_to_have_attribute('open','')
-      page.locator('#library-search').fill('Disk usage')
+      page.locator('#library-search').fill('RAM usage')
       expect(page.locator('details[data-group="studio"] .library-item')).to_have_count(1)
       expect(page.locator('details[data-group="studio"] .library-item')).to_be_visible()
       page.locator('#library-search').fill('no such widget')
@@ -77,7 +83,7 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('details[data-group="studio"]')).not_to_have_attribute('open','')
       page.locator('details[data-group="studio"] summary').click()
       count=page.locator('#core-canvas .canvas-widget').count()
-      page.locator('details[data-group="studio"]').get_by_role('button',name='Disk usage',exact=True).click()
+      page.locator('details[data-group="studio"]').get_by_role('button',name='RAM usage',exact=True).click()
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+1)
       page.locator('details[data-group="studio"]').get_by_role('button',name='CPU usage',exact=True).drag_to(page.locator('#core-canvas'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+2)
@@ -88,6 +94,11 @@ class DesignTests(unittest.TestCase):
       page.locator('#widget-showSeconds').uncheck()
       page.locator('#widget-showDate').uncheck()
       expect(page.locator('#widget-hour-format')).to_have_value('12')
+      page.wait_for_timeout(450)  # End the post-drag click suppression window.
+      page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True).click()
+      expect(page.locator('#widget-drive')).to_have_value('all')
+      page.locator('#widget-drive').select_option('C:\\')
+      expect(page.locator('#widget-drive')).to_have_value('C:\\')
       page.locator('#draft-save').click()
       expect(page.locator('#editor-notice')).to_contain_text('Draft saved')
       assert not errors,errors
