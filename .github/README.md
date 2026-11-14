@@ -13,9 +13,9 @@ A community-built Windows companion for UltraBar X / CoreBAR. Independent of the
 
 Native Studio widgets currently require a root-enabled ARM32 CB01 running LineOS 1.0.8 or 1.0.9, with Studio connected. GPU readings depend on available sensors. Other firmware has not been verified.
 
-## Coming next
+## App & Plugin Store
 
-An independently updated [app/plugin store](https://github.com/qlerup/ultrabar-store), with owner-reviewed submissions and prebuilt, signed APKs for CoreBAR. The store catalog and package format are prepared; store installation is **not available yet**.
+Studio 0.18 includes an independently updated [app/plugin store](https://github.com/qlerup/ultrabar-store). Approved catalog entries appear after owner review and merge. Install prebuilt, signed APKs on CoreBAR or declarative widget-preset plugins on your PC. Plugins do not run scripts; native renderer replacement and executable Windows plugins are not supported. New packages remain invisible until approved.
 
 ## License
 

@@ -1,4 +1,13 @@
-# UltraBar Studio — 0.17 Windows
+# UltraBar Studio — 0.18 Windows
+
+## 0.18 update
+
+- App & Plugin Store with search, type/installed filters, explicit install confirmation, job status and independent catalog refresh. Only main-branch approved entries from qlerup/ultrabar-store can be installed.
+- CoreBAR APKs: bounded download, exact hash/size, metadata and permission checks, APK v2 signing-identity check, model/API/ABI checks, device identity recheck and fixed ADB install/update. Android verifies signatures. Existing apps are never silently uninstalled or downgraded.
+- Studio plugins: validated declarative JSON presets only; install/remove on this PC and expose presets in the widget library. No remote scripts or arbitrary executable plugin loading.
+- Widget dragging uses pointer events, an insert marker and edge scrolling across the scaled preview. Browser drag/add tests pass; a separate Windows UI test launch was blocked by the environment, so packaged WebView dragging still needs user confirmation.
+- Studio Clock and Iris Presets are submitted separately for owner approval. Their APK/JSON review assets alone do not publish them in the approved store catalog.
+- Native renderer package installation and executable plugin APIs remain unsupported.
 
 ## 0.17 update
 

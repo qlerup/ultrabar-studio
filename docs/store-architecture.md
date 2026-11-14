@@ -1,4 +1,22 @@
-# Independent store delivery (planned; not an installed feature)
+# Independent store delivery
+
+## Implemented in Studio 0.18
+
+The Store UI reads the approved main-branch catalog on open, explicit refresh and
+once per minute while visible. Entries are pinned to versioned GitHub assets.
+The server rechecks approval/version/hash on installation, verifies the download,
+and runs either a fixed ADB APK installer or a declarative JSON-preset installer.
+
+APKs are inspected with bundled AOSP aapt. The pinned whole-file hash identifies
+the reviewed artifact; signer certificate identity is checked in the v2 signing
+block, and Android verifies the cryptographic APK signature when installing.
+No Android SDK or Java runtime is required on users' PCs. Android app removal is
+currently through Core settings; the Store permits reinstalling recorded apps.
+Studio preset plugins have no executable entry point and can be removed in-app.
+
+Native renderer packages, arbitrary executable Windows plugins, publisher upload
+UI, catalog signatures and richer permission APIs remain future work. The existing
+approved catalog is initially empty pending owner acceptance of the first PR.
 
 ## Decisions
 
@@ -59,7 +77,8 @@ activated through the existing draft/deploy flow, never by overwriting profiles.
 
 ### studio-plugin / studio-plugin-v1
 
-A versioned ZIP with manifest and payload. Start with declarative actions and
+The implemented v1 payload is a bounded JSON file with `pluginApi: 1` and
+validated widget presets. Future executable packages may use a versioned ZIP. Start with declarative actions and
 widget templates supported by an explicit host API. Executable extensions need
 an out-of-process host and a reviewed permissions protocol; do not import
 arbitrary Python or inject JavaScript into the privileged Studio UI. A ZIP alone
@@ -103,5 +122,5 @@ completed before enabling executable community packages.
 3. Stabilize native widget host API and separate renderer delivery.
 4. Implement declarative Studio plugins, then a constrained executable plugin host.
 
-No store installation endpoint is enabled by the 0.14 release. This document
-is an implementation plan based on inspected code, not a claim of runtime support.
+The 0.18 release enables the two installation paths described above. Broader
+plugin/runtime capabilities in the remaining milestones are planned, not implemented.

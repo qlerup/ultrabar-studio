@@ -11,6 +11,7 @@
     <div class="section-label">YOUR WORKSPACE</div>
     <button id="nav-overview" aria-pressed="true" class="nav-active" type="button">Device overview</button>
     <button id="nav-editor" aria-pressed="false" class="profile-button" type="button" disabled>Design &amp; actions</button>
+    <button id="nav-store" class="profile-button" type="button" aria-pressed="false">App &amp; Plugin Store</button>
     <div class="section-label profile-label">DEVICE PROFILES</div>
     <div id="profiles"><p class="muted sidebar-note">Connect to load profiles.</p></div>
     <div class="sidebar-bottom"><span class="version">WINDOWS APP / __APP_VERSION__</span><p>Made for your desk.<br>Designed around you.</p></div>
@@ -46,7 +47,16 @@
         <details class="draft-tools"><summary>Draft &amp; recovery tools</summary><div class="editor-buttons"><button id="draft-export">Download draft</button><button id="draft-reset">Reload draft from Core</button><button id="draft-restore">Load pre-deploy backup as draft</button></div><p class="muted">Reload replaces your draft. Restoring a backup only prepares a draft; use Deploy to apply it.</p></details>
       </section>
     </div>
+    <section id="store-content" hidden>
+      <div class="heading"><div><div class="eyebrow">COMMUNITY PACKAGES</div><h1>App &amp; Plugin Store</h1><p class="muted">Approved packages, updated independently of Studio.</p></div><button id="store-refresh">Refresh store</button></div>
+      <p id="store-device" class="muted"></p>
+      <p id="store-status" role="status" aria-live="polite"></p>
+      <div class="store-filters"><input id="store-search" type="search" placeholder="Search apps and plugins" aria-label="Search store"><select id="store-filter" aria-label="Package type"><option value="all">All packages</option><option value="corebar-app">CoreBAR apps</option><option value="studio-plugin">Studio plugins</option><option value="installed">Installed</option></select></div>
+      <div id="store-packages" class="store-grid"></div>
+      <p class="muted">CoreBAR apps install on the selected device. Studio plugins add widget presets on this PC. Installed presets can be removed here without removing widgets already placed in your drafts. Remove Android apps through CoreBAR settings.</p>
+    </section>
   </main>
+  <dialog id="store-install-dialog" aria-labelledby="store-install-title"><h2 id="store-install-title">Install package?</h2><div id="store-install-summary"></div><p class="muted">Only continue if you trust the publisher and the listed permissions.</p><div class="editor-buttons"><button id="store-install-cancel">Cancel</button><button id="store-install-confirm" class="primary">Install</button></div></dialog>
   <dialog id="updates-dialog" aria-labelledby="updates-title">
     <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO / __APP_VERSION__</div><h2 id="updates-title">App updates</h2></div><form method="dialog"><button>Close</button></form></div>
     <p id="updates-status" role="status" aria-live="polite"></p>
@@ -73,5 +83,5 @@
   </dialog>
   <dialog id="pc-action-dialog" aria-labelledby="pc-action-title"><form id="pc-action-form"><div class="guide-heading"><h2 id="pc-action-title">Add a PC action</h2><button type="button" id="pc-action-cancel">Cancel</button></div><label>Name <input id="pc-action-name" required maxlength="100" placeholder="My website"></label><label>Action <select id="pc-action-kind"><option value="url">Open website</option><option value="program">Open PC program</option></select></label><label id="pc-action-target-label">Website URL</label><input id="pc-action-target" aria-labelledby="pc-action-target-label" required placeholder="https://example.com"><button id="pc-action-browse" type="button" hidden>Browse programs?</button><p class="muted">Programs use the full path to an existing .exe file on this PC. Websites open in your default browser.</p><p id="pc-action-error" role="alert"></p><button class="primary" type="submit">Save and add</button></form></dialog>
   <dialog id="deploy-dialog" aria-labelledby="deploy-title"><h2 id="deploy-title">Deploy settings to Core?</h2><div id="deploy-summary"></div><p class="muted">Studio checks for newer settings, backs up the current profile package and verifies the saved result. Core's LineOS home app briefly restarts to display the updated layout.</p><div class="editor-buttons"><button id="deploy-cancel">Cancel</button><button id="deploy-confirm" class="primary">Deploy settings</button></div></dialog>
-  <script src="/static/app.js"></script><script src="/static/editor.js"></script>
+  <script src="/static/app.js"></script><script src="/static/editor.js"></script><script src="/static/store.js"></script>
 </body></html>

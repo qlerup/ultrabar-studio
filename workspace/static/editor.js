@@ -2,6 +2,7 @@
 (() => {
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
   let editorGeneration=0, pcDestination='widget', pcMetrics={};
+  let storePresets=[];
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
   const types={CPU:'CPU usage',MEMORY:'RAM usage',STORAGE:'Disk usage',TIME:'Clock',APPS:'Core app',PC_CONTROL:'PC action'};
@@ -17,10 +18,11 @@
   function showMode(next){mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();}
   async function openEditor(){
     if(!snapshot||busy||working)return;
+    window.studioStore?.leave();
     document.body.classList.add('editing');$('nav-editor').classList.add('nav-active');$('nav-overview').classList.remove('nav-active');
     $('overview-content').hidden=true;$('editor-content').hidden=false;
     $('nav-editor').setAttribute('aria-pressed','true');$('nav-overview').setAttribute('aria-pressed','false');
-    if(draft?.device_id===snapshot.device_id){renderEditor();return;}
+    if(draft?.device_id===snapshot.device_id){renderEditor();loadStorePresets();return;}
     working=true;updateControls();const generation=++editorGeneration;
     try{
       const data=await (await api('/api/editor')).json();
@@ -28,11 +30,11 @@
       draft=data.draft;dirty=false;history=[];profileIndex=Math.min(selectedProfile,draft.profiles.length-1);widgetIndex=0;
       message(data.conflict?'Core settings have changed since this draft was created. Use Draft & recovery tools to reload before deploying.':'Changes stay in your draft until you deploy.',data.conflict);
       renderEditor();
-      await Promise.allSettled([loadCatalog(),refreshPc()]);
+      await Promise.allSettled([loadCatalog(),refreshPc(),loadStorePresets()]);
     }catch(error){message(error.message,true);}
     finally{working=false;updateControls();}
   }
-  function overview(){if(working)return;document.body.classList.remove('editing');$('nav-editor').classList.remove('nav-active');$('nav-overview').classList.add('nav-active');$('overview-content').hidden=false;$('editor-content').hidden=true;$('nav-editor').setAttribute('aria-pressed','false');$('nav-overview').setAttribute('aria-pressed','true');}
+  function overview(){if(working)return;window.studioStore?.leave();document.body.classList.remove('editing');$('nav-editor').classList.remove('nav-active');$('nav-overview').classList.add('nav-active');$('overview-content').hidden=false;$('editor-content').hidden=true;$('nav-editor').setAttribute('aria-pressed','false');$('nav-overview').setAttribute('aria-pressed','true');}
   async function loadCatalog(){try{apps=(await (await api('/api/editor/catalog')).json()).apps;renderLibrary();renderActionLibrary();}catch(error){message(error.message,true);}}
   function option(select,value,label){const item=el('option','',label);item.value=value;select.append(item);}
   function renderEditor(){
@@ -43,15 +45,86 @@
   }
   function nativeSpec(w){return w.param?.payload?.action==='studioNative'?w.param.payload.params:null;}
   function nativeTemplate(kind,name,drive='all'){return {type:'PC_CONTROL',name,bgColor:'#192325',iconScale:0,_new:true,_native:true,param:{output:10,payload:{action:'studioNative',params:{kind,accent:'#94d9bb',textColor:'#eef6f2',...(kind==='disk'?{drive}:{})}}}};}
+  async function loadStorePresets(){
+    try{
+      const data=await(await api('/api/store/installed')).json();
+      storePresets=(data.widgets||[]).map((w,i)=>{
+        const t=w.kind==='clock'?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
+        t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+i;
+        if(w.background)t.bgColor=w.background;
+        if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
+        return t;
+      });
+      if(draft&&!drag)renderLibrary();
+    }catch(error){message('Could not load installed store presets. '+error.message,true);}
+  }
+  window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});
   function stock(){return [nativeTemplate('disk','Disk usage'),...(pcMetrics.disks||[]).map(d=>nativeTemplate('disk','Disk '+d.name.slice(0,2),d.name)),nativeTemplate('cpu','CPU usage'),nativeTemplate('memory','RAM usage'),nativeTemplate('gpu','GPU usage'),{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
     const existing=draft.profiles.flatMap(p=>p.homeData||[]);const seen=new Set();
-    return [...stock(),...apps,...existing].filter(w=>{const key=w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]);if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
+    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const key=w._storeKey||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
-  function draggable(node,payload){node.draggable=true;node.addEventListener('dragstart',event=>{if(working){event.preventDefault();return;}drag=payload;event.dataTransfer.setData('text/plain','ultrabar-studio');event.dataTransfer.effectAllowed='copyMove';node.classList.add('dragging');});node.addEventListener('dragend',()=>{drag=null;node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(n=>n.classList.remove('drop-target'));});}
+  // Pointer-based dragging avoids native HTML5/WebView drag restrictions and
+  // makes the entire scaled Core viewport a target, with a visible insert line.
+  let widgetPointer=null,suppressWidgetClickUntil=0;
+  function widgetDropIndex(x,y){
+    const screen=$('core-screen').getBoundingClientRect();
+    if(x<screen.left||x>screen.right||y<screen.top||y>screen.bottom)return null;
+    const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
+    const next=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x<r.left+r.width/2;});
+    return next<0?cards.length:next;
+  }
+  function paintWidgetDrag(){
+    const d=widgetPointer;if(!d?.active)return;
+    const screen=$('core-screen').getBoundingClientRect();
+    d.ghost.style.left=(d.x+14)+'px';d.ghost.style.top=(d.y+14)+'px';
+    let at=widgetDropIndex(d.x,d.y);
+    if(at!==null){
+      if(d.x<screen.left+40)$('core-canvas').scrollLeft-=12;
+      if(d.x>screen.right-40)$('core-canvas').scrollLeft+=12;
+      at=widgetDropIndex(d.x,d.y);
+      const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
+      const x=cards[at]?.getBoundingClientRect().left??cards.at(-1)?.getBoundingClientRect().right??screen.left+12;
+      d.marker.hidden=false;d.marker.style.left=Math.max(screen.left+2,Math.min(screen.right-4,x))+'px';d.marker.style.top=(screen.top+8)+'px';d.marker.style.height=Math.max(10,screen.height-16)+'px';
+    }else d.marker.hidden=true;
+    d.index=at;d.frame=requestAnimationFrame(paintWidgetDrag);
+  }
+  function endWidgetDrag(cancel=false){
+    const d=widgetPointer;if(!d)return;widgetPointer=null;
+    if(d.node.hasPointerCapture(d.pointerId))d.node.releasePointerCapture(d.pointerId);
+    if(!d.active)return;
+    cancelAnimationFrame(d.frame);d.ghost.remove();d.marker.remove();d.node.classList.remove('dragging');
+    const at=widgetDropIndex(d.x,d.y);drag=null;suppressWidgetClickUntil=Date.now()+400;
+    if(cancel||at===null){message('Move cancelled.');return;}
+    if(d.payload.kind==='widget-new')addWidget(d.payload.widget,at);
+    else moveWidget(d.payload.index,at);
+  }
+  document.addEventListener('pointermove',event=>{
+    const d=widgetPointer;if(!d||event.pointerId!==d.pointerId)return;
+    d.x=event.clientX;d.y=event.clientY;
+    if(!d.active&&Math.hypot(d.x-d.startX,d.y-d.startY)>7){
+      d.active=true;drag=d.payload;d.node.setPointerCapture(event.pointerId);d.node.classList.add('dragging');
+      d.ghost=el('div','widget-drag-ghost',d.payload.widget?.name||d.node.getAttribute('aria-label')||'Move widget');
+      d.marker=el('div','widget-insert-marker');d.marker.hidden=true;document.body.append(d.ghost,d.marker);paintWidgetDrag();
+    }
+    if(d.active)event.preventDefault();
+  },{passive:false});
+  document.addEventListener('pointerup',event=>{if(widgetPointer?.pointerId===event.pointerId)endWidgetDrag();});
+  document.addEventListener('pointercancel',()=>endWidgetDrag(true));
+  window.addEventListener('blur',()=>endWidgetDrag(true));
+  document.addEventListener('keydown',event=>{if(event.key==='Escape'&&widgetPointer){event.preventDefault();endWidgetDrag(true);}});
+  document.addEventListener('click',event=>{if(Date.now()<suppressWidgetClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
+  function draggable(node,payload){
+    if(payload.kind.startsWith('widget-')){
+      node.draggable=false;node.style.touchAction='none';
+      node.addEventListener('pointerdown',event=>{if(event.button!==0||working||widgetPointer)return;widgetPointer={node,payload,pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,x:event.clientX,y:event.clientY,active:false};});
+      return;
+    }
+    node.draggable=true;node.addEventListener('dragstart',event=>{if(working){event.preventDefault();return;}drag=payload;event.dataTransfer.setData('text/plain','ultrabar-studio');event.dataTransfer.effectAllowed='copyMove';node.classList.add('dragging');});node.addEventListener('dragend',()=>{drag=null;node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(n=>n.classList.remove('drop-target'));});}
   function dropzone(node,handler){node.addEventListener('dragover',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.add('drop-target');});node.addEventListener('dragleave',()=>node.classList.remove('drop-target'));node.addEventListener('drop',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.remove('drop-target');handler(drag);drag=null;});}
   const libraryExpanded={ultrabar:true,studio:true,installed:false};
   function libraryGroup(w){
+    if(w._storePackage)return 'studio';
     if(w.type==='APPS')return 'installed';
     if(nativeSpec(w)||w.type==='PC_CONTROL')return 'studio';
     return ['CPU','MEMORY','STORAGE','TIME'].includes(w.type)?'ultrabar':'installed';
@@ -66,7 +139,7 @@
     container.replaceChildren();
     const query=$('library-search').value.trim().toLowerCase();
     const widgets=library().filter(w=>(w.name||types[w.type]||w.type).toLowerCase().includes(query));
-    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio & App Store','Studio widgets and PC actions. Store downloads are coming later.'],['installed','Installed apps','Apps already on Core. Their installation source is not yet tracked.']];
+    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio & App Store','Studio widgets, PC actions and installed store presets.'],['installed','Installed apps','Apps already on Core. Their installation source is not yet tracked.']];
     for(const [key,title,help] of groups){
       const items=widgets.filter(w=>libraryGroup(w)===key);
       if(query&&!items.length)continue;
@@ -81,7 +154,7 @@
     if(!container.children.length)container.append(el('p','muted','No matching widgets.'));
   }
   function addWidget(template,at=current().homeData.length){
-    const widget=clone(template);if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
+    const widget=clone(template);delete widget._storePackage;delete widget._storeKey;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
     change(()=>{current().homeData.splice(at,0,widget);widgetIndex=at;});
   }

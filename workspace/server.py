@@ -308,6 +308,9 @@ register_pc(sys.modules[__name__])
 from native_widgets import NativeWidgets
 native_widgets = NativeWidgets(sys.modules[__name__])
 
+from store import register_store
+register_store(sys.modules[__name__])
+
 if __name__ == '__main__':
     from waitress import serve
     print('UltraBar Studio: http://127.0.0.1:8741', flush=True)
