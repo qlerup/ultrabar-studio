@@ -88,6 +88,19 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(response.status_code,200)
         self.assertEqual(order,['backup','wake','write'])
 
+    def test_progress_can_be_read_while_deploy_holds_device_lock(self):
+        def waking(*args):
+            status=self.client.get('/api/editor/deploy-status',headers=self.headers)
+            self.assertEqual(status.status_code,200)
+            self.assertEqual(status.json['request_id'],'test-progress')
+            self.assertEqual(status.json['state'],'running')
+            self.assertIn('Waking Core',status.json['message'])
+        self.wake_mock.side_effect=waking
+        with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request'),patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':profiles()}):
+            result=self.post('/api/editor/deploy',dict(device_id='core1',revision=self.draft['revision'],request_id='test-progress'))
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(self.client.get('/api/editor/deploy-status',headers=self.headers).json['state'],'done')
+
     def test_wake_failure_aborts_before_prepare_and_write(self):
         self.wake_mock.side_effect=server.DeviceError('Core did not leave standby. No settings were sent.')
         with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request') as bridge,patch.object(server.native_widgets,'prepare') as prepare:
