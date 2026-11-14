@@ -68,3 +68,28 @@ class StoreTests(unittest.TestCase):
     def test_apk_signature_parser_rejects_invalid_input(self):
         p=Path(self.tmp.name)/'bad.apk';p.write_bytes(b'not an APK')
         with self.assertRaises(store.StoreError):store.v2_signers(p)
+
+
+class WidgetPackageTests(StoreTests):
+    def test_widget_install_is_local_until_deploy(self):
+        p,_=fixture();p['type']='corebar-widget'
+        raw=json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[dict(id='clock',name='Clock and date',kind='clock',hourFormat='24',showSeconds=True,showDate=True)])).encode()
+        p['artifact'].update(size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        with patch.object(server,'adb') as adb,patch.object(server.native_widgets,'prepare') as prepare:
+            self.assertEqual(self.install(p,raw)['state'],'complete')
+            adb.assert_not_called();prepare.assert_not_called()
+        template=self.service.templates()[0]
+        self.assertTrue(template['_widgetPackage']);self.assertEqual(template['_storeVersion'],'1.0.0')
+        from native_widgets import specifications
+        spec={k:template[k] for k in ('kind','hourFormat','showSeconds','showDate')};spec['accent']='#abcdef'
+        widget=dict(id='studio_native_'+'a'*32,type='PC_CONTROL',param=dict(payload=dict(action='studioNative',params=spec)))
+        self.assertEqual(specifications([dict(homeData=[widget])])[widget['id']]['hourFormat'],'24')
+        spec['showSeconds']='false'
+        from editor import EditError
+        with self.assertRaises(EditError):specifications([dict(homeData=[widget])])
+        self.service.remove_plugin(p['id']);self.assertEqual(self.service.templates(),[])
+    def test_widget_package_rejects_scripts_and_unknown_settings(self):
+        base=dict(id='clock',name='Clock',kind='clock')
+        for changes in [dict(script='run'),dict(hourFormat='32'),dict(showDate='yes'),dict(kind='shell')]:
+            w=dict(base,**changes)
+            with self.assertRaises(store.StoreError):store.widget_package(json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[w])).encode())

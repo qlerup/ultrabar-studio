@@ -80,7 +80,7 @@ def validate_entry(entry):
         android=p.get('android',{})
         if not ANDROID_ID.fullmatch(str(android.get('packageId',''))) or android['packageId'].startswith(('android.','com.android.','com.ultrabar.')): raise StoreError('Invalid or reserved Android package ID.')
         if type(android.get('versionCode')) is not int or android['versionCode']<1 or type(android.get('minSdk')) is not int or android['minSdk']<26 or not HEX.fullmatch(str(android.get('signerSha256',''))): raise StoreError('Invalid Android package metadata.')
-    elif p['type']=='studio-plugin' and permissions:
+    elif p['type'] in ('studio-plugin','corebar-widget') and permissions:
         raise StoreError('Declarative Studio plugins cannot request permissions.')
     return p
 
@@ -104,6 +104,27 @@ def plugin_templates(raw):
             if field in w and not re.fullmatch(r'#[a-fA-F0-9]{6}',str(w[field])): raise StoreError('Invalid widget color.')
         result.append(dict(w))
     return result
+
+def widget_package(raw):
+    try:data=json.loads(raw)
+    except (ValueError,UnicodeError) as exc:raise StoreError('Invalid widget package JSON.') from exc
+    if not isinstance(data,dict) or set(data)!={'widgetApi','runtime','widgets'} or type(data['widgetApi']) is not int or data['widgetApi']!=1 or data['runtime']!='studio-native-v1':
+        raise StoreError('Unsupported widget package runtime.')
+    widgets=data['widgets']
+    if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
+    result=[];ids=set()
+    for w in widgets:
+        if not isinstance(w,dict) or set(w)-{'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate'}:raise StoreError('Unsupported widget field. Executable code is not supported.')
+        key=w.get('id')
+        if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
+        ids.add(key)
+        base={k:v for k,v in w.items() if k in ('name','kind','background','textColor','accent')}
+        plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
+        if w.get('hourFormat','24') not in ('12','24') or any(type(w[k]) is not bool for k in ('showSeconds','showDate') if k in w):raise StoreError('Invalid clock settings.')
+        if w['kind']!='clock' and any(k in w for k in ('hourFormat','showSeconds','showDate')):raise StoreError('Clock settings require a clock widget.')
+        result.append(dict(w,_widgetPackage=True))
+    return result
+
 
 def v2_signers(path):
     # Read signer identities from the APK v2 block. The approved SHA-256 pins the
@@ -169,7 +190,7 @@ class Store:
     def key(self,p,device): return p['id']+(':'+device if p['type']=='corebar-app' else ':pc')
     def templates(self):
         with self.lock:
-            return [dict(widget,_storePackage=p['id']) for p in self.records().values() if p['type']=='studio-plugin' for widget in p.get('widgets',[])]
+            return [dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
     def status(self):
         with self.lock:return copy.deepcopy(self.job)
     def update_job(self,**values):
@@ -187,7 +208,6 @@ class Store:
             p=next((p for p in catalog() if p['id']==body['id']),None)
             if not p or p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256'):raise StoreError('The catalog changed. Refresh the store and review the package again.')
             if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before installing this package.')
-            if p['type']=='corebar-widget':raise StoreError('Native renderer packages are not supported by this store version.')
             device=body.get('device_id') or ''
             if p['type']=='corebar-app' and not device:raise StoreError('Connect to CoreBAR before installing this app.')
             with self.lock:
@@ -199,9 +219,9 @@ class Store:
                 with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
-                if p['type']=='studio-plugin':
+                if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
-                    record['widgets']=plugin_templates(path.read_bytes())
+                    record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
                 else:
                     inspect_apk(server,path,p)
                     with server.device_lock:
@@ -226,7 +246,7 @@ class Store:
                         record['android']=p['android']
                 with self.lock:
                     records=self.records();records[self.key(p,device)]=record;self.save(records)
-            self.update_job(state='complete',message='Installed. '+('Find the presets in Widget library > Studio & App Store.' if p['type']=='studio-plugin' else 'Find the app in the CoreBAR app list.'))
+            self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
         except Exception as exc:
             text=str(exc) if isinstance(exc,(StoreError,server.DeviceError)) else 'Installation could not be completed. Check the connection and retry; Core may already have installed the package.'
             self.update_job(state='error',message=text)
@@ -234,7 +254,7 @@ class Store:
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Wait for the current installation to finish.')
             records=self.records();key=package_id+':pc'
-            if key not in records or records[key]['type']!='studio-plugin':raise StoreError('Installed plugin not found.')
+            if key not in records or records[key]['type'] not in ('studio-plugin','corebar-widget'):raise StoreError('Installed plugin not found.')
             del records[key];self.save(records)
         return dict(ok=True)
 

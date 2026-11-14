@@ -49,8 +49,9 @@
     try{
       const data=await(await api('/api/store/installed')).json();
       storePresets=(data.widgets||[]).map((w,i)=>{
-        const t=w.kind==='clock'?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
-        t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+i;
+        const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
+        t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
+        if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
         return t;
@@ -113,7 +114,7 @@
   document.addEventListener('pointercancel',()=>endWidgetDrag(true));
   window.addEventListener('blur',()=>endWidgetDrag(true));
   document.addEventListener('keydown',event=>{if(event.key==='Escape'&&widgetPointer){event.preventDefault();endWidgetDrag(true);}});
-  document.addEventListener('click',event=>{if(Date.now()<suppressWidgetClickUntil){event.preventDefault();event.stopImmediatePropagation();}},true);
+  document.addEventListener('click',event=>{if(Date.now()<suppressWidgetClickUntil&&event.target.closest('.library-item,.canvas-widget')){event.preventDefault();event.stopImmediatePropagation();}},true);
   function draggable(node,payload){
     if(payload.kind.startsWith('widget-')){
       node.draggable=false;node.style.touchAction='none';
@@ -164,7 +165,11 @@
     card.replaceChildren(el('strong','native-title',w.name||'Studio'));
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
-    if(spec.kind==='disk'){
+    if(spec.kind==='clock'){
+      const now=new Date(),format={hour:'2-digit',minute:'2-digit',hour12:spec.hourFormat==='12'};if(spec.showSeconds!==false)format.second='2-digit';
+      card.append(el('span','native-source','CORE CLOCK'),el('span','native-clock-time',now.toLocaleTimeString([],format)));
+      if(spec.showDate!==false)card.append(el('span','native-detail',now.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short',year:'numeric'})));
+    }else if(spec.kind==='disk'){
       const drives=(pcMetrics.disks||[]).filter(d=>spec.drive==='all'||d.name===spec.drive);
       if(!drives.length){card.append(el('span','native-offline','Drive unavailable'));return;}
       if(spec.drive==='all'){
@@ -223,6 +228,11 @@
     panel.append(el('span','badge',spec?'Studio widget':w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
+      if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
+      if(spec.kind==='clock'){
+        const wrap=el('label','property-field','Time format'),select=el('select');select.id='widget-hour-format';option(select,'24','24 hours');option(select,'12','12 hours');select.value=spec.hourFormat||'24';select.onchange=()=>change(()=>spec.hourFormat=select.value);wrap.append(select);panel.append(wrap);
+        for(const [key,label] of [['showSeconds','Show seconds'],['showDate','Show date']]){const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='widget-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);}
+      }
       if(spec.kind==='disk'){
         const wrap=el('label','property-field','Drive'),select=el('select');select.id='widget-drive';option(select,'all','All drives (2 at a time)');
         const drives=new Set((pcMetrics.disks||[]).map(d=>d.name));if(spec.drive!=='all')drives.add(spec.drive);
@@ -230,7 +240,7 @@
         select.onchange=()=>change(()=>{spec.drive=select.value;delete spec.drives;});wrap.append(select);panel.append(wrap);
         if(spec.drive==='all')panel.append(el('p','muted','Shows two drives at a time. With more than two drives, the card switches to the next pair every 6 seconds.'));
       }
-      panel.append(el('p','muted','Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
+      panel.append(el('p','muted',spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
     const moves=el('div','property-moves');moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));panel.append(moves);
     panel.append(button('Remove from Core',()=>change(()=>{current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
@@ -306,4 +316,5 @@
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
   window.studioEditor={snapshotChanged(){ $('nav-editor').disabled=!snapshot;if(draft&&draft.device_id!==snapshot?.device_id){editorGeneration++;draft=null;dirty=false;apps=[];pcActions=[];overview();}if(snapshot)api('/api/pc/connect',{method:'POST',body:'{}'}).catch(error=>message(error.message,true));},hasUnsaved(){return dirty;}};
   setInterval(()=>{if(snapshot&&!document.hidden&&mode==='pc'&&!$('editor-content').hidden&&!working)refreshPc();},5000);
+setInterval(()=>{if(!working&&!drag&&draft&&document.body.classList.contains('editing')){[...$('core-canvas').children].forEach((card,i)=>{const w=current().homeData[i];if(w&&nativeSpec(w)?.kind==='clock')renderNativePreview(w,card);});}},1000);
 })();

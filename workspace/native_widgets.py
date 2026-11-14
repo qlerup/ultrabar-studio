@@ -41,8 +41,14 @@ def specifications(profiles):
             spec = payload.get('params')
             if widget.get('type') != 'PC_CONTROL' or not re.fullmatch(r'studio_native_[a-f0-9]{32}', key):
                 raise EditError('Invalid native widget ID or type.')
-            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk'):
-                raise EditError('Choose a supported Studio hardware widget.')
+            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock'):
+                raise EditError('Choose a supported Studio widget.')
+            if spec['kind'] == 'clock':
+                if spec.get('hourFormat','24') not in ('12','24') or any(type(spec[k]) is not bool for k in ('showSeconds','showDate') if k in spec):
+                    raise EditError('Invalid clock display settings.')
+            if spec['kind'] == 'clock':
+                if spec.get('hourFormat','24') not in ('12','24') or any(type(spec[k]) is not bool for k in ('showSeconds','showDate') if k in spec):
+                    raise EditError('Invalid clock display settings.')
             if spec['kind'] == 'disk' and (not isinstance(spec.get('drive'), str) or not (spec['drive'] == 'all' or re.fullmatch(r'[A-Z]:\\', spec['drive']))):
                 raise EditError('Choose a drive or All drives for this widget.')
             if not isinstance(spec.get('accent'), str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', spec['accent']):

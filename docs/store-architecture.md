@@ -1,126 +1,69 @@
-# Independent store delivery
+# Store delivery and integrated widgets
 
-## Implemented in Studio 0.18
+Studio 0.20 reads the owner-reviewed main-branch catalog in qlerup/ultrabar-store.
+Opening the store, Refresh and a visible one-minute timer fetch new entries.
+Installing rechecks the selected ID/version/hash against that catalog. Downloads
+are bounded and pinned to versioned official GitHub release assets by SHA-256
+and byte size. Package updates do not silently change placed widgets or drafts.
 
-The Store UI reads the approved main-branch catalog on open, explicit refresh and
-once per minute while visible. Entries are pinned to versioned GitHub assets.
-The server rechecks approval/version/hash on installation, verifies the download,
-and runs either a fixed ADB APK installer or a declarative JSON-preset installer.
+## Integrated corebar-widget packages
 
-APKs are inspected with bundled AOSP aapt. The pinned whole-file hash identifies
-the reviewed artifact; signer certificate identity is checked in the v2 signing
-block, and Android verifies the cryptographic APK signature when installing.
-No Android SDK or Java runtime is required on users' PCs. Android app removal is
-currently through Core settings; the Store permits reinstalling recorded apps.
-Studio preset plugins have no executable entry point and can be removed in-app.
+The package is declarative JSON: widgetApi 1, runtime studio-native-v1 and a
+list of widget definitions with stable IDs, kind, name and default settings.
+Supported kinds are clock, cpu, memory, gpu and disk. Clock adds hourFormat,
+showSeconds and showDate. Names and colors are editable in the existing panel;
+disk uses the existing drive selector. No submitted code is executed.
 
-Native renderer packages, arbitrary executable Windows plugins, publisher upload
-UI, catalog signatures and richer permission APIs remain future work. The existing
-approved catalog is initially empty pending owner acceptance of the first PR.
+Install validates and records the package locally without ADB writes. Templates
+appear under Studio & App Store. Drag creates an independently editable native
+widget instance retaining package ID/version/key. Draft save validates settings.
+The existing verified Deploy flow checks Core compatibility, backs up settings,
+transfers the shared renderer, writes the layout and verifies readback.
 
-## Decisions
+The renderer is shipped with Studio, not replaced by downloaded packages.
+Additional packages using supported kinds/defaults need no Studio update.
+A new renderer or data source requires a host API enhancement first. This is
+not an arbitrary executable plugin platform.
 
-Studio remains proprietary/source available. Third-party apps retain their own
-licenses and are submitted to `qlerup/ultrabar-store` through pull requests.
-qlerup reviews and approves entries before publication. No Studio executable
-release is needed to add packages using an already supported installation type.
-A new installation type, permission or host API can require a Studio update.
+Native integration requires root-enabled ARM32 CB01 and LineOS 1.0.8 or 1.0.9.
+Clock uses Core time/locale; preview uses PC time/locale. Hardware metrics need
+Studio connected. Studio must reconnect to restore rendering after Core restart.
+Removing a library package preserves placed cards. Remove a card and Deploy to
+remove it from Core. No destructive package-uninstall action changes profiles.
 
-The store repository publishes a versioned catalog. Application binaries are
-prebuilt, signed GitHub Release assets, not compiled on users' computers.
-A catalog entry pins an exact version, asset URL, byte length and SHA-256.
-APK entries additionally pin Android package ID, versionCode and signer
-certificate SHA-256. Never use a moving `latest` URL for installation assets.
+## Other package types
 
-## Existing implementations inspected
+corebar-app installs a standalone APK using fixed ADB install -r arguments.
+The app checks metadata, permissions, signer identity, device identity/API/ABI,
+size and hash. Android verifies the cryptographic signature. No silent uninstall
+or downgrade is used. These apps are separate from integrated widget packages.
 
-* `screen-sync/AndroidManifest.xml` and `screen-sync/provision.py`: Vivo Screen
-  Sync is an Android APK (`dk.ultrabarx.screensync`), installed with `adb install
-  -r`. Current version is 0.4-test, versionCode 4, minSdk 26, targetSdk 28.
-  It is debuggable and testsigned. Provisioning uses `run-as` and injects the
-  already-authorized CoreBridge credential into app-private storage, then starts
-  its activity. Current provisioner contains fixed device serials/IP. This is a
-  local test artifact, not a store-ready release. Removing debuggable also removes
-  the current `run-as` provisioning path; a secure pairing interface must be
-  implemented before a production release. Do not publish its signing key,
-  credentials, provisioned files or a falsely labelled production APK.
-* `workspace/native_widgets.py` and `native-widgets/src`: CPU/RAM/disk widgets
-  run as LineOS child views using `studio-widgets.dex`, a pinned Frida 16.7.19
-  runtime and host-supplied metrics. Supported target is root-enabled CB01,
-  ARM32, LineOS 1.0.8/1.0.9. They are not independent Android APKs and need Studio
-  connected. DEX/runtime replacement is privileged and not a generic plugin API.
-* `pc-hardware/README.md`: the old accessibility overlay experiment is retired.
-  It must not be bundled or used as the store's widget installation mechanism.
+studio-plugin is the legacy declarative preset format (pluginApi 1). Executable
+Windows plugins, arbitrary renderer DEX packages, custom remote scripts and ZIP
+extraction are not supported. APK submissions currently require manual review;
+the new contributor bot only accepts integrated corebar-widget submissions.
 
-## Package families
+## Review and publication
 
-### corebar-app / android-apk
+See https://github.com/qlerup/ultrabar-store/blob/main/CONTRIBUTING.md for exact
+files and UI steps. Contributors fork, commit package/source/license/docs and
+open a PR. The owner publishes exact reviewed JSON bytes as a versioned release
+asset, then adds a matching manifest/catalog entry in that PR. Publication of a
+review asset alone does not make a package visible in Studio.
 
-Publish a release-signed APK as a GitHub Release asset alongside the catalog
-manifest. Studio verifies download hash/size, APK package ID, versionCode,
-signing identity, device API/ABI and declared permissions. The user chooses the
-connected Core and approves installation. Studio invokes a fixed argument-list
-ADB installer (`install -r`), never scripts provided by the package. Verify the
-installed package/version after completion. Updating an existing package must
-preserve its signer. Never silently uninstall to resolve a signing conflict or
-use downgrade flags. Application-specific pairing follows a reviewed host API.
-Installation does not automatically grant root or expose shared credentials.
+GitHub Actions runs the main-branch validator against PR data, never contributor
+code. Checkout credentials are not persisted. The comment step alone receives
+the token used to update one PR comment. Checks cover required files, metadata,
+compatibility, supported fields, immutable source reference, unique IDs, local
+hash/size and equality with the published artifact. New commits rerun checks;
+workflow_dispatch accepts a PR number for manual reruns. Ready for approval is
+reported only when publication checks pass. Human review and merge remain final.
+The bot cannot prove license ownership, visual quality or physical Core behavior.
 
-### corebar-widget / studio-native-v1
+## Compatibility and persistence
 
-Initially first-party-only until a supported renderer contract exists. Package
-contains the compiled DEX and declarative widget metadata, with explicit model,
-LineOS, ABI, runtime and minimum Studio API requirements. It is distinct from an
-APK. Install must back up the previous renderer, detach it safely, swap validated
-files atomically, reconnect and roll back on failed health checks. Widgets are
-activated through the existing draft/deploy flow, never by overwriting profiles.
-
-### studio-plugin / studio-plugin-v1
-
-The implemented v1 payload is a bounded JSON file with `pluginApi: 1` and
-validated widget presets. Future executable packages may use a versioned ZIP. Start with declarative actions and
-widget templates supported by an explicit host API. Executable extensions need
-an out-of-process host and a reviewed permissions protocol; do not import
-arbitrary Python or inject JavaScript into the privileged Studio UI. A ZIP alone
-does not make a runnable plugin. This runtime still needs implementation.
-
-## Catalog and author workflow
-
-1. Author submits source/build instructions, manifest, license, screenshots,
-   compatibility information and permission rationale in a pull request.
-2. Tests validate metadata; no privileged jobs run on untrusted PR code.
-3. qlerup reviews the source and requested capabilities, then merges.
-4. A trusted release pipeline builds and signs the app using protected signing
-   credentials (never in Git). Retain and back up each APK signing key.
-5. Publish immutable versioned release assets, then merge the catalog entry
-   containing the actual checksums and signer identity. Do not add dummy hashes.
-6. Studio refreshes the remote catalog on demand and compares package versions
-   with its local installation registry independently of Studio's version.
-
-## Download/install requirements for implementation
-
-Use a trusted catalog origin, bounded HTTPS downloads, repository/asset allowlist,
-verified hash/length and an explicit supported catalog/host API version. Recheck
-the Core identity immediately before installation. Serialize installs per device.
-Store state by device serial and package ID, not IP address. ZIP extraction must
-reject absolute/traversal paths, symlinks, duplicate entries and decompression
-bombs. Stage in a temporary directory, verify before activation and atomically
-record successful installation. Failures must leave a recoverable previous state.
-
-Show actual permissions and compatibility before Install. Support cancellation,
-clear offline/errors, installed/updatable states and package-specific uninstall.
-APK data backup/restore is not universally available; do not claim rollback can
-restore application data. Revocations disable new installs; never remove an
-installed app silently. Catalog signature and key-rotation design should be
-completed before enabling executable community packages.
-
-## Next milestones
-
-1. Production-sign and implement secure pairing for Vivo Screen Sync; remove
-   fixed serials and targets and test install/update/uninstall on a test Core.
-2. Implement catalog fetch, store UI and verified Android APK installer.
-3. Stabilize native widget host API and separate renderer delivery.
-4. Implement declarative Studio plugins, then a constrained executable plugin host.
-
-The 0.18 release enables the two installation paths described above. Broader
-plugin/runtime capabilities in the remaining milestones are planned, not implemented.
+Package/host versions are explicit. Downloads with unsupported host versions or
+capabilities fail before installation. User drafts, backups and package records
+stay in Studio's data directory, separate from installer program files. Existing
+clock/settings formats require no migration. Clock hardware rendering still
+needs owner testing; automated checks use isolated data and mocked device writes.

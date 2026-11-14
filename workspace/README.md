@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.19 Windows
+# UltraBar Studio — 0.20 Windows
+
+## 0.20 update
+
+- Integrated corebar-widget packages install locally into the left library; right-panel settings are saved in the draft, and existing verified Deploy sends the shared renderer/settings to Core.
+- Clock/date renderer with 12/24-hour time, optional seconds/date, name and colors. Uses Core clock/locale; preview uses PC clock. The existing root-enabled ARM32 CB01 / LineOS 1.0.8-1.0.9 integration is required. Runtime restoration after Core restart requires Studio connection.
+- Package provenance/version survives in saved native widget settings. Removing a package from the library preserves placed widgets and drafts. Remove a card and Deploy to remove it from Core.
+- Supported declarative widget kinds: clock, cpu, memory, gpu and disk. New custom executable code/data sources are not loaded from store packages.
+- Browser drag/settings/save, package integrity/local-only installation and Java compilation checks pass. Clock rendering on physical Core still awaits owner testing.
 
 ## 0.19 update
 

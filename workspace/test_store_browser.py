@@ -41,8 +41,8 @@ class StoreBrowserTests(unittest.TestCase):
       page.locator('#store-refresh').click();expect(page.locator('#store-status')).to_contain_text('Offline test')
       expect(page.locator('.store-card')).to_contain_text('Test presets')
       page.on('dialog',lambda d:d.accept())
-      page.locator('.store-card').get_by_role('button',name='Remove presets').click()
-      expect(page.locator('#store-status')).to_have_text('Plugin presets removed.')
+      page.locator('.store-card').get_by_role('button',name='Remove from library').click()
+      expect(page.locator('#store-status')).to_have_text('Package removed from library.')
       self.assertEqual(server.store.templates(),[])
       page.locator('#nav-overview').click();expect(page.locator('#store-content')).not_to_be_visible()
       assert not errors,errors

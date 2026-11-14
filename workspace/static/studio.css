@@ -72,3 +72,5 @@ body.store-open .sidebar #nav-editor{background:transparent;border-color:transpa
 .widget-drag-ghost{position:fixed;z-index:10000;pointer-events:none;padding:10px 14px;border:1px solid var(--mint);background:var(--panel);color:var(--text);box-shadow:0 8px 22px #0007;max-width:240px;font-size:13px}
 .widget-insert-marker{position:fixed;width:3px;background:var(--mint);box-shadow:0 0 0 1px #111;z-index:9999;pointer-events:none}
 .canvas-widget,.library-item{user-select:none}
+
+.native-clock-time{font-size:34px;font-weight:600;white-space:nowrap;margin:28px 0 20px;font-variant-numeric:tabular-nums}

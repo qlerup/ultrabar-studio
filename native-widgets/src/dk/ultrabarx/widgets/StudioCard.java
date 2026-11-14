@@ -103,6 +103,18 @@ public final class StudioCard extends View {
         text(c,label.length()>26?label.substring(0,25)+"…":label,22,34,15,white,true);
         boolean online=received>0 && SystemClock.elapsedRealtime()-received<10000;
         JSONObject metrics=state.optJSONObject("metrics");
+        if(spec!=null && spec.optString("kind").equals("clock")){
+            java.util.Date now=new java.util.Date();
+            String format=spec.optString("hourFormat","24").equals("12")?"hh:mm":"HH:mm";
+            if(spec.optBoolean("showSeconds",true))format+=":ss";
+            if(spec.optString("hourFormat","24").equals("12"))format+=" a";
+            text(c,new java.text.SimpleDateFormat(format,java.util.Locale.getDefault()).format(now),22,116,32,white,true);
+            if(spec.optBoolean("showDate",true)){
+                String date=new java.text.SimpleDateFormat("EEE, d MMM yyyy",java.util.Locale.getDefault()).format(now);
+                text(c,date,22,158,14,accent,false);
+            }
+            c.restore();return;
+        }
         if(spec==null||metrics==null||!online){text(c,online?"Choose in Studio":"PC offline",22,118,25,muted,false);text(c,"Open Studio to reconnect",22,202,12,muted,false);c.restore();return;}
         String kind=spec.optString("kind");
         if(kind.equals("disk")){

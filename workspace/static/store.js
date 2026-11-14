@@ -13,20 +13,19 @@
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
     for(const p of visible){
       const card=el('article','store-card'),saved=record(p),active=job?.state==='running';
-      card.append(el('span','eyebrow',p.type==='corebar-app'?'COREBAR APP':p.type==='studio-plugin'?'STUDIO PLUGIN':'NATIVE WIDGET'),el('h2','',p.name),el('p','',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
+      card.append(el('span','eyebrow',p.type==='corebar-app'?'COREBAR APP':p.type==='studio-plugin'?'STUDIO PLUGIN':'CORE WIDGET'),el('h2','',p.name),el('p','',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
       const tools=el('div','editor-buttons');
       if(!p.unlisted){
         const b=el('button','primary',saved?(newer(p.version,saved.version)?'Update':p.type==='corebar-app'?'Reinstall':'Installed'):'Install');
-        b.disabled=active||Boolean(saved&&p.type!=='corebar-app'&&!newer(p.version,saved.version))||p.type==='corebar-app'&&!snapshot||p.type==='corebar-widget';
+        b.disabled=active||Boolean(saved&&p.type!=='corebar-app'&&!newer(p.version,saved.version))||p.type==='corebar-app'&&!snapshot;
         if(p.type==='corebar-app'&&!snapshot)b.textContent='Connect CoreBAR to install';
-        if(p.type==='corebar-widget')b.textContent='Not supported yet';
         b.onclick=()=>confirmInstall(p);tools.append(b);
       }
-      if(saved&&p.type==='studio-plugin'){
-        const remove=el('button','','Remove presets');remove.disabled=active;
-        remove.onclick=async()=>{if(!confirm('Remove these library presets from this PC? Widgets already added to drafts are kept.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Plugin presets removed.');}catch(e){status(e.message,true);}};tools.append(remove);
+      if(saved&&p.type!=='corebar-app'){
+        const remove=el('button','','Remove from library');remove.disabled=active;
+        remove.onclick=async()=>{if(!confirm('Remove this package from the library? Existing draft and deployed widgets are kept. Remove them from your layout and Deploy to remove them from Core.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Package removed from library.');}catch(e){status(e.message,true);}};tools.append(remove);
       }
       card.append(tools);box.append(card);
     }
@@ -42,7 +41,7 @@
   }
   function confirmInstall(p){
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256,device_id:p.type==='corebar-app'?snapshot?.device_id:null};
-    const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?`Install on CoreBAR ${snapshot?.target}.`:'Install widget presets on this PC. No executable plugin code is loaded.'),el('p','',p.permissions.length?'Permissions: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
+    const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?`Install on CoreBAR ${snapshot?.target}.`:p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
     $('store-install-dialog').showModal();
   }
   $('store-install-confirm').onclick=async()=>{const body=pending;if(!body)return;pending=null;$('store-install-dialog').close();try{job=await(await api('/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();}catch(e){status(e.message,true);}};

@@ -10,7 +10,7 @@ class DesignTests(unittest.TestCase):
  def test_workspace_at_window_sizes(self):
   from test_editor import profiles as fixture_profiles
   profiles=fixture_profiles()
-  profiles[0]['module'] += [dict(serialNo='0000000000000002',productId='VIVO_CUBE',config=[]),dict(serialNo='0000000000000003',productId='KNOB_KEY',config=[])]
+  profiles[0]['module'] += [dict(serialNo='0000000000000002',productId='VIVO_CUBE',config=[]),dict(serialNo='0000000000000003',productId='KNOB_KEY',config={})]
   devices=[dict(serial=m['serialNo'],type=m['productId'],name=m['productId'],online=True) for m in profiles[0]['module']]
   snapshot=dict(target='192.168.1.148:5555',model='CB01',device_id='preview',read_at='2026-11-14T20:00:00Z',profiles=profiles,backup='fixture.xml',hardware=dict(devices=devices),layout_order=[])
   with tempfile.TemporaryDirectory() as tmp, patch.object(server,'DATA_DIR',Path(tmp)), patch.dict(server.connection,target=snapshot['target'],snapshot=snapshot):
@@ -26,6 +26,7 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/hardware',lambda r:r.fulfill(json=dict(target=snapshot['target'],hardware=snapshot['hardware'])))
       page.route('**/api/screen*',lambda r:r.fulfill(status=502,json=dict(error='Preview unavailable in offline test')))
       page.route('**/api/cube-previews',lambda r:r.fulfill(json=dict(previews={})))
+      page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True)])))
       page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[])))
       page.route('**/api/pc/**',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
@@ -73,6 +74,15 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+1)
       page.locator('details[data-group="studio"]').get_by_role('button',name='CPU usage',exact=True).drag_to(page.locator('#core-canvas'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+2)
+      page.wait_for_timeout(450)
+      page.locator('details[data-group="studio"]').get_by_role('button',name='Store Clock',exact=True).drag_to(page.locator('#core-canvas'))
+      expect(page.locator('#widget-hour-format')).to_have_value('24')
+      page.locator('#widget-hour-format').select_option('12')
+      page.locator('#widget-showSeconds').uncheck()
+      page.locator('#widget-showDate').uncheck()
+      expect(page.locator('#widget-hour-format')).to_have_value('12')
+      page.locator('#draft-save').click()
+      expect(page.locator('#editor-notice')).to_contain_text('Draft saved')
       assert not errors,errors
       browser.close()
     finally:http.shutdown()

@@ -15,7 +15,9 @@ Native Studio widgets currently require a root-enabled ARM32 CB01 running LineOS
 
 ## App & Plugin Store
 
-Studio 0.18 includes an independently updated [app/plugin store](https://github.com/qlerup/ultrabar-store). Approved catalog entries appear after owner review and merge. Install prebuilt, signed APKs on CoreBAR or declarative widget-preset plugins on your PC. Plugins do not run scripts; native renderer replacement and executable Windows plugins are not supported. New packages remain invisible until approved.
+Studio 0.20 supports integrated widget packages: install once, drag from **Studio & App Store**, configure in the right panel, then **Deploy** to activate on Core. Packages use the shared clock/date and hardware-widget runtime. Standalone APK installation remains available as a separate app type; arbitrary executable plugins are not supported.
+
+[Submit your widget](https://github.com/qlerup/ultrabar-store/blob/main/CONTRIBUTING.md). GitHub checks the submission and explains errors in the PR. The owner reviews and merges approved catalog entries; new packages appear without a Studio update.
 
 ## License
 
