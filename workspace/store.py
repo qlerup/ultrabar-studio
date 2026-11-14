@@ -1,4 +1,5 @@
 """Reviewed catalog and bounded, explicit package installation. No remote scripts."""
+import io
 import copy
 import hashlib
 import json
@@ -56,6 +57,24 @@ def valid_version(value):
     try: return updates.version_tuple(value)
     except updates.UpdateError as exc: raise StoreError('Invalid package version.') from exc
 
+def validate_icon_metadata(icon):
+    if not isinstance(icon,dict) or set(icon)!={'url','size','sha256'}:raise StoreError('An icon needs url, size and sha256.')
+    url=icon['url']
+    if not isinstance(url,str) or not url.startswith(ASSET_PREFIX) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*\.png',url[len(ASSET_PREFIX):]):raise StoreError('Icon must be a PNG asset in the official store repository.')
+    if type(icon['size']) is not int or not 0<icon['size']<=262144 or not HEX.fullmatch(str(icon['sha256'])):raise StoreError('Invalid icon size or checksum.')
+
+def validate_icon_bytes(raw,icon):
+    from PIL import Image
+    if len(raw)!=icon['size'] or hashlib.sha256(raw).hexdigest()!=icon['sha256']:raise StoreError('Icon checksum or size mismatch.')
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            if im.format!='PNG' or im.size not in ((256,256),(512,512)) or getattr(im,'n_frames',1)!=1:raise StoreError('Icon must be a static 256x256 or 512x512 PNG.')
+            im.verify()
+        with Image.open(io.BytesIO(raw)) as im:im.load()
+    except StoreError:raise
+    except Exception as exc:raise StoreError('Invalid PNG icon.') from exc
+    return raw
+
 def validate_entry(entry):
     if not isinstance(entry, dict): raise StoreError('Invalid catalog entry.')
     p = copy.deepcopy(entry)
@@ -63,6 +82,7 @@ def validate_entry(entry):
     for field, maximum in [('name',100),('description',1000),('license',200)]:
         if not isinstance(p.get(field),str) or not 1 <= len(p[field]) <= maximum: raise StoreError('Incomplete package information.')
     valid_version(p.get('version'))
+    if 'icon' in p:validate_icon_metadata(p['icon'])
     if p.get('type') not in ('corebar-app','studio-plugin','corebar-widget'): raise StoreError('Unknown package type.')
     compatibility=p.get('compatibility',{})
     valid_version(compatibility.get('minStudioVersion'))
@@ -176,7 +196,7 @@ def inspect_apk(server,path,entry):
 
 class Store:
     def __init__(self,server):
-        self.server=server;self.lock=threading.RLock();self.job=None
+        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={}
     def records(self):
         try:
             data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text())
@@ -188,6 +208,21 @@ class Store:
         from editor import atomic_json
         atomic_json(self.server.DATA_DIR/'store/installed.json',data)
     def key(self,p,device): return p['id']+(':'+device if p['type']=='corebar-app' else ':pc')
+    def remember_icons(self,packages):
+        with self.lock:
+            for p in packages:
+                if p.get('icon'):
+                    validate_icon_metadata(p['icon']);self.icon_sources[p['icon']['sha256']]=p['icon']
+    def icon(self,digest):
+        with self.lock:metadata=self.icon_sources.get(digest)
+        if not metadata:raise StoreError('Icon is not in the loaded catalog.')
+        path=self.server.DATA_DIR/'store/icons'/(digest+'.png')
+        try:return validate_icon_bytes(path.read_bytes(),metadata)
+        except (OSError,StoreError):pass
+        raw=validate_icon_bytes(fetch(metadata['url'],262144),metadata)
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_bytes(raw)
+        return raw
     def templates(self):
         with self.lock:
             return [dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
@@ -219,6 +254,7 @@ class Store:
                 with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
+                if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
@@ -265,10 +301,18 @@ def register_store(server):
     @server.app.get('/api/store')
     def get_store():
         with store.lock:installed=list(store.records().values())
-        return jsonify(packages=catalog(),installed=installed,job=store.status())
+        packages=catalog();store.remember_icons(packages+installed)
+        return jsonify(packages=packages,installed=installed,job=store.status())
     @server.app.get('/api/store/installed')
     def installed():
-        with store.lock:return jsonify(installed=list(store.records().values()),widgets=store.templates(),job=store.status())
+        with store.lock:
+            installed=list(store.records().values());store.remember_icons(installed)
+            return jsonify(installed=installed,widgets=store.templates(),job=store.status())
+    @server.app.get('/api/store/icons/<digest>')
+    def icon(digest):
+        from flask import Response
+        if not HEX.fullmatch(digest):raise StoreError('Invalid icon ID.')
+        return Response(store.icon(digest),mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
     @server.app.post('/api/store/install')
     def install():return jsonify(store.start(request.get_json(silent=True))),202
     @server.app.get('/api/store/job')

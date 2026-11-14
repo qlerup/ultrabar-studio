@@ -4,12 +4,14 @@ from unittest.mock import patch
 from werkzeug.serving import make_server
 from playwright.sync_api import sync_playwright,expect
 import server,store
-from test_store import fixture
+from test_store import fixture,icon_fixture
 
 class StoreBrowserTests(unittest.TestCase):
  def test_catalog_approval_install_remove_and_offline(self):
-  p,raw=fixture();approved=[]
-  def download(url,limit,destination=None):destination.write(raw);return len(raw)
+  p,raw=fixture();approved=[];icon,icon_raw=icon_fixture();p["icon"]=icon
+  def download(url,limit,destination=None):
+   if destination is None:return icon_raw
+   destination.write(raw);return len(raw)
   with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download):
    server.store.job=None
    http=make_server('127.0.0.1',0,server.app,threaded=True);host=f'127.0.0.1:{http.server_port}'
@@ -25,6 +27,8 @@ class StoreBrowserTests(unittest.TestCase):
       expect(page.locator('#store-packages')).to_contain_text('No approved packages yet')
       approved.append(p);page.locator('#store-refresh').click()
       expect(page.locator('.store-card')).to_contain_text('Test presets')
+      expect(page.locator('.store-card-icon img')).to_be_visible()
+      page.wait_for_function("document.querySelector('.store-card-icon img')?.naturalWidth===256")
       page.locator('.store-card').get_by_role('button',name='Install',exact=True).click()
       expect(page.locator('#store-install-dialog')).to_be_visible()
       page.locator('#store-install-cancel').click()

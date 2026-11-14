@@ -1,4 +1,13 @@
-# UltraBar Studio — 0.22 Windows
+# UltraBar Studio — 0.23 Windows
+
+## 0.23 update
+
+- Widget library separates UltraBarX built-ins, Studio widgets, Store packages and existing items of unknown origin. Store widgets already on the bar no longer create duplicate library entries.
+
+- Store packages use responsive app cards with verified PNG app icons, titles, descriptions and installation controls. Studio applies one consistent rounded icon mask to square source images.
+- New store submissions require icon.png: static PNG at 256x256 or 512x512, maximum 256 KiB. The bot checks actual image decoding, dimensions, byte size/hash and published icon bytes.
+- Icons are downloaded only from official versioned store assets through the protected local API, verified and cached. Legacy entries without icon metadata show a fallback initial.
+- Updated contributor instructions and Clock & Date icon; widget functionality and existing settings are unchanged.
 
 ## 0.22 update
 

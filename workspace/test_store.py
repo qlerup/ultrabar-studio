@@ -93,3 +93,34 @@ class WidgetPackageTests(StoreTests):
         for changes in [dict(script='run'),dict(hourFormat='32'),dict(showDate='yes'),dict(kind='shell')]:
             w=dict(base,**changes)
             with self.assertRaises(store.StoreError):store.widget_package(json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[w])).encode())
+
+
+def icon_fixture():
+    import io
+    from PIL import Image
+    output=io.BytesIO();Image.new('RGB',(256,256),'#b8adff').save(output,format='PNG');raw=output.getvalue()
+    return dict(url=store.ASSET_PREFIX+'icons/test.png',size=len(raw),sha256=hashlib.sha256(raw).hexdigest()),raw
+
+class IconTests(unittest.TestCase):
+    def test_valid_png_and_rejected_corruption(self):
+        icon,raw=icon_fixture();store.validate_icon_metadata(icon)
+        self.assertEqual(store.validate_icon_bytes(raw,icon),raw)
+        with self.assertRaises(store.StoreError):store.validate_icon_bytes(raw+b'x',icon)
+    def test_reject_untrusted_url_and_oversize(self):
+        icon,_=icon_fixture()
+        for field,value in [('url','https://evil.example/icon.png'),('url',store.ASSET_PREFIX+'icons/../icon.png'),('size',262145)]:
+            bad=dict(icon);bad[field]=value
+            with self.assertRaises(store.StoreError):store.validate_icon_metadata(bad)
+    def test_reject_wrong_dimensions(self):
+        import io
+        from PIL import Image
+        output=io.BytesIO();Image.new('RGB',(128,256)).save(output,format='PNG');raw=output.getvalue()
+        icon,_=icon_fixture();icon.update(size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        with self.assertRaises(store.StoreError):store.validate_icon_bytes(raw,icon)
+    def test_cache_is_verified_and_unknown_icon_rejected(self):
+        icon,raw=icon_fixture()
+        with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)):
+            service=store.Store(server);service.remember_icons([dict(icon=icon)])
+            with patch.object(store,'fetch',return_value=raw) as download:
+                self.assertEqual(service.icon(icon['sha256']),raw);self.assertEqual(service.icon(icon['sha256']),raw);download.assert_called_once()
+            with self.assertRaises(store.StoreError):service.icon('a'*64)

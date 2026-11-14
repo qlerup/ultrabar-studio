@@ -2,3 +2,5 @@ Flask>=3.0,<4
 waitress>=3.0,<4
 
 frida==16.7.19
+
+Pillow==12.3.0

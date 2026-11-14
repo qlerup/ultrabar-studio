@@ -1,6 +1,13 @@
 'use strict';
 (()=>{
   let packages=[],installed=[],job=null,pending=null,loading=false,opened=false;
+  const iconCache=new Map();
+  async function showIcon(p,box){
+    if(!p.icon?.sha256)return;
+    const hash=p.icon.sha256;
+    try{if(!iconCache.has(hash))iconCache.set(hash,api('/api/store/icons/'+hash).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(e=>{iconCache.delete(hash);throw e;}));const url=await iconCache.get(hash);if(!box.isConnected)return;const img=el('img','');img.src=url;img.alt='';img.width=72;img.height=72;box.replaceChildren(img);}
+    catch(_){box.title='Icon unavailable';}
+  }
   const status=(text,error=false)=>{$('store-status').textContent=text;$('store-status').classList.toggle('error',error);};
   const version=v=>v.split('.').map(Number);
   const newer=(a,b)=>{a=version(a);b=version(b);for(let i=0;i<3;i++){if(a[i]!==b[i])return a[i]>b[i];}return false;};
@@ -13,7 +20,9 @@
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
     for(const p of visible){
       const card=el('article','store-card'),saved=record(p),active=job?.state==='running';
-      card.append(el('span','eyebrow',p.type==='corebar-app'?'COREBAR APP':p.type==='studio-plugin'?'STUDIO PLUGIN':'CORE WIDGET'),el('h2','',p.name),el('p','',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
+      const heading=el('div','store-card-heading'),icon=el('div','store-card-icon',p.name.slice(0,1).toUpperCase()),title=el('div','store-card-title');
+      title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
+      card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
       const tools=el('div','editor-buttons');
@@ -27,7 +36,7 @@
         const remove=el('button','','Remove from library');remove.disabled=active;
         remove.onclick=async()=>{if(!confirm('Remove this package from the library? Existing draft and deployed widgets are kept. Remove them from your layout and Deploy to remove them from Core.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Package removed from library.');}catch(e){status(e.message,true);}};tools.append(remove);
       }
-      card.append(tools);box.append(card);
+      card.append(tools);box.append(card);showIcon(p,icon);
     }
     if(!visible.length)box.append(el('p','store-empty',packages.length?'No matching packages.':'No approved packages yet. New submissions appear here after the owner merges them into the store catalog.'));
   }

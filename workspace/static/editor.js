@@ -63,7 +63,7 @@
   function stock(){return [nativeTemplate('disk','Disk usage'),...(pcMetrics.disks||[]).map(d=>nativeTemplate('disk','Disk '+d.name.slice(0,2),d.name)),nativeTemplate('cpu','CPU usage'),nativeTemplate('memory','RAM usage'),nativeTemplate('gpu','GPU usage'),{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
     const existing=draft.profiles.flatMap(p=>p.homeData||[]);const seen=new Set();
-    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const key=w._storeKey||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
+    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
   // Pointer-based dragging avoids native HTML5/WebView drag restrictions and
   // makes the entire scaled Core viewport a target, with a visible insert line.
@@ -123,11 +123,11 @@
     }
     node.draggable=true;node.addEventListener('dragstart',event=>{if(working){event.preventDefault();return;}drag=payload;event.dataTransfer.setData('text/plain','ultrabar-studio');event.dataTransfer.effectAllowed='copyMove';node.classList.add('dragging');});node.addEventListener('dragend',()=>{drag=null;node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(n=>n.classList.remove('drop-target'));});}
   function dropzone(node,handler){node.addEventListener('dragover',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.add('drop-target');});node.addEventListener('dragleave',()=>node.classList.remove('drop-target'));node.addEventListener('drop',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.remove('drop-target');handler(drag);drag=null;});}
-  const libraryExpanded={ultrabar:true,studio:true,installed:false};
+  const libraryExpanded={ultrabar:true,studio:true,store:true,installed:false};
   function libraryGroup(w){
-    if(w._storePackage)return 'studio';
+    if(w._storePackage||nativeSpec(w)?.packageId)return 'store';
     if(w.type==='APPS')return 'installed';
-    if(nativeSpec(w)||w.type==='PC_CONTROL')return 'studio';
+    if(nativeSpec(w)||w.param?.payload?.action==='studioAction')return 'studio';
     return ['CPU','MEMORY','STORAGE','TIME'].includes(w.type)?'ultrabar':'installed';
   }
   function renderLibrary(){
@@ -140,7 +140,7 @@
     container.replaceChildren();
     const query=$('library-search').value.trim().toLowerCase();
     const widgets=library().filter(w=>(w.name||types[w.type]||w.type).toLowerCase().includes(query));
-    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio & App Store','Studio widgets, PC actions and installed store presets.'],['installed','Installed apps','Apps already on Core. Their installation source is not yet tracked.']];
+    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio','Widgets and PC actions provided by Studio.'],['store','App Store','Widgets and presets installed from the Store.'],['installed','Other apps & widgets on Core','Already on Core. Their original source is not recorded.']];
     for(const [key,title,help] of groups){
       const items=widgets.filter(w=>libraryGroup(w)===key);
       if(query&&!items.length)continue;

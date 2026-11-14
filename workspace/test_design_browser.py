@@ -10,6 +10,10 @@ class DesignTests(unittest.TestCase):
  def test_workspace_at_window_sizes(self):
   from test_editor import profiles as fixture_profiles
   profiles=fixture_profiles()
+  profiles[0]['homeData'] += [
+   dict(id='legacy-pc',type='PC_CONTROL',name='Original PC widget',param=dict(payload=dict(action='vendorAction',params={}))),
+   dict(id='studio_native_0123456789abcdef0123456789abcdef',type='PC_CONTROL',name='Existing Store Clock',param=dict(payload=dict(action='studioNative',params=dict(kind='clock',packageId='studio.clock',widgetKey='clock',hourFormat='24',accent='#94d9bb'))))]
+
   profiles[0]['module'] += [dict(serialNo='0000000000000002',productId='VIVO_CUBE',config=[]),dict(serialNo='0000000000000003',productId='KNOB_KEY',config={})]
   devices=[dict(serial=m['serialNo'],type=m['productId'],name=m['productId'],online=True) for m in profiles[0]['module']]
   snapshot=dict(target='192.168.1.148:5555',model='CB01',device_id='preview',read_at='2026-11-14T20:00:00Z',profiles=profiles,backup='fixture.xml',hardware=dict(devices=devices),layout_order=[])
@@ -55,6 +59,9 @@ class DesignTests(unittest.TestCase):
        page.locator('#connection-open').click();expect(page.locator('#discover')).to_be_visible();page.keyboard.press('Escape')
       page.set_viewport_size(dict(width=1440,height=960))
       page.locator('#nav-editor').click()
+      expect(page.locator('details[data-group="store"] .library-item')).to_have_count(1)
+      expect(page.locator('details[data-group="installed"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(1)
+      expect(page.locator('details[data-group="studio"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(0)
       stock=page.locator('details[data-group="ultrabar"]')
       studio=page.locator('details[data-group="studio"]')
       expect(stock.get_by_role('button',name='Clock',exact=True).first).to_be_visible()
@@ -75,7 +82,7 @@ class DesignTests(unittest.TestCase):
       page.locator('details[data-group="studio"]').get_by_role('button',name='CPU usage',exact=True).drag_to(page.locator('#core-canvas'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+2)
       page.wait_for_timeout(450)
-      page.locator('details[data-group="studio"]').get_by_role('button',name='Store Clock',exact=True).drag_to(page.locator('#core-canvas'))
+      page.locator('details[data-group="store"]').get_by_role('button',name='Store Clock',exact=True).drag_to(page.locator('#core-canvas'))
       expect(page.locator('#widget-hour-format')).to_have_value('24')
       page.locator('#widget-hour-format').select_option('12')
       page.locator('#widget-showSeconds').uncheck()
