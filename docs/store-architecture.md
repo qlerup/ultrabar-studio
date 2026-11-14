@@ -29,7 +29,7 @@ certificate SHA-256. Never use a moving `latest` URL for installation assets.
 * `workspace/native_widgets.py` and `native-widgets/src`: CPU/RAM/disk widgets
   run as LineOS child views using `studio-widgets.dex`, a pinned Frida 16.7.19
   runtime and host-supplied metrics. Supported target is root-enabled CB01,
-  ARM32, LineOS 1.0.8. They are not independent Android APKs and need Studio
+  ARM32, LineOS 1.0.8/1.0.9. They are not independent Android APKs and need Studio
   connected. DEX/runtime replacement is privileged and not a generic plugin API.
 * `pc-hardware/README.md`: the old accessibility overlay experiment is retired.
   It must not be bundled or used as the store's widget installation mechanism.

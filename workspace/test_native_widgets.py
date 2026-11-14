@@ -1,7 +1,7 @@
 from copy import deepcopy
 import unittest
 from editor import EditError
-from native_widgets import specifications
+from native_widgets import specifications, check_lineos
 
 
 def card(key,drive):
@@ -9,6 +9,16 @@ def card(key,drive):
 
 
 class NativeWidgetTests(unittest.TestCase):
+    def test_supported_active_lineos_versions(self):
+        for version in ('1.0.8','1.0.9'):
+            self.assertEqual(check_lineos('Packages:\n  versionName='+version+'\nHidden system packages:\n versionName=1.0.3'),version)
+
+    def test_old_hidden_package_cannot_bypass_compatibility(self):
+        for version in ('1.0.80','1.0.10','1.1.0','unknown'):
+            with self.assertRaises(EditError):
+                check_lineos('Packages:\n versionName='+version+'\nHidden system packages:\n versionName=1.0.8')
+        with self.assertRaises(EditError):check_lineos('No package found')
+
     def test_per_widget_drive_sources_survive(self):
         rows=[dict(homeData=[card('a','C:\\'),card('b','D:\\'),card('c','all')])]
         result=specifications(rows)

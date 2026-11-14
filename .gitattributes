@@ -1,0 +1,15 @@
+* text=auto
+*.py text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.java text eol=lf
+*.ps1 text eol=crlf
+*.iss text eol=crlf
+*.spec text eol=lf
+LICENSE text eol=lf
+*.dex binary
+*.ico binary
+workspace/assets/native/studio-runtime binary

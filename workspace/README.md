@@ -2,6 +2,8 @@
 
 ## 0.14 update
 
+- Fixed native widget deploy on LineOS 1.0.9. Exact active-package version checking supports 1.0.8 and 1.0.9; hidden factory APKs cannot bypass it. Verified renderer attachment for three existing widgets on a real 1.0.9 device without changing its profile.
+
 - Manual Check for updates in the top bar, available without a connected device. Stable GitHub releases are checked with a 10-second timeout; errors and missing installers are explicit. Downloads open in your system browser; installation remains manual.
 - One workspace navigation: Device overview and Design & actions live in the sidebar (top navigation on narrow windows).
 - Public source and releases: https://github.com/qlerup/ultrabar-studio

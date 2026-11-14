@@ -1,6 +1,7 @@
 # Publish only Studio and its native widget source. Research and local data stay local.
 /*
 !/.gitignore
+!/.gitattributes
 !/LICENSE
 !/.github/
 !/.github/**

@@ -15,6 +15,18 @@ from editor import EditError
 PACKAGE = 'com.ultrabar.launch'
 RUNTIME = '/data/local/tmp/studio-runtime-16.7.19'
 RUNTIME_SHA = 'fc60c38a6acb42d9eb2d5c0474bf84fd671c14870b9cab43129b38c5e364bb13'
+SUPPORTED_LINEOS = {'1.0.8', '1.0.9'}
+
+
+def check_lineos(package_dump):
+    # dumpsys also lists the old, hidden system APK. Only inspect the active package.
+    active = package_dump.split('Packages:', 1)[-1].split('Hidden system packages:', 1)[0]
+    match = re.search(r'^\s*versionName=([^\s]+)', active, re.MULTILINE)
+    version = match.group(1) if match else 'unknown'
+    if version not in SUPPORTED_LINEOS:
+        raise EditError(f'Native widgets support LineOS 1.0.8 and 1.0.9. Connected version: {version}.')
+    return version
+
 
 
 def specifications(profiles):
@@ -76,8 +88,7 @@ class NativeWidgets:
         if adb('-s', target, 'shell', 'getprop', 'ro.product.cpu.abi') != 'armeabi-v7a':
             raise EditError('This native widget build supports ARM32 CoreBAR only.')
         package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
-        if 'versionName=1.0.8' not in package:
-            raise EditError('This native widget integration is verified for LineOS 1.0.8 only.')
+        check_lineos(package)
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
             raise EditError('Native runtime integrity check failed. Reinstall Studio.')
