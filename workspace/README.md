@@ -2,6 +2,8 @@
 
 ## 0.24 update
 
+- Adding CPU, RAM, GPU or Store cards no longer adds duplicate templates to the library. Multiple cards on the bar remain supported.
+
 - Drive widgets are now distributed as one Studio Drive Usage Store package. Install once, add multiple cards and choose a drive in each card?s settings.
 - Removed built-in Disk usage / per-drive shortcuts from the library. Existing placed disk widgets remain editable and deployable; updates never remove user layouts.
 

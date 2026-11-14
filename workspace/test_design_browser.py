@@ -94,6 +94,13 @@ class DesignTests(unittest.TestCase):
       page.locator('#widget-showSeconds').uncheck()
       page.locator('#widget-showDate').uncheck()
       expect(page.locator('#widget-hour-format')).to_have_value('12')
+      expect(page.locator('details[data-group="studio"]').get_by_role('button',name='CPU usage',exact=True)).to_have_count(1)
+      expect(page.locator('details[data-group="studio"]').get_by_role('button',name='RAM usage',exact=True)).to_have_count(1)
+      page.wait_for_timeout(450)
+      gpu=page.locator('details[data-group="studio"]').get_by_role('button',name='GPU usage',exact=True)
+      for _ in range(3):
+       gpu.click()
+       expect(gpu).to_have_count(1)
       page.wait_for_timeout(450)  # End the post-drag click suppression window.
       page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True).click()
       expect(page.locator('#widget-drive')).to_have_value('all')
