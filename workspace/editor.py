@@ -15,6 +15,21 @@ class EditError(ValueError):
     pass
 
 
+def wake_for_deploy(server, target):
+    """Wake without toggling power; verify Android has left standby before writing."""
+    try:
+        server.adb('-s', target, 'shell', 'input', 'keyevent', '224')  # KEYCODE_WAKEUP
+        for attempt in range(20):
+            power = server.adb('-s', target, 'shell', 'dumpsys', 'power')
+            if re.search(r'mWakefulness=Awake\b', power) and re.search(r'Display Power: state=ON\b', power):
+                return
+            if attempt < 19:
+                time.sleep(.25)  # Wait for the asynchronous standby/display transition.
+    except server.DeviceError as exc:
+        raise server.DeviceError('Could not wake Core. No settings were sent. Wake the screen and try Deploy again.') from exc
+    raise server.DeviceError('Core did not leave standby. No settings were sent. Wake the screen and try Deploy again.')
+
+
 def clean(value):
     # Never pass Fastjson class selectors supplied by the browser to LineOS.
     if isinstance(value, dict):
@@ -267,6 +282,7 @@ def register_editor(server):
             rollback = dict(device_id=latest['device_id'], profiles=latest['profiles'], backup=latest['backup'])
             rollback_path = draft_path(server, latest['device_id']).with_suffix('.rollback.json')
             atomic_json(rollback_path, rollback)
+            wake_for_deploy(server, server.connection['target'])
             server.native_widgets.prepare(draft['profiles'], server.connection['target'])
             # A timeout is ambiguous: always read back, and never blindly resend a write.
             acknowledged = True

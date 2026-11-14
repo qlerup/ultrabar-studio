@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.24 Windows
+# UltraBar Studio — 0.25 Windows
+
+## 0.25 update
+
+- Deploy wakes Core and waits for Awake / display ON before preparing or sending settings. A wake failure stops deployment without changing the profile.
+- Uses Android KEYCODE_WAKEUP rather than a power toggle, so an already-awake screen stays on.
+- Verified on physical Core from Dozing/OFF to Awake/ON, followed by a successful LineOS home restart.
 
 ## 0.24 update
 

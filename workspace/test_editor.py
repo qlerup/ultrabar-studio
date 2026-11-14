@@ -25,6 +25,7 @@ class EditorTests(unittest.TestCase):
         self.conn=patch.dict(server.connection,dict(target=self.snapshot['target'],snapshot=self.snapshot));self.conn.start();self.addCleanup(self.conn.stop)
         self.client=server.app.test_client();self.headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
         self.draft=self.client.get('/api/editor',headers=self.headers).json['draft']
+        self.wake=patch.object(editor,'wake_for_deploy');self.wake_mock=self.wake.start();self.addCleanup(self.wake.stop)
         for method in ('prepare','configure'):
             patcher=patch.object(server.native_widgets,method);patcher.start();self.addCleanup(patcher.stop)
 
@@ -78,13 +79,22 @@ class EditorTests(unittest.TestCase):
 
     def test_backup_precedes_write_and_readback(self):
         order=[]
+        self.wake_mock.side_effect=lambda *_:order.append('wake')
         def send(*args):
             self.assertTrue(editor.draft_path(server,'core1').with_suffix('.rollback.json').exists())
             order.append('write')
         with patch.object(server,'read_snapshot',side_effect=lambda _:order.append('backup') or self.snapshot),patch.object(editor.bridge,'request',side_effect=send),patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':profiles()}):
             response=self.post('/api/editor/deploy')
         self.assertEqual(response.status_code,200)
-        self.assertEqual(order,['backup','write'])
+        self.assertEqual(order,['backup','wake','write'])
+
+    def test_wake_failure_aborts_before_prepare_and_write(self):
+        self.wake_mock.side_effect=server.DeviceError('Core did not leave standby. No settings were sent.')
+        with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request') as bridge,patch.object(server.native_widgets,'prepare') as prepare:
+            response=self.post('/api/editor/deploy')
+        self.assertEqual(response.status_code,502)
+        bridge.assert_not_called();prepare.assert_not_called()
+        self.assertEqual(self.client.get('/api/editor',headers=self.headers).json['draft']['revision'],self.draft['revision'])
 
     def test_timeout_reads_back_without_resending(self):
         with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request',side_effect=TimeoutError) as bridge,patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':profiles()}):
@@ -145,3 +155,21 @@ class PcTests(unittest.TestCase):
 
 
 if __name__=='__main__':unittest.main()
+
+
+class WakeDeployTests(unittest.TestCase):
+    def test_wakes_sleeping_core_and_waits_for_display(self):
+        states=['mWakefulness=Dozing\nDisplay Power: state=OFF','mWakefulness=Awake\nDisplay Power: state=OFF','mWakefulness=Awake\nDisplay Power: state=ON']
+        with patch.object(server,'adb',side_effect=['']+states) as adb,patch.object(editor.time,'sleep') as sleep:
+            editor.wake_for_deploy(server,'core')
+        self.assertEqual(adb.call_args_list[0].args,('-s','core','shell','input','keyevent','224'))
+        self.assertEqual(sleep.call_count,2)
+    def test_already_awake_is_not_toggled_off(self):
+        with patch.object(server,'adb',side_effect=['','mWakefulness=Awake\nDisplay Power: state=ON']) as adb,patch.object(editor.time,'sleep') as sleep:
+            editor.wake_for_deploy(server,'core')
+        self.assertEqual(adb.call_args_list[0].args[-1],'224');sleep.assert_not_called()
+    def test_standby_timeout_and_adb_failure_are_explicit(self):
+        with patch.object(server,'adb',return_value='mWakefulness=Dozing\nDisplay Power: state=OFF'),patch.object(editor.time,'sleep'):
+            with self.assertRaisesRegex(server.DeviceError,'No settings were sent'):editor.wake_for_deploy(server,'core')
+        with patch.object(server,'adb',side_effect=server.DeviceError('offline')):
+            with self.assertRaisesRegex(server.DeviceError,'No settings were sent'):editor.wake_for_deploy(server,'core')
