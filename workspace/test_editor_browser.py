@@ -1,0 +1,60 @@
+"""Opt-in live browser check. Exercises local drafts; never presses Deploy."""
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+
+
+def main():
+    output=Path(__file__).parent/'data/qa'
+    output.mkdir(parents=True,exist_ok=True)
+    with sync_playwright() as p:
+        browser=p.chromium.launch()
+        page=browser.new_page(viewport={'width':1600,'height':1050})
+        errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+        page.goto('http://127.0.0.1:8741')
+        page.locator('#target').fill('10.10.0.181:5555');page.locator('#connect').click()
+        expect(page.locator('#workspace')).to_be_visible(timeout=65000)
+        page.locator('#nav-editor').click()
+        expect(page.locator('#core-canvas .canvas-widget').first).to_be_visible(timeout=30000)
+        expect(page.locator('#draft-save')).to_be_enabled(timeout=30000)
+        original=page.locator('#core-canvas .canvas-widget').count()
+        page.locator('#layout-editor').evaluate('(e)=>e.scrollIntoView()')
+        page.locator('#widget-library button').filter(has_text='CPU usage').first.drag_to(page.locator('#core-canvas'))
+        expect(page.locator('#core-canvas .canvas-widget')).to_have_count(original+1)
+        cards=page.locator('#core-canvas .canvas-widget')
+        page.locator('#core-canvas [aria-label="CPU usage"]').drag_to(cards.first)
+        expect(cards.first).to_have_attribute('aria-label','CPU usage')
+        page.locator('#widget-properties input[type=text]').fill('Processor')
+        page.locator('#widget-properties input[type=text]').press('Tab')
+        expect(cards.first).to_have_attribute('aria-label','Processor')
+        page.locator('#draft-save').click()
+        expect(page.locator('#editor-notice')).to_contain_text('Draft saved',timeout=30000)
+        page.screenshot(path=str(output/'editor-desktop.png'),full_page=True)
+        page.locator('#mode-actions').click()
+        expect(page.locator('#action-library .library-item').first).to_be_visible()
+        count=page.locator('#action-sequence .sequence-item').count()
+        page.locator('#action-library .library-item').first.drag_to(page.locator('#action-sequence'))
+        expect(page.locator('#action-sequence .sequence-item')).to_have_count(count+1)
+        page.locator('#action-sequence .sequence-item').last.get_by_role('button',name='Remove',exact=True).click()
+        expect(page.locator('#action-sequence .sequence-item')).to_have_count(count)
+        page.screenshot(path=str(output/'editor-actions.png'),full_page=True)
+        page.locator('#mode-layout').click();page.locator('#new-pc-widget').click()
+        page.locator('#pc-action-name').fill('Invalid website');page.locator('#pc-action-target').fill('file:///C:/test.exe')
+        page.locator('#pc-action-form button[type=submit]').click()
+        expect(page.locator('#pc-action-error')).to_contain_text('http://')
+        page.locator('#pc-action-cancel').click()
+        page.locator('#mode-pc').click();expect(page.locator('#pc-metrics .metric-card').first).to_be_visible(timeout=20000)
+        page.screenshot(path=str(output/'editor-pc.png'),full_page=True)
+        page.set_viewport_size({'width':650,'height':1000});page.locator('#mode-layout').click()
+        page.screenshot(path=str(output/'editor-narrow.png'),full_page=True)
+        assert page.evaluate('document.documentElement.scrollWidth <= innerWidth+1')
+        page.locator('.draft-tools summary').click()
+        page.on('dialog',lambda dialog:dialog.accept())
+        page.locator('#draft-reset').click()
+        expect(page.locator('#editor-notice')).to_contain_text('Draft reloaded',timeout=30000)
+        expect(page.locator('#core-canvas .canvas-widget')).to_have_count(original)
+        assert not errors,errors
+        browser.close()
+        print('Editor browser checks passed: drag/add/reorder, properties, save/reset, action assignment, validation, PC metrics, narrow layout.')
+
+
+if __name__=='__main__':main()

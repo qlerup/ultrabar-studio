@@ -1,0 +1,3 @@
+Frida 16.7.19 runtime, unmodified Android ARM binary.
+Source and corresponding release: https://github.com/frida/frida/releases/tag/16.7.19
+License: see FRIDA-COPYING.

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="studio-token" content="__SESSION_TOKEN__">
+  <title>UltraBar Studio</title><link rel="stylesheet" href="/static/style.css"><link rel="stylesheet" href="/static/editor.css"><link rel="stylesheet" href="/static/studio.css">
+</head>
+<body>
+  <aside class="sidebar">
+    <a class="brand" href="/" aria-label="UltraBar Studio"><span class="brand-mark">U<span>↗</span></span><span>UltraBar<span class="brand-sub">STUDIO</span></span></a>
+    <div class="section-label">YOUR WORKSPACE</div>
+    <button id="nav-overview" aria-pressed="true" class="nav-active" type="button">Device overview</button>
+    <button id="nav-editor" aria-pressed="false" class="profile-button" type="button" disabled>Design &amp; actions</button>
+    <div class="section-label profile-label">DEVICE PROFILES</div>
+    <div id="profiles"><p class="muted sidebar-note">Connect to load profiles.</p></div>
+    <div class="sidebar-bottom"><span class="version">WINDOWS APP / __APP_VERSION__</span><p>Made for your desk.<br>Designed around you.</p></div>
+  </aside>
+  <main>
+    <header><div class="breadcrumb">Workspace <span>/</span> CoreBAR</div><div class="connection-toolbar"><span id="connection-badge" class="badge" role="status">Not connected</span><button id="updates-open" type="button" aria-haspopup="dialog">Check for updates</button><button id="connection-open" type="button" aria-haspopup="dialog">Connect device</button></div></header>
+    <section class="heading"><div><div class="eyebrow">ULTRABAR X</div><h1>Your desk. In sync.</h1><p class="muted">Profiles, modules and actions — straight from your device.</p></div><button id="refresh" disabled>↻ Refresh from device</button></section>
+    <div id="notice" role="status" aria-live="polite"></div>
+    <section id="empty" class="welcome"><div class="device-outline"><div></div><div></div><div></div></div><h2>Ready for your workspace</h2><p>Connect to CoreBAR to load your current profile.<br>Your setup is backed up automatically.</p><button type="button" class="setup-guide-trigger" aria-haspopup="dialog">First time? Set up CoreBAR</button></section>
+    <div id="workspace" hidden>
+      <div id="overview-content">
+      <section class="hardware-panel"><div class="section-heading"><div><div class="eyebrow">CONNECTED TO CORE</div><h2>Your UltraBar X</h2><p id="hardware-status" class="muted"></p></div><span class="badge">Auto-updating status</span></div><div id="hardware-preview" class="hardware-preview"></div><div class="preview-toolbar"><p id="preview-help" class="muted">Saved previews: CoreBAR screenshot and VivoCube artwork. Updated when the saved configuration changes.</p><button id="preview-refresh" type="button">Refresh previews</button></div><p id="layout-help" class="muted">Drag modules and CoreBAR to match your desk. Use Alt + Left/Right for keyboard moves.</p><p id="layout-feedback" class="layout-feedback" role="status" aria-live="polite"></p><p id="hardware-detail" class="hardware-detail">Select a module to see its connection status.</p></section>
+      <section class="summary"><div><span class="section-label">SELECTED PROFILE</span><h2 id="profile-name"></h2><span id="profile-meta" class="muted"></span></div><div class="counts"><div><strong id="module-count">0</strong><span>Modules in profile</span></div><div><strong id="widget-count">0</strong><span>Widgets</span></div></div></section>
+      <section class="screen-panel"><div class="section-heading"><div><h2>CoreBAR screen</h2><p class="muted">Saved snapshot. Refreshed when the configuration changes, or manually.</p></div><div class="screen-controls"><button id="screen-button">Refresh preview</button></div></div><div id="screen-state" class="screen-placeholder" role="status">Capture a screenshot to see what your CoreBAR is displaying.</div><img id="screen" alt="Latest screenshot from CoreBAR" hidden></section>
+      <div class="section-heading"><div><h2>Modules</h2><p class="muted">Saved configuration · select a module to inspect its actions.</p></div></div>
+      <div id="modules" class="module-grid"></div>
+      <section id="details" class="details" hidden><div class="section-heading"><div><div class="eyebrow">MODULE CONFIGURATION</div><h2 id="detail-title"></h2></div><span id="detail-serial" class="serial"></span></div><div id="events"></div></section>
+      <div class="section-heading widgets-heading"><div><h2>Home screen widgets</h2><p class="muted">In the same order as your saved profile.</p></div></div><div id="widgets" class="widget-grid"></div>
+      <footer><div><span class="saved-dot"></span><span id="read-time"></span><p>Open Design &amp; actions to edit this setup and deploy it to Core.</p></div><button id="backup">↓ Download backup</button></footer>
+      </div>
+      <section id="editor-content" hidden>
+        <div class="editor-heading"><div><div class="eyebrow">DESIGN &amp; ACTIONS</div><h2>Make Core your own.</h2><p id="draft-status" role="status" class="muted">Loading draft…</p></div><div class="editor-buttons"><button id="draft-save">Save draft</button><button id="draft-deploy" class="primary">Deploy to Core →</button></div></div>
+        <div id="editor-notice" role="status" aria-live="polite"></div>
+        <div class="editor-profile"><label>Profile <select id="edit-profile"></select></label><label>Profile name <input id="edit-profile-name" maxlength="100"></label><label class="check-label"><input id="edit-show-names" type="checkbox"> Show names</label></div>
+        <div class="editor-mode-tabs"><button id="mode-layout" aria-pressed="true">Core layout</button><button id="mode-actions" aria-pressed="false">Module actions</button><button id="mode-pc" aria-pressed="false">PC connection</button></div>
+        <div id="layout-editor" class="builder-grid">
+          <aside class="builder-library"><div class="section-heading"><h3>Widget library</h3></div><input id="library-search" type="search" placeholder="Search widgets and apps" aria-label="Search widget library"><p class="muted">Drag onto Core, or click to add.</p><div id="widget-library"></div></aside>
+          <div class="builder-stage"><div class="section-heading"><div><h3>CoreBAR</h3><p class="muted">Layout preview · drag to reorder</p></div><span class="badge">1424 × 280</span></div><div id="core-screen" class="core-screen"><div id="core-canvas" class="core-canvas" aria-label="Core home screen layout"></div></div><div class="core-scroll-controls"><button id="core-previous" aria-label="Previous screen">&#8592;</button><input id="core-scroll" type="range" min="0" max="0" value="0" aria-label="Scroll Core preview"><button id="core-next" aria-label="Next screen">&#8594;</button></div><p class="muted">Five standard cards fit on Core. Scroll to see more. Illustrative previews show the layout before deploy; built-in apps may look different on Core.</p><div class="editor-shortcuts"><button id="new-pc-widget">+ Website or PC program</button><button id="widget-undo">Undo</button></div></div>
+          <aside id="widget-properties" class="builder-properties"><h3>Widget settings</h3><p class="muted">Select a card to edit it.</p></aside>
+        </div>
+        <div id="actions-editor" hidden><div class="action-selector"><label>Module <select id="action-module"></select></label><label>Input <select id="action-input"></select></label></div><div class="action-workbench"><aside class="builder-library"><h3>Action library</h3><p class="muted">Drag onto the input, or click to add.</p><button id="new-pc-action">+ Website or PC program</button><div id="action-library"></div></aside><div class="builder-stage"><h3 id="action-input-title">Input actions</h3><p class="muted">Actions run in this order. Clearing the list removes the input's actions at the next deploy.</p><div id="action-sequence" class="action-sequence"></div></div></div><p class="muted">Vivo button assignments use its existing screen layout. This editor does not yet generate Vivo artwork packages.</p></div>
+        <div id="pc-editor" hidden><div class="pc-panel"><div class="section-heading"><div><h3>This PC</h3><p id="pc-status" class="muted">Reading PC connection…</p></div><button id="pc-connect">Connect PC companion</button></div><p class="muted">Keep Studio running for website/program buttons and PC measurements. Studio only runs the PC actions you save here.</p><div id="pc-metrics" class="pc-metrics"></div><p class="muted">Studio widgets show CPU, RAM, GPU and disk usage directly on Core. Select a disk widget to choose one drive or all drives. Keep Studio connected for live values.</p><div id="pc-actions-list"></div></div></div>
+        <details class="draft-tools"><summary>Draft &amp; recovery tools</summary><div class="editor-buttons"><button id="draft-export">Download draft</button><button id="draft-reset">Reload draft from Core</button><button id="draft-restore">Load pre-deploy backup as draft</button></div><p class="muted">Reload replaces your draft. Restoring a backup only prepares a draft; use Deploy to apply it.</p></details>
+      </section>
+    </div>
+  </main>
+  <dialog id="updates-dialog" aria-labelledby="updates-title">
+    <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO / __APP_VERSION__</div><h2 id="updates-title">App updates</h2></div><form method="dialog"><button>Close</button></form></div>
+    <p id="updates-status" role="status" aria-live="polite"></p>
+    <p class="muted">Download the installer from GitHub, close Studio, then run the installer. Your saved profiles and drafts are kept.</p>
+    <div class="editor-buttons"><button id="updates-check">Check again</button><button id="updates-download" class="primary" hidden>Open download page</button></div>
+  </dialog>
+  <dialog id="connection-dialog" aria-labelledby="connection-title"><div class="guide-heading"><div><div class="eyebrow">COREBAR CONNECTION</div><h2 id="connection-title">Connect your device</h2></div><form method="dialog"><button aria-label="Close connection dialog">Close</button></form></div>
+    <form id="connect-form" class="connect-panel"><div><label for="target">Connect to your CoreBAR</label><p class="muted">Enable WiFi ADB on CoreBAR, then find your device.</p><button type="button" class="setup-guide-trigger guide-link" aria-haspopup="dialog">Setup guide</button></div><div class="connect-fields"><button type="button" id="discover">Find devices</button><input id="target" name="target" placeholder="192.168.1.148:5555" required autocomplete="off" spellcheck="false" aria-label="IP address and ADB port"><button class="primary" id="connect" type="submit">Connect <span>→</span></button></div></form>
+    <div id="discovery-results" class="discovery-results" aria-live="polite"></div><div id="connection-notice" role="status" aria-live="polite"></div>
+    <button id="setup-error-help" type="button" class="setup-guide-trigger guide-link" aria-haspopup="dialog" hidden>Connection help: enable WiFi ADB</button>
+  </dialog>
+  <dialog id="setup-guide" aria-labelledby="setup-guide-title">
+    <div class="guide-heading"><div><div class="eyebrow">GET CONNECTED</div><h2 id="setup-guide-title">Set up your CoreBAR</h2></div><form method="dialog"><button aria-label="Close setup guide" autofocus>Close</button></form></div>
+    <p class="muted">Do steps 1–3 on the CoreBAR touchscreen. Keep your PC and CoreBAR on the same local network.</p>
+    <ol class="guide-steps">
+      <li><div><h3>Open Android settings</h3><p>Swipe down from the top of the CoreBAR screen. <strong>Press and hold the gear icon</strong> until Android settings opens.</p><p class="muted">Use a long press, not a quick tap.</p></div></li>
+      <li><div><h3>Find ADB WiFi</h3><p>Open <strong>System → Advanced → Developer options</strong>. Scroll down to the <strong>Debugging</strong> section and find <strong>ADB WiFi</strong>.</p></div></li>
+      <li><div><h3>Turn ADB WiFi on</h3><p>Enable <strong>ADB WiFi</strong>. Leave it enabled while using Studio. If the screen shows an IP address and port, you can use those for a manual connection.</p></div></li>
+      <li><div><h3>Find your CoreBAR in Studio</h3><p>Back on your PC, click <strong>Find devices</strong>, then select the CoreBAR that appears. Studio finds its IP address automatically.</p><p class="muted">The default ADB port is 5555. If CoreBAR shows a different port, enter its IP and port manually, for example 10.10.0.181:5555, then click Connect.</p></div></li>
+    </ol>
+    <details class="guide-troubleshooting"><summary>Device found, but it will not connect?</summary><p>Finding CoreBAR and connecting through ADB are separate steps. A device can appear in search results even when WiFi ADB is off.</p><ul><li>Check that WiFi ADB is enabled on CoreBAR.</li><li>If it is already enabled, switch it off and on again, especially after a CoreBAR restart.</li><li>Run Find devices again if the IP address has changed.</li><li>If no device appears, check that both devices are on the same local network. You can also enter the address manually.</li></ul></details>
+    <div class="guide-footer"><span class="muted">Ready? Search for your CoreBAR.</span><button id="guide-find-devices" type="button" class="primary">Find devices →</button></div>
+  </dialog>
+  <dialog id="pc-action-dialog" aria-labelledby="pc-action-title"><form id="pc-action-form"><div class="guide-heading"><h2 id="pc-action-title">Add a PC action</h2><button type="button" id="pc-action-cancel">Cancel</button></div><label>Name <input id="pc-action-name" required maxlength="100" placeholder="My website"></label><label>Action <select id="pc-action-kind"><option value="url">Open website</option><option value="program">Open PC program</option></select></label><label id="pc-action-target-label">Website URL</label><input id="pc-action-target" aria-labelledby="pc-action-target-label" required placeholder="https://example.com"><button id="pc-action-browse" type="button" hidden>Browse programs?</button><p class="muted">Programs use the full path to an existing .exe file on this PC. Websites open in your default browser.</p><p id="pc-action-error" role="alert"></p><button class="primary" type="submit">Save and add</button></form></dialog>
+  <dialog id="deploy-dialog" aria-labelledby="deploy-title"><h2 id="deploy-title">Deploy settings to Core?</h2><div id="deploy-summary"></div><p class="muted">Studio checks for newer settings, backs up the current profile package and verifies the saved result. Core's LineOS home app briefly restarts to display the updated layout.</p><div class="editor-buttons"><button id="deploy-cancel">Cancel</button><button id="deploy-confirm" class="primary">Deploy settings</button></div></dialog>
+  <script src="/static/app.js"></script><script src="/static/editor.js"></script>
+</body></html>

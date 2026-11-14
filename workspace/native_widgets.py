@@ -1,0 +1,178 @@
+"""Native LineOS card integration for the tested root-enabled CB01 build.
+
+Only explicitly tagged Studio cards are rendered. The vendor APK stays intact.
+Frida is pinned to the matching device runtime and listens on device loopback.
+"""
+import hashlib
+import json
+import re
+import secrets
+import threading
+import time
+import uuid
+from editor import EditError
+
+PACKAGE = 'com.ultrabar.launch'
+RUNTIME = '/data/local/tmp/studio-runtime-16.7.19'
+RUNTIME_SHA = 'fc60c38a6acb42d9eb2d5c0474bf84fd671c14870b9cab43129b38c5e364bb13'
+
+
+def specifications(profiles):
+    result = {}
+    for profile in profiles:
+        for widget in profile.get('homeData', []):
+            param = widget.get('param')
+            payload = param.get('payload') if isinstance(param, dict) else None
+            if not isinstance(payload, dict) or payload.get('action') != 'studioNative':
+                continue
+            key = widget.get('id', '')
+            spec = payload.get('params')
+            if widget.get('type') != 'PC_CONTROL' or not re.fullmatch(r'studio_native_[a-f0-9]{32}', key):
+                raise EditError('Invalid native widget ID or type.')
+            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk'):
+                raise EditError('Choose a supported Studio hardware widget.')
+            if spec['kind'] == 'disk' and (not isinstance(spec.get('drive'), str) or not (spec['drive'] == 'all' or re.fullmatch(r'[A-Z]:\\', spec['drive']))):
+                raise EditError('Choose a drive or All drives for this widget.')
+            if not isinstance(spec.get('accent'), str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', spec['accent']):
+                raise EditError('Choose a valid widget accent color.')
+            if not isinstance(spec.get('textColor', '#eef6f2'), str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', spec.get('textColor', '#eef6f2')):
+                raise EditError('Choose a valid widget text color.')
+            if 'drives' in spec:
+                drives = spec['drives']
+                if not isinstance(drives, list) or not 1 <= len(drives) <= 2 or any(not isinstance(d, str) or not re.fullmatch(r'[A-Z]:\\', d) for d in drives) or len(set(drives)) != len(drives):
+                    raise EditError('Each disk widget can show at most two distinct drives.')
+            effective = dict(spec, background=widget.get('bgColor') or '#192325')
+            if key in result and result[key] != effective:
+                raise EditError('Widgets with the same ID must use the same hardware source across profiles.')
+            result[key] = effective
+    return result
+
+
+class NativeWidgets:
+    def __init__(self, server):
+        self.server = server
+        self.lock = threading.RLock()
+        self.stop = threading.Event()
+        self.ready = threading.Event()
+        self.thread = None
+        self.target = None
+        self.specs = {}
+        self.status = 'No Studio native widgets deployed'
+        self.last_error = None
+        self.token = None
+
+    def start_runtime(self, target):
+        self.server.adb('-s', target, 'shell', 'pidof studio-runtime-16.7.19 >/dev/null || '+RUNTIME+
+                        ' -D -l 127.0.0.1:27042 --token='+self.token+
+                        ' </dev/null >/data/local/tmp/studio-runtime.log 2>&1 &')
+
+    def prepare(self, profiles, target):
+        specs = specifications(profiles)
+        if not specs:
+            return
+        adb = self.server.adb
+        if 'uid=0(' not in adb('-s', target, 'shell', 'id'):
+            raise EditError('Native widgets currently require the root-enabled CB01 firmware tested with Studio.')
+        if adb('-s', target, 'shell', 'getprop', 'ro.product.cpu.abi') != 'armeabi-v7a':
+            raise EditError('This native widget build supports ARM32 CoreBAR only.')
+        package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
+        if 'versionName=1.0.8' not in package:
+            raise EditError('This native widget integration is verified for LineOS 1.0.8 only.')
+        assets = self.server.ROOT / 'assets/native'
+        if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
+            raise EditError('Native runtime integrity check failed. Reinstall Studio.')
+        adb('-s', target, 'push', str(assets/'studio-widgets.dex'), '/data/local/tmp/studio-widgets.dex')
+        adb('-s', target, 'shell', 'chmod', '644', '/data/local/tmp/studio-widgets.dex')
+        present = adb('-s', target, 'shell', 'ls', '/data/local/tmp')
+        if 'studio-runtime-16.7.19' not in present.split():
+            adb('-s', target, 'push', str(assets/'studio-runtime'), RUNTIME)
+        adb('-s', target, 'shell', 'chmod', '700', RUNTIME)
+        self.token = adb('-s', target, 'shell', 'cat /data/local/tmp/studio-runtime-token 2>/dev/null || true')
+        if not re.fullmatch(r'[a-f0-9]{64}', self.token):
+            self.token = secrets.token_hex(32)
+            adb('-s', target, 'shell', 'umask 077; cat > /data/local/tmp/studio-runtime-token', input_data=self.token.encode())
+        self.start_runtime(target)
+
+    def configure(self, profiles, target):
+        specs = specifications(profiles)
+        with self.lock:
+            if self.thread and self.thread.is_alive() and (target != self.target or self.stop.is_set()):
+                self.stop.set()
+                self.thread.join(20)
+                if self.thread.is_alive():
+                    raise EditError('Previous native widget connection is still closing.')
+            self.specs = specs
+            if not specs:
+                self.stop.set()
+                self.status = 'No Studio native widgets deployed'
+                return
+            self.target = target
+            self.device_id = (self.server.connection['snapshot'] or {}).get('device_id')
+            if not self.thread or not self.thread.is_alive():
+                self.stop = threading.Event()
+                self.ready.clear()
+                self.thread = threading.Thread(target=self.run, daemon=True, name='StudioNativeWidgets')
+                self.thread.start()
+
+    def run(self):
+        import frida
+        adb = self.server.adb
+        target = self.target
+        port = None
+        remote = None
+        session = None
+        script = None
+        pid = None
+        try:
+            while not self.stop.is_set():
+                try:
+                    new_pid = int(adb('-s', target, 'shell', 'pidof', PACKAGE).split()[0])
+                    if session is None or session.is_detached or pid != new_pid:
+                        self.ready.clear()
+                        # Attaching to an ART process while Zygote is still starting it
+                        # can abort startup on this ARM32 firmware. Wait for a real window.
+                        window = adb('-s', target, 'shell', 'dumpsys', 'window')
+                        if not any('mCurrentFocus=' in line and 'com.ultrabar.launch.ui.activity.HomeActivity' in line for line in window.splitlines()):
+                            self.status = 'Waiting for Core home to finish opening'
+                            self.stop.wait(1)
+                            continue
+                        if adb('-s', target, 'shell', 'getprop', 'ro.serialno') != self.device_id:
+                            self.status = 'Core identity changed; reconnect in Studio'
+                            return
+                        self.start_runtime(target)
+                        if session and not session.is_detached:
+                            session.detach()
+                        if port is None:
+                            port = adb('-s', target, 'forward', 'tcp:0', 'tcp:27042')
+                            remote = frida.get_device_manager().add_remote_device('127.0.0.1:'+port, token=self.token)
+                        self.status = 'Loading native widgets into Core home'
+                        session = remote.attach(new_pid)
+                        script = session.create_script((self.server.ROOT/'assets/native/widgets.js').read_text(encoding='utf-8'))
+                        def message(msg, data):
+                            if msg.get('type') == 'send' and msg['payload'].get('ready'):
+                                self.status = 'Native widgets connected'
+                                self.last_error = None
+                                self.ready.set()
+                            elif msg.get('type') == 'error' or msg.get('payload', {}).get('error'):
+                                self.last_error = str(msg)
+                                self.status = 'Native widget rendering error'
+                        script.on('message', message)
+                        script.load()
+                        pid = new_pid
+                    state = dict(sequence=uuid.uuid4().hex, widgets=self.specs, metrics=self.server.companion.metrics.sample())
+                    adb('-s', target, 'shell',
+                        "cat > /data/local/tmp/ultrabar-studio-metrics.tmp && chmod 644 /data/local/tmp/ultrabar-studio-metrics.tmp && mv /data/local/tmp/ultrabar-studio-metrics.tmp /data/local/tmp/ultrabar-studio-metrics.json",
+                        input_data=json.dumps(state,allow_nan=False).encode())
+                    self.stop.wait(2)
+                except Exception as exc:
+                    self.ready.clear()
+                    self.last_error = type(exc).__name__+': '+str(exc)
+                    self.status = 'Native widget connection interrupted; retrying'
+                    self.stop.wait(4)
+        finally:
+            if session and not session.is_detached:
+                session.detach()
+            if port:
+                try: adb('-s', target, 'forward', '--remove', 'tcp:'+port)
+                except Exception: pass
+            self.ready.clear()
