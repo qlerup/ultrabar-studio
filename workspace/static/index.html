@@ -60,10 +60,11 @@
   </dialog>
   <dialog id="setup-guide" aria-labelledby="setup-guide-title">
     <div class="guide-heading"><div><div class="eyebrow">GET CONNECTED</div><h2 id="setup-guide-title">Set up your CoreBAR</h2></div><form method="dialog"><button aria-label="Close setup guide" autofocus>Close</button></form></div>
-    <p class="muted">Do steps 1–3 on the CoreBAR touchscreen. Keep your PC and CoreBAR on the same local network.</p>
+    <p class="muted">Do steps 1–4 on the CoreBAR touchscreen. Keep your PC and CoreBAR on the same local network.</p>
     <ol class="guide-steps">
       <li><div><h3>Open Android settings</h3><p>Swipe down from the top of the CoreBAR screen. <strong>Press and hold the gear icon</strong> until Android settings opens.</p><p class="muted">Use a long press, not a quick tap.</p></div></li>
-      <li><div><h3>Find ADB WiFi</h3><p>Open <strong>System → Advanced → Developer options</strong>. Scroll down to the <strong>Debugging</strong> section and find <strong>ADB WiFi</strong>.</p></div></li>
+      <li><div><h3>Enable Developer options</h3><p>In Android settings, open <strong>About device</strong> (it may be called <strong>About tablet</strong> or <strong>About phone</strong>). Find <strong>Build number</strong> and tap it <strong>7 times</strong>, until Android confirms that developer mode is enabled. Enter your device PIN if prompted.</p><p class="muted">Tap the Android Build number, not the LineOS app version. If Developer options is already available, you can skip this step.</p></div></li>
+      <li><div><h3>Find ADB WiFi</h3><p>Return to the main Android settings screen and open <strong>System → Advanced → Developer options</strong>. If there is a switch at the top, turn it on. Scroll down to the <strong>Debugging</strong> section and find <strong>ADB WiFi</strong>.</p></div></li>
       <li><div><h3>Turn ADB WiFi on</h3><p>Enable <strong>ADB WiFi</strong>. Leave it enabled while using Studio. If the screen shows an IP address and port, you can use those for a manual connection.</p></div></li>
       <li><div><h3>Find your CoreBAR in Studio</h3><p>Back on your PC, click <strong>Find devices</strong>, then select the CoreBAR that appears. Studio finds its IP address automatically.</p><p class="muted">The default ADB port is 5555. If CoreBAR shows a different port, enter its IP and port manually, for example 10.10.0.181:5555, then click Connect.</p></div></li>
     </ol>

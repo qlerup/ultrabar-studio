@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.15 Windows
+# UltraBar Studio — 0.16 Windows
+
+## 0.16 update
+
+- First-use setup now explains how to unlock Android Developer options before enabling ADB WiFi, including Build number, seven taps, optional PIN and the already-enabled case.
+- Android activation reference: https://developer.android.com/studio/debug/dev-options
 
 ## 0.15 update
 
