@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.14 Windows
+# UltraBar Studio — 0.15 Windows
+
+## 0.15 update
+
+- Collapsible widget library: UltraBarX built-in widgets, Studio & App Store extensions, and separately listed installed apps whose installation source is not tracked.
+- Search expands matching groups temporarily and restores disclosure choices when cleared. Click-to-add and drag/drop remain available.
+- Short public README with current features, tested compatibility and planned store capabilities.
 
 ## 0.14 update
 

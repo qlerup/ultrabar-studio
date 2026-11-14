@@ -50,9 +50,34 @@
   }
   function draggable(node,payload){node.draggable=true;node.addEventListener('dragstart',event=>{if(working){event.preventDefault();return;}drag=payload;event.dataTransfer.setData('text/plain','ultrabar-studio');event.dataTransfer.effectAllowed='copyMove';node.classList.add('dragging');});node.addEventListener('dragend',()=>{drag=null;node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(n=>n.classList.remove('drop-target'));});}
   function dropzone(node,handler){node.addEventListener('dragover',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.add('drop-target');});node.addEventListener('dragleave',()=>node.classList.remove('drop-target'));node.addEventListener('drop',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.remove('drop-target');handler(drag);drag=null;});}
+  const libraryExpanded={ultrabar:true,studio:true,installed:false};
+  function libraryGroup(w){
+    if(w.type==='APPS')return 'installed';
+    if(nativeSpec(w)||w.type==='PC_CONTROL')return 'studio';
+    return ['CPU','MEMORY','STORAGE','TIME'].includes(w.type)?'ultrabar':'installed';
+  }
   function renderLibrary(){
-    if(!draft)return;const container=$('widget-library');container.replaceChildren();const query=$('library-search').value.toLowerCase();
-    for(const w of library().filter(w=>(w.name||types[w.type]||w.type).toLowerCase().includes(query))){const b=el('button','library-item');b.append(el('span','library-glyph',glyphs[w.type]||'◇'),el('span','',w.name||types[w.type]||w.type));b.title='Add '+(w.name||w.type);b.onclick=()=>addWidget(w);draggable(b,{kind:'widget-new',widget:w});container.append(b);}
+    if(!draft)return;
+    const container=$('widget-library');
+    // Keep the user's disclosure choices when metrics or the draft refresh.
+    for(const group of container.querySelectorAll('details[data-group]')){
+      if(!group.dataset.searching)libraryExpanded[group.dataset.group]=group.open;
+    }
+    container.replaceChildren();
+    const query=$('library-search').value.trim().toLowerCase();
+    const widgets=library().filter(w=>(w.name||types[w.type]||w.type).toLowerCase().includes(query));
+    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio & App Store','Studio widgets and PC actions. Store downloads are coming later.'],['installed','Installed apps','Apps already on Core. Their installation source is not yet tracked.']];
+    for(const [key,title,help] of groups){
+      const items=widgets.filter(w=>libraryGroup(w)===key);
+      if(query&&!items.length)continue;
+      const group=el('details','library-group');group.dataset.group=key;
+      group.open=query?true:libraryExpanded[key];if(query)group.dataset.searching='true';
+      const summary=el('summary','library-group-heading');summary.append(el('span','',title),el('span','library-count',String(items.length)));
+      const content=el('div','library-group-content');content.append(el('p','muted library-group-help',help));
+      for(const w of items){const b=el('button','library-item');b.type='button';b.append(el('span','library-glyph',glyphs[w.type]||'?'),el('span','',w.name||types[w.type]||w.type));b.setAttribute('aria-label',w.name||types[w.type]||w.type);b.title='Add '+(w.name||w.type);b.onclick=()=>addWidget(w);draggable(b,{kind:'widget-new',widget:w});content.append(b);}
+      if(!items.length)content.append(el('p','muted','No items available.'));
+      group.append(summary,content);container.append(group);
+    }
     if(!container.children.length)container.append(el('p','muted','No matching widgets.'));
   }
   function addWidget(template,at=current().homeData.length){
