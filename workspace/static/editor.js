@@ -321,20 +321,25 @@
   $('deploy-confirm').onclick=()=>{$('deploy-dialog').close();operation(async()=>{
     const box=$('deploy-progress'),label=$('deploy-progress-message'),close=$('deploy-progress-close'),spinner=$('deploy-progress-spinner');
     const requestId=crypto.randomUUID(),started=Date.now();let polling=false,finished=false;
-    close.disabled=true;spinner.hidden=false;label.textContent='Saving the draft?';box.showModal();
+    box.dataset.state='running';box.setAttribute('aria-busy','true');$('deploy-progress-title').textContent='Deploying to Core';
+    $('deploy-progress-help').textContent='Keep CoreBAR connected while Studio applies your changes.';
+    $('deploy-progress-time').textContent='0 seconds elapsed';close.textContent='Deploying…';
+    close.disabled=true;spinner.hidden=false;label.textContent='Saving your draft…';box.showModal();
     const timer=setInterval(async()=>{
       $('deploy-progress-time').textContent=Math.floor((Date.now()-started)/1000)+' seconds elapsed';
       if(polling||finished)return;polling=true;
-      try{const status=await(await api('/api/editor/deploy-status')).json();if(!finished&&status.request_id===requestId)label.textContent=status.message;}catch(error){if(!finished)label.textContent='Waiting for a status response from Studio?';}finally{polling=false;}
+      try{const status=await(await api('/api/editor/deploy-status')).json();if(!finished&&status.request_id===requestId)label.textContent=status.message;}catch(error){if(!finished)label.textContent='Waiting for a status response from Studio…';}finally{polling=false;}
     },750);
     try{
-      await save();label.textContent='Contacting Core?';
+      await save();label.textContent='Contacting Core…';
       const response=await fetch('/api/editor/deploy',{method:'POST',headers:{'X-Studio-Token':token,'Content-Type':'application/json'},body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,request_id:requestId})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||'Deployment failed.');
       draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);label.textContent=data.message;
+      box.dataset.state='success';$('deploy-progress-title').textContent='Deployment complete';close.textContent='Done';
+      $('deploy-progress-help').textContent='You can close this window and continue editing.';
       setTimeout(()=>{captureScreen();captureCubes();},1000);
-    }catch(error){label.textContent=error.message;message(error.message,true);}
-    finally{finished=true;clearInterval(timer);spinner.hidden=true;close.disabled=false;}
+    }catch(error){box.dataset.state='error';$('deploy-progress-title').textContent='Deployment interrupted';close.textContent='Close';$('deploy-progress-help').textContent='Review the message above before trying again.';label.textContent=error.message;message(error.message,true);}
+    finally{finished=true;clearInterval(timer);spinner.hidden=true;close.disabled=false;box.setAttribute('aria-busy','false');$('deploy-progress-time').textContent=Math.floor((Date.now()-started)/1000)+' seconds elapsed';close.focus();}
   });};
   $('draft-reset').onclick=()=>{if(!confirm('Replace the local draft with current Core settings? Download the draft first if you want to keep it.'))return;operation(async()=>{const data=await (await api('/api/editor/reset',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Draft reloaded from Core.');});};
   $('draft-restore').onclick=()=>{if(!confirm('Replace this draft with the saved pre-deploy settings? Core changes only when you deploy.'))return;operation(async()=>{const data=await (await api('/api/editor/restore-draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Pre-deploy settings loaded as a draft. Review, then deploy to restore Core.');});};

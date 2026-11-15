@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.36 Windows
+# UltraBar Studio — 0.37 Windows
+
+## 0.37 update
+
+Deployment now uses a styled Studio dialog with an indeterminate progress indicator, readable status and elapsed time. Success and errors have distinct titles, icons and actions. The result remains visible until closed; Escape stays blocked during deployment. Layouts adapt to narrow windows and respect reduced motion. Offline browser checks exercise running, failure, retry and success without sending settings to hardware.
 
 ## 0.36 update
 

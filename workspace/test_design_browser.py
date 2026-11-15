@@ -117,12 +117,36 @@ class DesignTests(unittest.TestCase):
       monitors=[w['param']['payload']['params'] for p in saved['profiles'] for w in p['homeData'] if w.get('param',{}).get('payload',{}).get('params',{}).get('packageId')=='studio.system.widget']
       assert sorted(w['kind'] for w in monitors)==['cpu','cpu','cpu','gpu','memory'],monitors
       assert all(w['kindOptions']==['cpu','memory','gpu'] for w in monitors)
-      page.route('**/api/editor/deploy-status',lambda r:r.fulfill(json=dict(request_id='other',state='running',message='Other request')))
-      page.route('**/api/editor/deploy',lambda r:r.fulfill(status=502,json=dict(error='Core did not wake. No settings were sent.')))
+      pending=[]
+      page.route('**/api/editor/deploy-status',lambda r:r.fulfill(json=dict(request_id=pending[-1].request.post_data_json['request_id'] if pending else 'other',state='running',message='Waiting for widgets to become ready…')))
+      page.route('**/api/editor/deploy',lambda r:pending.append(r))
       page.locator('#draft-deploy').click();page.locator('#deploy-confirm').click()
       expect(page.locator('#deploy-progress')).to_be_visible()
+      expect(page.locator('#deploy-progress')).to_have_attribute('data-state','running')
+      expect(page.locator('#deploy-progress-message')).to_have_text('Waiting for widgets to become ready…')
+      expect(page.locator('#deploy-progress-close')).to_be_disabled()
+      page.keyboard.press('Escape');expect(page.locator('#deploy-progress')).to_be_visible()
+      output=Path(__file__).parent/'data/qa'
+      page.set_viewport_size(dict(width=1440,height=960))
+      page.screenshot(path=str(output/'deploy-running-desktop.png'))
+      page.set_viewport_size(dict(width=390,height=844))
+      page.screenshot(path=str(output/'deploy-running-mobile.png'))
+      assert page.locator('#deploy-progress').evaluate('(e)=>e.scrollWidth<=e.clientWidth'), 'Deployment dialog overflow'
+      pending[-1].fulfill(status=502,json=dict(error='Core did not wake. No settings were sent.'))
       expect(page.locator('#deploy-progress-message')).to_have_text('Core did not wake. No settings were sent.')
+      expect(page.locator('#deploy-progress')).to_have_attribute('data-state','error')
+      expect(page.locator('#deploy-progress-spinner')).not_to_be_visible()
       expect(page.locator('#deploy-progress-close')).to_be_enabled()
+      page.screenshot(path=str(output/'deploy-error-mobile.png'))
+      page.locator('#deploy-progress-close').click()
+      page.locator('#draft-deploy').click();page.locator('#deploy-confirm').click()
+      expect(page.locator('#deploy-progress')).to_have_attribute('data-state','running')
+      expect(page.locator('#deploy-progress-message')).to_have_text('Waiting for widgets to become ready…')
+      pending[-1].fulfill(json=dict(draft=saved,snapshot=snapshot,message='Settings saved and verified. Core home restarted.'))
+      expect(page.locator('#deploy-progress')).to_have_attribute('data-state','success')
+      expect(page.locator('#deploy-progress-close')).to_have_text('Done')
+      expect(page.locator('#deploy-progress-close')).to_be_focused()
+      page.screenshot(path=str(output/'deploy-success-mobile.png'))
       page.locator('#deploy-progress-close').click()
       assert not errors,errors
       browser.close()
