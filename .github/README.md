@@ -4,6 +4,11 @@
 
 <img width="2541" height="861" alt="image" src="https://github.com/user-attachments/assets/2ab39753-689d-447c-9a8f-55cf33a46535" />
 
+<img width="2538" height="1197" alt="image" src="https://github.com/user-attachments/assets/899e67e1-70bd-42a8-b0b1-1819f296e1c6" />
+
+<img width="2551" height="1141" alt="image" src="https://github.com/user-attachments/assets/9eab287b-4ec9-40e5-bb7f-439abccb715f" />
+
+
 A community-built Windows companion for UltraBar X / CoreBAR. Independent of the official UltraBarX software.
 
 [Latest release](https://github.com/qlerup/ultrabar-studio/releases/latest)
