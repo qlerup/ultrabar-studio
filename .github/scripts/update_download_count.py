@@ -16,8 +16,8 @@ def installer_downloads(releases):
 
 
 def badge(total):
-    right=max(44,len(str(total))*7+18);width=118+right;center=118+right/2
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="Installer downloads: {total}"><title>Studio installer downloads: {total}</title><rect width="118" height="20" fill="#292c38"/><rect x="118" width="{right}" height="20" fill="#b8adff"/><g font-family="Verdana,Arial,sans-serif" font-size="11" text-anchor="middle"><text x="59" y="14" fill="#fff">Installer downloads</text><text x="{center}" y="14" fill="#171923">{total}</text></g></svg>'''
+    right=max(44,len(str(total))*7+18);width=78+right;center=78+right/2
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="Downloads: {total}"><title>Studio downloads: {total}</title><rect width="78" height="20" fill="#292c38"/><rect x="78" width="{right}" height="20" fill="#b8adff"/><g font-family="Verdana,Arial,sans-serif" font-size="11" text-anchor="middle"><text x="39" y="14" fill="#fff">Downloads</text><text x="{center}" y="14" fill="#171923">{total}</text></g></svg>'''
 
 
 def main():
@@ -36,7 +36,7 @@ def main():
     metadata=dict(installerDownloads=total,updatedAt=datetime.now(timezone.utc).isoformat(),scope='Published UltraBarStudio-Setup-*.exe assets across releases; not unique users or installations.')
     ref=api('/git/ref/heads/stats',optional=True)
     tree=api('/git/trees','POST',dict(tree=[dict(path='downloads.svg',mode='100644',type='blob',content=badge(total)),dict(path='downloads.json',mode='100644',type='blob',content=json.dumps(metadata,indent=2)+'\n')]))
-    commit=api('/git/commits','POST',dict(message='Refresh Studio installer downloads: '+str(total),tree=tree['sha'],parents=[ref['object']['sha']] if ref else []))
+    commit=api('/git/commits','POST',dict(message='Refresh Studio downloads: '+str(total),tree=tree['sha'],parents=[ref['object']['sha']] if ref else []))
     if ref:api('/git/refs/heads/stats','PATCH',dict(sha=commit['sha'],force=False))
     else:api('/git/refs','POST',dict(ref='refs/heads/stats',sha=commit['sha']))
     print('Published Studio installer download count: '+str(total))
