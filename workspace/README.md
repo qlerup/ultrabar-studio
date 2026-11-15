@@ -1,4 +1,22 @@
-# UltraBar Studio — 0.44.0 Windows
+# UltraBar Studio — 0.45.0 Windows
+
+## 0.45 update
+
+Android app packages can declare settings API 1. Studio builds typed controls from
+reviewed descriptors, reads current device values, and saves edits with the draft.
+Deploy transfers validated values as the app UID and waits for a matching durable
+confirmation. Missing/stale/rejected/mismatched replies stop deployment with the
+draft and backup preserved. App settings apply across profiles; removing an app
+from the layout does not apply its stored settings in the background.
+
+Supported controls: booleans, bounded integers/numbers, text, HTTP(S) URLs and
+choices. Descriptors must match the APK asset and protected fixed receiver, and
+require Studio 0.45.0+. No contributor commands, arbitrary transports or secret
+fields are supported. Existing widgets retain their native runtime settings.
+Legacy Screen Sync controls remain supported until its library package is updated.
+
+Requirements, example and submission checklist:
+https://github.com/qlerup/ultrabar-store/blob/main/APP-SETTINGS.md .
 
 ## 0.44 update
 

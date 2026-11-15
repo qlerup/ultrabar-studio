@@ -17,6 +17,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from flask import jsonify, request
 import updates
 import screen_sync
+import app_settings_contract
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
 ASSET_PREFIX = 'https://github.com/qlerup/ultrabar-store/releases/download/'
@@ -96,6 +97,11 @@ def validate_icon_bytes(raw,icon):
 def validate_entry(entry):
     if not isinstance(entry, dict): raise StoreError('Invalid catalog entry.')
     p = copy.deepcopy(entry)
+    if 'settings' in p:
+        if p.get('type')!='corebar-app':raise StoreError('App settings require a corebar-app package.')
+        try:app_settings_contract.validate_schema(p['settings'])
+        except ValueError as exc:raise StoreError(str(exc)) from exc
+        if valid_version(p.get('compatibility',{}).get('minStudioVersion'))<(0,45,0):raise StoreError('Settings API 1 requires Studio 0.45.0 or newer.')
     if p.get('schemaVersion') != 1 or not ID.fullmatch(str(p.get('id',''))): raise StoreError('Unsupported package manifest.')
     for field, maximum in [('name',100),('description',1000),('license',200)]:
         if not isinstance(p.get(field),str) or not 1 <= len(p[field]) <= maximum: raise StoreError('Incomplete package information.')
@@ -138,7 +144,7 @@ def catalog():
 def plugin_templates(raw):
     try: data=json.loads(raw)
     except (ValueError,UnicodeError) as exc: raise StoreError('Invalid plugin JSON.') from exc
-    if not isinstance(data,dict) or set(data)!={'pluginApi','widgets'} or data['pluginApi']!=1 or not isinstance(data['widgets'],list) or not 1<=len(data['widgets'])<=32: raise StoreError('Unsupported declarative plugin format.')
+    if not isinstance(data,dict) or set(data)!={'pluginApi','widgets'} or type(data['pluginApi']) is not int or data['pluginApi']!=1 or not isinstance(data['widgets'],list) or not 1<=len(data['widgets'])<=32: raise StoreError('Unsupported declarative plugin format.')
     result=[]
     for w in data['widgets']:
         if not isinstance(w,dict) or set(w)-{'name','kind','background','textColor','accent'}: raise StoreError('Plugins may contain widget presets only, not code or commands.')
@@ -207,9 +213,14 @@ def v2_signers(path):
 
 def inspect_apk(server,path,entry):
     try:
+        if entry.get('settings'):app_settings_contract.inspect_apk(path,entry['settings'])
         r=subprocess.run([str(server.ROOT/'assets/android/aapt.exe'),'dump','badging',str(path)],capture_output=True,timeout=15,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         info=r.stdout.decode('utf-8',errors='replace')
         if r.returncode: raise StoreError('Could not inspect APK metadata.')
+        if entry.get('settings'):
+            manifest=subprocess.run([str(server.ROOT/'assets/android/aapt.exe'),'dump','xmltree',str(path),'AndroidManifest.xml'],capture_output=True,timeout=15,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+            if manifest.returncode:raise StoreError('Could not inspect the app settings receiver.')
+            app_settings_contract.validate_receiver(manifest.stdout.decode('utf-8',errors='replace'),entry['android']['packageId'])
         package=re.search(r"^package: name='([^']+)' versionCode='([0-9]+)'",info,re.M)
         sdk=re.search(r"^sdkVersion:'([0-9]+)'",info,re.M)
         permissions=set(re.findall(r"^uses-permission(?:-sdk-[0-9]+)?: name='([^']+)'",info,re.M))
@@ -379,6 +390,7 @@ class Store:
                 if p.get('source'):record['source']=p['source']
                 if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
+                if p.get('settings'):record['settings']=copy.deepcopy(p['settings'])
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())

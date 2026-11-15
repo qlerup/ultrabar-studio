@@ -7,6 +7,7 @@
   let backgroundIndex=-1;
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const pcWidgetForms=new Map();
+  const appSettingsDefs=new Map();
   const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
@@ -21,7 +22,7 @@
     $('edit-profile').disabled=working||actionSaving;
     $('action-undo').disabled=working||actionSaving||!history.length;
   }
-  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[]}));if(history.length>30)history.shift();dirty=true;updateControls();}
+  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{}}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
   function showMode(next){if(actionSaving)return;mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
   async function openEditor(){
@@ -48,16 +49,18 @@
   function renderEditor(){
     if(!draft)return;
     draft.background_apps??=[];for(const app of draft.background_apps)app.settings??={};
+    draft.app_settings??={};
     if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
     const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
-    renderLibrary();renderCanvas();renderBackground();renderProperties();renderModules();updateControls();
+    renderLibrary();renderCanvas();renderBackground();renderProperties();renderModules();renderAppSettingsRecovery();updateControls();
   }
   function nativeSpec(w){return w.param?.payload?.action==='studioNative'?w.param.payload.params:null;}
   function nativeTemplate(kind,name,drive='all'){return {type:'PC_CONTROL',name,bgColor:'#192325',iconScale:0,_new:true,_native:true,param:{output:10,payload:{action:'studioNative',params:{kind,accent:'#94d9bb',textColor:'#eef6f2',...(kind==='disk'?{drive}:{})}}}};}
   async function loadStorePresets(){
     try{
       const data=await(await api('/api/store/installed')).json();
+      appSettingsDefs.clear();for(const p of data.installed||[])if(p.settings&&p.android?.packageId)appSettingsDefs.set(p.android.packageId,{name:p.name,schema:p.settings});
       storeIconByPackage.clear();storeIconByApp.clear();
       for(const p of data.installed||[]){if(/^[a-f0-9]{64}$/.test(p.icon?.sha256||'')){storeIconByPackage.set(p.id,p.icon.sha256);if(p.android?.packageId)storeIconByApp.set(p.android.packageId,p.icon.sha256);}}
       storePresets=(data.widgets||[]).map((w,i)=>{
@@ -71,6 +74,7 @@
         return t;
       });
       if(draft&&!drag)renderLibrary();
+      if(draft&&!drag)renderProperties();
     }catch(error){message('Could not load installed store presets. '+error.message,true);}
   }
   window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});
@@ -206,18 +210,53 @@
   function renderBackground(){
     const list=$('background-apps');list.replaceChildren();
     $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
-    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',app.id===screenSyncId?(app.settings.enabled===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
+    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
   }
   function renderBackgroundProperties(panel){
     const app=draft.background_apps[backgroundIndex];if(!app)return;
     panel.replaceChildren(el('h3','','Background app settings'),el('span','badge','NO BAR SPACE'),el('h4','',app.name));
-    if(app.id===screenSyncId){
+    if(appSettingsDefs.has(app.id)){
+      renderAppSettings(app.id,panel);
+    }else if(app.id===screenSyncId){
       const wrap=el('label','property-field','Vivo screens'),select=el('select');select.id='background-sync-mode';option(select,'follow','Follow Core');option(select,'always','Always on');select.value=app.settings.enabled===false?'always':'follow';select.onchange=()=>change(()=>app.settings.enabled=select.value==='follow');wrap.append(select);panel.append(wrap);
       const delay=field('Wake delay (ms)',app.settings.wakeDelayMs??1000,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=3000&&n%250===0)change(()=>app.settings.wakeDelayMs=n);else{message('Use 0–3000 ms in steps of 250.',true);renderProperties();}},'number');const input=delay.querySelector('input');input.id='background-wake-delay';input.min='0';input.max='3000';input.step='250';panel.append(delay,el('p','muted','VivoCubes follow Core screen power. Wake delay applies when Core turns on. Deploy installs the app, sends these settings and starts syncing in the background.'));
     }else{
       const wrap=el('label','property-field','Launch after Deploy'),input=el('input');input.type='checkbox';input.id='background-launch';input.checked=app.settings.launch!==false;input.onchange=()=>change(()=>app.settings.launch=input.checked);wrap.append(input);panel.append(wrap,el('p','muted','Installed without a card on Core. Background behavior depends on the app; apps with their own background service can keep running.'));
     }
+    if(draft.app_settings?.[app.id])panel.append(button('Forget draft app settings',()=>change(()=>delete draft.app_settings[app.id]),'danger-quiet'));
     panel.append(button('Remove background app',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;}),'danger-quiet'),el('p','muted','Changes apply on Deploy. Removing an app here stops its background operation on the next Deploy; the Android app remains installed.'));
+  }
+  function renderAppSettings(packageId,panel){
+    const definition=appSettingsDefs.get(packageId);if(!definition)return;
+    const section=el('section','app-settings-form');section.append(el('h4','',definition.name+' settings'));
+    const defaults=Object.fromEntries(definition.schema.fields.map(f=>[f.key,f.default]));
+    const legacy=draft.background_apps.find(a=>a.id===packageId)?.settings;
+    if(packageId===screenSyncId&&legacy)for(const key of Object.keys(defaults))if(Object.hasOwn(legacy,key))defaults[key]=legacy[key];
+    const values={...defaults,...draft.app_settings?.[packageId]};
+    section.append(el('p','muted',draft.app_settings?.[packageId]?'Saved in this draft. Settings apply to this app across all profiles after Deploy.':'Defaults are shown. Read from Core to load the app’s current settings before editing.'));
+    for(const field of definition.schema.fields){
+      const wrap=el('label','property-field'+(field.type==='boolean'?' app-setting-toggle':''),field.label),input=el(field.type==='choice'?'select':'input');input.dataset.appSetting=field.key;
+      if(field.type==='choice'){for(const choice of field.options)option(input,choice.value,choice.label);input.value=values[field.key];}
+      else if(field.type==='boolean'){input.type='checkbox';input.checked=values[field.key];}
+      else{input.type=['integer','number'].includes(field.type)?'number':field.type==='url'?'url':'text';input.value=values[field.key];if(field.maxLength)input.maxLength=field.maxLength;if(field.min!=null){input.min=field.min;input.max=field.max;input.step=field.step;}}
+      input.onchange=()=>{
+        if(!input.checkValidity()){input.reportValidity();return;}
+        const value=field.type==='boolean'?input.checked:['integer','number'].includes(field.type)?Number(input.value):input.value;
+        change(()=>{draft.app_settings??={};draft.app_settings[packageId]={...values,[field.key]:value};});
+      };
+      wrap.append(input);if(field.help)wrap.append(el('small','muted',field.help));section.append(wrap);
+    }
+    const read=button('Read settings from Core',()=>operation(async()=>{
+      const device=draft.device_id;
+      const data=await(await api('/api/editor/app-settings/read',{method:'POST',body:JSON.stringify({device_id:device,package:packageId})})).json();
+      if(draft?.device_id!==device)throw new Error('The selected Core changed. Read settings again.');
+      checkpoint();draft.app_settings??={};draft.app_settings[packageId]=data.values;renderEditor();message('Current app settings loaded into your draft.');
+    }));section.append(read,el('p','muted','Studio waits for the app to confirm applied settings. Keep the app installed and Core connected.'));
+    panel.append(section);
+  }
+  function renderAppSettingsRecovery(){
+    let box=$('draft-app-settings');if(!box){box=el('div');box.id='draft-app-settings';document.querySelector('.draft-tools').append(box);}
+    box.replaceChildren();for(const key of Object.keys(draft.app_settings||{}))box.append(button('Forget draft settings: '+(appSettingsDefs.get(key)?.name||key),()=>change(()=>delete draft.app_settings[key]),'danger-quiet'));
   }
   function moveWidget(from,to){backgroundIndex=-1;if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
   function renderNativePreview(w,card){
@@ -392,6 +431,8 @@
       panel.append(el('p','muted',spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
     if(shortcut)renderPcWidgetSettings(w,panel);
+    if(w.type==='APPS')renderAppSettings(w.id,panel);
+    if(w.type==='APPS'&&draft.app_settings?.[w.id])panel.append(button('Forget draft app settings',()=>change(()=>delete draft.app_settings[w.id]),'danger-quiet'));
     const moves=el('div','property-moves');moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));panel.append(moves);
     panel.append(button('Remove from Core',()=>change(()=>{current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
     if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
@@ -568,7 +609,7 @@
     if(!actions.length)box.append(el('p','canvas-empty','No actions assigned yet. Choose what happens in step 2, then fill in step 3.'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
-  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[]})})).json();draft=response.draft;dirty=false;updateControls();}
+  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{}})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
   async function refreshPc(){
     try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');

@@ -1,7 +1,7 @@
 [Setup]
 AppId={{B5CF5A95-A196-49BD-969D-031B243623DB}
 AppName=UltraBar Studio
-AppVersion=0.44.0
+AppVersion=0.45.0
 AppPublisher=UltraBar Studio
 DefaultDirName={localappdata}\Programs\UltraBar Studio
 DefaultGroupName=UltraBar Studio
@@ -10,7 +10,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=release
-OutputBaseFilename=UltraBarStudio-Setup-0.44.0
+OutputBaseFilename=UltraBarStudio-Setup-0.45.0
 SetupIconFile=assets\studio.ico
 UninstallDisplayIcon={app}\UltraBar Studio.exe
 Compression=lzma2
