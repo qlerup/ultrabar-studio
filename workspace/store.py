@@ -15,7 +15,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from flask import jsonify, request
 import updates
 
-CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/main/catalog.json'
+CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
 ASSET_PREFIX = 'https://github.com/qlerup/ultrabar-store/releases/download/'
 MAX_SIZE = 256 * 1024 * 1024
 ID = re.compile(r'[a-z][a-z0-9]*(?:\.[a-z][a-z0-9-]*)+')

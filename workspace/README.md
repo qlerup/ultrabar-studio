@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.30 Windows
+# UltraBar Studio — 0.31 Windows
+
+## 0.31 update
+
+Store now reads the generated catalog feed. Package PRs change only their own folder; GitHub assembles and publishes the approved list after merge, preventing shared catalog-array conflicts between independent package updates. The last successful feed remains available if validation or publication fails. This is a one-time client feed migration; supported package updates continue independently of Studio.
 
 ## 0.30 update
 
