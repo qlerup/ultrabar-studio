@@ -172,3 +172,5 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .manual-app-footer{display:flex;align-items:center;gap:24px;justify-content:space-between;border-top:1px solid var(--line);margin-top:22px;padding-top:18px}.manual-app-footer .muted{max-width:340px;font-size:11px}.manual-app-footer button{flex-shrink:0}
 .sense-eye{position:relative;overflow:hidden}.sense-eye::after{content:'';position:absolute;top:0;bottom:0;left:66%;right:0;border-left:1px solid #46535b;background:#101619}
 @media(max-width:500px){#manual-app-dialog{padding:20px}.manual-folder-fields input{flex-basis:100%}.manual-app-footer{align-items:stretch;flex-direction:column;gap:14px}.manual-app-footer button{justify-content:center}.manual-package-heading{flex-wrap:wrap}}
+
+#updates-open.update-available{background:#bcb2ff;color:#171421;border-color:#bcb2ff;font-weight:700}

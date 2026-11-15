@@ -358,7 +358,14 @@ $('start-with-windows').onchange=async()=>{
   finally{input.disabled=false;}
 };
 
-let updateJob={state:'idle'};
+let updateJob={state:'idle'}, updateCheck=null, startupUpdatePending=false, updateStartupReady=false;
+function showStartupUpdate(){
+  if(!startupUpdatePending||!updateStartupReady||document.querySelector('dialog[open]'))return;
+  startupUpdatePending=false;
+  $('updates-dialog').showModal();
+}
+document.addEventListener('close',()=>{queueMicrotask(showStartupUpdate);},true);
+startupReady.finally(()=>{updateStartupReady=true;showStartupUpdate();});
 function showUpdateJob(job){
   updateJob=job;
   const active=job.state==='downloading';
@@ -370,7 +377,12 @@ function showUpdateJob(job){
     $('updates-download').hidden=!['error'].includes(job.state);
   }
 }
-async function checkUpdates(){
+function checkUpdates(startup=false){
+  if(updateCheck)return updateCheck;
+  updateCheck=runUpdateCheck(startup).finally(()=>{updateCheck=null;});
+  return updateCheck;
+}
+async function runUpdateCheck(startup){
   $('updates-check').disabled=true;$('updates-download').hidden=true;$('updates-install').hidden=true;
   $('updates-status').textContent='Checking GitHub for updates...';
   $('updates-notes').hidden=true;
@@ -379,18 +391,26 @@ async function checkUpdates(){
     const active=['downloading','ready','launched'].includes(job.state);
     if(active)showUpdateJob(job);
     const data=await(await api('/api/updates')).json();
+    const button=$('updates-open');
+    button.textContent=data.update_available?`Update available: ${data.latest_version}`:'Check for updates';
+    button.classList.toggle('update-available',data.update_available);
+    button.title=data.update_available?`Studio ${data.latest_version} is available. Installed: ${data.current_version}.`:'Check for updates';
+    if(startup&&data.update_available&&!$('updates-dialog').open)startupUpdatePending=true;
+    if(!data.update_available)startupUpdatePending=false;
     $('updates-notes-title').textContent=`Release notes / ${data.latest_version}`;
     $('updates-notes-body').textContent=data.release_notes||'No release notes were provided for this release.';
     $('updates-notes').hidden=false;
-    if(active)return;
+    if(active){showStartupUpdate();return;}
     $('updates-status').textContent=data.update_available?`Version ${data.latest_version} is available. You have ${data.current_version}.`+(data.download_available?'':' A verified installer is not available yet.'):`You are up to date. Installed version: ${data.current_version}.`;
     $('updates-download').hidden=!data.update_available||!data.download_available;
     $('updates-download').disabled=false;
+    showStartupUpdate();
   }catch(error){$('updates-status').textContent=error.message;}
   finally{$('updates-check').disabled=updateJob.state==='downloading';}
 }
-$('updates-open').onclick=()=>{$('updates-dialog').showModal();checkUpdates();};
-$('updates-check').onclick=checkUpdates;
+$('updates-open').onclick=()=>{startupUpdatePending=false;if(!$('updates-dialog').open)$('updates-dialog').showModal();checkUpdates();};
+$('updates-check').onclick=()=>checkUpdates();
+checkUpdates(true);
 $('updates-download').onclick=async()=>{
   $('updates-download').disabled=true;
   try{showUpdateJob(await(await api('/api/updates/download',{method:'POST'})).json());}
