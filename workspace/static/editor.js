@@ -67,6 +67,7 @@
         if(w.type==='APPS')return {...w,_storeKey:w._storePackage+':'+w.id};
         const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
+        if(w._bundledApp){t._bundledApp=clone(w._bundledApp);nativeSpec(t).companionApp=w._bundledApp.id;}
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
         if(w.kind==='bambu')for(const key of ['primary','secondary','expandedSlots','showJob','showTemperatures','showLayers','showRemaining','showControls','liquidMotion'])if(w[key]!==undefined)nativeSpec(t)[key]=w[key];
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
@@ -197,9 +198,9 @@
   }
   function addWidget(template,at=current().homeData.length){
     backgroundIndex=-1;
-    const widget=clone(template);delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
+    const widget=clone(template),companion=widget._bundledApp;delete widget._bundledApp;delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
-    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);current().homeData.splice(at,0,widget);widgetIndex=at;});
+    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});current().homeData.splice(at,0,widget);widgetIndex=at;});
   }
   function addBackground(w){
     if(!w||w.type!=='APPS'){message('Background apps supports Core apps. Display widgets belong on the bar.',true);return;}
@@ -435,7 +436,7 @@
         for(const [key,label] of [['showJob','Job name'],['showTemperatures','Temperatures'],['showLayers','Layer count'],['showRemaining','Time remaining'],['showControls','Printer controls'],['liquidMotion','Liquid unfold animation']]){
           const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='bambu-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);
         }
-        panel.append(el('p','muted','Display preferences apply to this widget. Printer access codes stay in the Bambu Panel app on Core. Controls also require that app’s explicit enable switch. Unfolding temporarily covers adjacent slots; your saved layout stays in place.'));
+        panel.append(el('p','muted','Display preferences apply to this widget. Printer access codes stay in the Bambu Panel app on Core. Controls also require that app’s explicit enable switch. Unfolding moves neighboring cards left and/or right, then restores them on close. Your saved layout stays in place.'));
       }
       if(spec.kindOptions?.length){
         const wrap=el('label','property-field','Show'),select=el('select');select.id='widget-kind';

@@ -5,7 +5,8 @@
 Adds the Bambu Liquid native widget and a fixed companion IPC contract. Each
 placed card can choose its primary/secondary reading, expanded size (2–5 slots),
 detail fields, controls visibility and liquid/reduced motion. Tapping grows a
-temporary native layer from the actual card position; closing restores the
+native presentation from the actual card position, including real slot gaps and
+host corner radius. Neighboring cards move left and/or right; closing restores the
 existing layout without changing profile positions. The animation runs on Core.
 
 Install/deploy Bambu Panel on Core first and enter printer credentials there.

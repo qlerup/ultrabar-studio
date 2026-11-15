@@ -8,24 +8,29 @@ from bambu_contract import DEFAULTS
 
 class BambuBrowserTests(unittest.TestCase):
     def test_independent_cards_save_reload_and_undo(self):
-        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu Liquid',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.widget',_storeVersion='1.0.0')
+        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu Liquid',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.panel',_storeVersion='1.0.0',_bundledApp=dict(id='dk.ultrabar.bambu',name='Bambu Panel'))
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
             page.locator('#mode-layout').click()
             item=page.locator('#widget-library').get_by_role('button',name='Bambu Liquid',exact=True)
             expect(item).to_be_visible();item.drag_to(page.locator('#core-screen'))
+            expect(page.locator('#background-apps button')).to_have_count(1)
+            expect(page.locator('#background-apps')).to_contain_text('Bambu Panel')
             page.locator('#bambu-primary').select_option('remaining')
             page.locator('#bambu-secondary').select_option('job')
             page.locator('#bambu-expandedSlots').select_option('5')
             page.locator('#bambu-showControls').uncheck();page.locator('#bambu-liquidMotion').uncheck()
             item.drag_to(page.locator('#core-screen'))
+            expect(page.locator('#background-apps button')).to_have_count(1)
             expect(page.locator('#bambu-expandedSlots')).to_have_value('3')
             expect(page.locator('#bambu-showControls')).to_be_checked()
             page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')
             saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
             cards=[w['param']['payload']['params'] for w in saved['profiles'][0]['homeData'] if w.get('param',{}).get('payload',{}).get('params',{}).get('kind')=='bambu']
             self.assertEqual(len(cards),2);self.assertEqual(cards[0]['expandedSlots'],5);self.assertFalse(cards[0]['showControls']);self.assertEqual(cards[0]['primary'],'remaining');self.assertEqual(cards[1]['expandedSlots'],3)
+            self.assertEqual(saved['background_apps'][0]['id'],'dk.ultrabar.bambu')
+            self.assertFalse(saved['background_apps'][0]['settings']['launch'])
             page.locator('#bambu-expandedSlots').select_option('2');page.locator('#widget-undo').click()
             expect(page.locator('#bambu-expandedSlots')).to_have_value('3')
             out=Path(__file__).parent/'data/qa';out.mkdir(exist_ok=True,parents=True)

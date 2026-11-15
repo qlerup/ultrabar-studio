@@ -18,6 +18,7 @@ from flask import jsonify, request
 import updates
 import screen_sync
 import app_settings_contract
+import bundle_contract
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
 ASSET_PREFIX = 'https://github.com/qlerup/ultrabar-store/releases/download/'
@@ -97,6 +98,8 @@ def validate_icon_bytes(raw,icon):
 def validate_entry(entry):
     if not isinstance(entry, dict): raise StoreError('Invalid catalog entry.')
     p = copy.deepcopy(entry)
+    try:bundle_contract.validate(p,widget_package)
+    except ValueError as exc:raise StoreError(str(exc)) from exc
     if 'settings' in p:
         if p.get('type')!='corebar-app':raise StoreError('App settings require a corebar-app package.')
         try:app_settings_contract.validate_schema(p['settings'])
@@ -225,6 +228,7 @@ def v2_signers(path):
 
 def inspect_apk(server,path,entry):
     try:
+        bundle_contract.inspect_apk(path,entry)
         if entry.get('settings'):app_settings_contract.inspect_apk(path,entry['settings'])
         r=subprocess.run([str(server.ROOT/'assets/android/aapt.exe'),'dump','badging',str(path)],capture_output=True,timeout=15,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         info=r.stdout.decode('utf-8',errors='replace')
@@ -280,7 +284,7 @@ class Store:
         return raw
     def templates(self):
         with self.lock:
-            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
+            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
             templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app')
             return templates
     def status(self):
@@ -403,6 +407,9 @@ class Store:
                 if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p.get('settings'):record['settings']=copy.deepcopy(p['settings'])
+                if p.get('bundledWidgets'):
+                    record['bundledWidgets']=copy.deepcopy(p['bundledWidgets'])
+                    record['widgets']=bundle_contract.validate(p,widget_package)
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
@@ -484,9 +491,18 @@ class Store:
         requested={w['id'] for p in profiles for w in p.get('homeData',[]) if w.get('type')=='APPS'}
         background={a['id']:a for a in background_apps or []}
         requested.update(background)
-        if not requested:return
+        bundled=[w.get('param',{}).get('payload',{}).get('params',{}) for p in profiles for w in p.get('homeData',[]) if w.get('param',{}).get('payload',{}).get('action')=='studioNative' and w.get('param',{}).get('payload',{}).get('params',{}).get('companionApp')]
+        if not requested and not bundled:return
         with self.lock:
             dependencies=self.dependencies()
+        by_store={p['id']:p for p in dependencies.values()}
+        for params in bundled:
+            package=by_store.get(params.get('packageId'))
+            if package is None:raise StoreError('Install the widget’s bundled app package into the library before deploying.')
+            templates=bundle_contract.validate(package,widget_package)
+            if not templates or params['companionApp']!=package['android']['packageId'] or not any(t['id']==params.get('widgetKey') and t['kind']==params.get('kind') for t in templates):raise StoreError('The placed widget is not declared by its bundled app package.')
+            requested.add(package['android']['packageId'])
+        if not requested:return
         plan=[];existing_background=[]
         for package_id in sorted(requested):
             if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')

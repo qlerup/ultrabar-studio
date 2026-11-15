@@ -18,8 +18,12 @@ Deploy with setup instructions; missing state renders as unavailable. The
 companion is installed by the existing reviewed APK path, not arbitrary code
 loaded into the system launcher.
 
-Tap opens a native temporary layer anchored to the actual source card. Width is
-2/3/4/5 measured card widths, clamped to the visible RecyclerView viewport. A
+Tap opens a native temporary presentation anchored to the actual source card.
+Width includes 2/3/4/5 measured card widths plus the actual intervening gaps. The
+available row positions determine expansion to the left, right or both. Neighbor
+item views translate outward in the same animation, leaving the normal gap at
+each edge; their exact translations and source opacity are restored on close.
+No RecyclerView adapter model or saved profile position is changed. A
 bounded spring changes the outline and an edge wave settles into place while
 content fades in. Content stays at its final layout width, avoiding per-frame
 text reflow. Controls cannot receive taps while animating. Outside tap, collapse
@@ -28,14 +32,15 @@ motion and the per-widget preference disable the spring/wave.
 
 ## Validation
 
-- 156 Studio regression tests passed, including native/package/settings paths.
+- 158 Studio regression/browser tests passed, including native/package/settings paths.
 - Offline browser: two independently configured cards; Save, reload, Undo and
   narrow layout. Browser screenshots use sample data; no ADB writes.
 - Java geometry checks: spring endpoints, bounded overshoot, 2–5 widths and edge
   clamps. Existing drive paging tests also pass.
 - Native build succeeds with Android SDK 35 / D8 minimum API 26.
 - Physical CB01 / Android 10 / active LineOS 1.0.9: temporary expansion in the
-  real launcher at widths 522, 783, 1044 and 1305 px; launcher UID IPC accepted;
+  real launcher at widths 542, 823, 1104 and 1385 px; 20px gaps and the host's
+  60px corner radius preserved; launcher UID IPC accepted;
   Back/reduced motion tested. No saved profiles or layouts were changed.
 - Separate Android preview APK exercises the same native renderer with clearly
   labelled sample data; it is not shipped as the production companion.

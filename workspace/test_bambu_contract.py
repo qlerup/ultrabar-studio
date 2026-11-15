@@ -1,7 +1,7 @@
 import copy,json,unittest
 from bambu_contract import DEFAULTS,validate
 from native_widgets import specifications
-from store import widget_package,StoreError
+from store import widget_package,StoreError,require_widget_version
 
 
 class BambuContractTests(unittest.TestCase):
@@ -25,3 +25,7 @@ class BambuContractTests(unittest.TestCase):
         for key,value in [('expandedSlots',True),('expandedSlots',1),('expandedSlots',6),('expandedSlots',3.0),('primary','shell'),('secondary','camera'),('liquidMotion','yes'),('showControls',1),('script','bad()')]:
             with self.subTest(key=key,value=value),self.assertRaises(StoreError):self.parse(dict(base,**{key:value}))
         with self.assertRaises(ValueError):validate(dict(kind='clock',expandedSlots=3))
+
+    def test_minimum_version_must_declare_the_supported_renderer(self):
+        with self.assertRaises(StoreError):require_widget_version([dict(kind='bambu')],dict(compatibility=dict(minStudioVersion='0.45.0')))
+        require_widget_version([dict(kind='bambu')],dict(compatibility=dict(minStudioVersion='0.46.0')))

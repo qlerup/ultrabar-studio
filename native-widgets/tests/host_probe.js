@@ -32,6 +32,21 @@ rpc.exports = {
         return {cards:cards.length,sourceWidth:source.getWidth(),sourceHeight:source.getHeight(),trustedLauncherIpc:json.indexOf('"fresh"')!==-1};
     });},
     select(index){return mainThread(()=>{source=cardSources[index];return true;});},
+    geometry(){return mainThread(()=>{
+        const result=[];
+        for(let index=0;index<cardSources.length;index++){
+            let v=cardSources[index];const ancestors=[];
+            while(v!==null){
+                const pos=Java.array('int',[0,0]);v.getLocationOnScreen(pos);
+                const outline=Java.use('android.graphics.Outline').$new();let radius=-1;
+                try{const provider=v.getOutlineProvider();if(provider!==null){provider.getOutline(v,outline);radius=outline.getRadius();}}catch(_){}
+                ancestors.push({class:v.getClass().getName().toString(),x:pos[0],y:pos[1],w:v.getWidth(),h:v.getHeight(),radius:radius,alpha:v.getAlpha()});
+                const parent=v.getParent();if(parent===null||!Java.use('android.view.View').class.isInstance(parent))break;v=Java.cast(parent,Java.use('android.view.View'));
+            }
+            result.push({index:index,ancestors:ancestors});
+        }
+        return result;
+    });},
     expand(slots,motion){return mainThread(()=>{
         spec=Java.use('org.json.JSONObject').$new(JSON.stringify({kind:'bambu',expandedSlots:slots,liquidMotion:motion,background:'#14202b',textColor:'#eff6fa',accent:'#86e4c3'}));
         Tile.expand(source,spec);return true;
@@ -40,7 +55,9 @@ rpc.exports = {
         const layer=Tile.expanded.value;if(layer===null)return {open:false};
         const rect=layer.current.value;
         const position=Java.array('int',[0,0]);layer.getLocationOnScreen(position);
-        return {open:true,left:rect.left.value,right:rect.right.value,width:rect.width(),hostWidth:layer.getWidth(),hostHeight:layer.getHeight(),screenX:position[0],screenY:position[1]};
+        const neighbors=layer.neighbors.value,moves=[];
+        for(let i=0;i<neighbors.size();i++)moves.push(Java.cast(neighbors.get(i),Java.use('android.view.View')).getTranslationX());
+        return {open:true,closing:layer.closing.value,fraction:layer.fraction.value,focus:layer.hasFocus(),left:rect.left.value,right:rect.right.value,width:rect.width(),radius:layer.radius.value,neighborTranslations:moves,hostWidth:layer.getWidth(),hostHeight:layer.getHeight(),screenX:position[0],screenY:position[1]};
     });},
     close(){return mainThread(()=>{const layer=Tile.expanded.value;if(layer!==null)layer.close();return true;});}
 };

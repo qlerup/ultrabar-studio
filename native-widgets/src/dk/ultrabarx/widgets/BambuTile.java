@@ -86,15 +86,24 @@ public final class BambuTile {
         c.drawRoundRect(0,0,43,56,4,4,p);c.drawLine(4,12,39,12,p);c.drawLine(22,12,22,22,p);c.drawLine(16,22,28,22,p);c.drawLine(28,22,22,29,p);c.drawLine(22,29,16,22,p);
         c.drawLine(7,47,36,47,p);c.drawLine(11,43,22,36,p);c.drawLine(22,36,33,43,p);c.drawLine(33,43,22,50,p);c.drawLine(22,50,11,43,p);p.setStyle(Paint.Style.FILL);c.restore();
     }
+    private static float cornerRadius(View source){
+        View view=source;
+        while(view!=null&&view.getHeight()<=source.getHeight()+2){
+            try{Outline outline=new Outline();if(view.getOutlineProvider()!=null){view.getOutlineProvider().getOutline(view,outline);if(outline.getRadius()>0)return outline.getRadius();}}catch(Exception ignored){}
+            ViewParent parent=view.getParent();view=parent instanceof View?(View)parent:null;
+        }
+        return source.getHeight()*.25f;
+    }
     public static void draw(View source, Canvas canvas, float width, JSONObject spec, String title) {
         track(source); Paint p = new Paint(3); JSONObject s = data;
         int background = Color.parseColor(spec.optString("background", "#14202b"));
         int accent = Color.parseColor(spec.optString("accent", "#86e4c3"));
         int text = Color.parseColor(spec.optString("textColor", "#eff6fa"));
         RectF box = new RectF(1,1,width-1,239);
+        float radius=cornerRadius(source)/(source.getHeight()/240f);
         p.setShader(new LinearGradient(0,0,width,240,new int[]{background,Color.rgb(Color.red(background)+Math.min(4,255-Color.red(background)), Color.green(background)+Math.min(5,255-Color.green(background)), Color.blue(background)+Math.min(8,255-Color.blue(background)))},null,Shader.TileMode.CLAMP));
-        canvas.drawRoundRect(box,24,24,p); p.setShader(null);
-        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1); p.setColor(0x26ffffff); canvas.drawRoundRect(box,24,24,p); p.setStyle(Paint.Style.FILL);
+        canvas.drawRoundRect(box,radius,radius,p); p.setShader(null);
+        p.setStyle(Paint.Style.STROKE); p.setStrokeWidth(1); p.setColor(0x26ffffff); canvas.drawRoundRect(box,radius,radius,p); p.setStyle(Paint.Style.FILL);
         p.setColor(fresh(s)?accent:0xff74838b); canvas.drawCircle(24,28,3,p);
         label(canvas,p,s.optString("name",title==null?"Bambu Lab":title),34,33,14,text,true,width-62);
         String primary = spec.optString("primary","progress"), value = metric(s,primary);
@@ -134,6 +143,11 @@ public final class BambuTile {
         private ProgressBar progress;
         private ValueAnimator animator;
         private float fraction; private boolean closing;
+        private float radius;
+        private final ArrayList<View> neighbors=new ArrayList<>();
+        private final ArrayList<Float> translations=new ArrayList<>(),movements=new ArrayList<>();
+        private View sourceItem;private float sourceAlpha;
+        private boolean restored;
         WaterLayer(View source, ViewGroup host, JSONObject spec) {
             super(source.getContext()); this.source=source;this.host=host;this.spec=spec;
             foreground=Color.parseColor(spec.optString("textColor","#eff6fa"));accent=Color.parseColor(spec.optString("accent","#86e4c3"));background=Color.parseColor(spec.optString("background","#14202b"));
@@ -141,13 +155,29 @@ public final class BambuTile {
             setWillNotDraw(false);setFocusableInTouchMode(true);setContentDescription("Expanded Bambu printer controls");requestFocus();
             int[] origin=new int[2],base=new int[2];source.getLocationOnScreen(origin);host.getLocationOnScreen(base);
             from.set(origin[0]-base[0],origin[1]-base[1],origin[0]-base[0]+source.getWidth(),origin[1]-base[1]+source.getHeight());
-            float viewportLeft=8,viewportWidth=host.getWidth()-16;
+            radius=cornerRadius(source);
+            ViewGroup row=null;View item=source;
             ViewParent ancestor=source.getParent();
-            while(ancestor instanceof View){View v=(View)ancestor;if(v.getClass().getName().contains("RecyclerView")){int[] pos=new int[2];v.getLocationOnScreen(pos);viewportLeft=pos[0]-base[0]+4;viewportWidth=v.getWidth()-8;break;}ancestor=v.getParent();}
-            float width=LiquidGeometry.width(from.width(),viewportWidth,spec.optInt("expandedSlots",3));
-            float left=LiquidGeometry.left(from.left,width,viewportLeft,viewportWidth);
+            while(ancestor instanceof ViewGroup){ViewGroup v=(ViewGroup)ancestor;if(v.getClass().getName().contains("RecyclerView")||(v instanceof LinearLayout&&((LinearLayout)v).getOrientation()==LinearLayout.HORIZONTAL&&v.getChildCount()>1)){row=v;break;}item=v;ancestor=v.getParent();}
+            float unit=from.width(),gap=source.getHeight()/12f,viewportLeft=gap,viewportWidth=host.getWidth()-gap*2;
+            if(row!=null){
+                ArrayList<View> ordered=new ArrayList<>();
+                for(int i=0;i<row.getChildCount();i++){View v=row.getChildAt(i);if(v.getWidth()>0&&v.getHeight()>=source.getHeight()*.8f){ordered.add(v);unit=Math.min(unit,v.getWidth());}}
+                ordered.sort((a,b)->Float.compare(a.getX(),b.getX()));float measured=Float.MAX_VALUE;
+                for(int i=1;i<ordered.size();i++){View a=ordered.get(i-1),b=ordered.get(i);float g=b.getX()-(a.getX()+a.getWidth());if(g>0)measured=Math.min(measured,g);}
+                if(measured<Float.MAX_VALUE)gap=measured;
+                int[] rowPosition=new int[2];row.getLocationOnScreen(rowPosition);viewportLeft=rowPosition[0]-base[0]+Math.max(gap,row.getPaddingLeft());
+                int visibleSlots=Math.max(2,Math.round((row.getWidth()-gap*2+gap)/(unit+gap)));
+                viewportWidth=unit*visibleSlots+gap*(visibleSlots-1);
+                sourceItem=item;sourceAlpha=item.getAlpha();
+            }
+            int slots=spec.optInt("expandedSlots",3),visibleSlots=Math.max(slots,Math.round((viewportWidth+gap)/(unit+gap)));
+            int position=Math.max(0,Math.min(visibleSlots-1,Math.round((from.left-viewportLeft)/(unit+gap))));
+            float width=LiquidGeometry.width(unit,gap,viewportWidth,slots);
+            float left=viewportLeft+LiquidGeometry.startSlot(position,slots,visibleSlots)*(unit+gap);
             to.set(left,from.top,left+width,from.bottom);current.set(from);
-            body=new LinearLayout(getContext());body.setOrientation(LinearLayout.VERTICAL);body.setPadding(18,12,18,12);
+            if(row!=null){for(int i=0;i<row.getChildCount();i++){View neighbor=row.getChildAt(i);if(neighbor==sourceItem)continue;int[] pos=new int[2];neighbor.getLocationOnScreen(pos);float x=pos[0]-base[0];float movement=x<from.left?to.left-from.left:to.right-from.right;neighbors.add(neighbor);translations.add(neighbor.getTranslationX());movements.add(movement);}}
+            body=new LinearLayout(getContext());body.setOrientation(LinearLayout.VERTICAL);body.setPadding(30,14,30,14);
             FrameLayout.LayoutParams bp=new FrameLayout.LayoutParams((int)to.width(),(int)to.height());bp.leftMargin=(int)to.left;bp.topMargin=(int)to.top;addView(body,bp);
             LinearLayout header=new LinearLayout(getContext());header.setGravity(Gravity.CENTER_VERTICAL);
             name=txt("Bambu Lab",16,foreground,true);header.addView(name,new LinearLayout.LayoutParams(0,32,1));
@@ -190,25 +220,28 @@ public final class BambuTile {
             boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_light_on"));
             for(Button b:new Button[]{pause,stop,light}){b.setVisibility(spec.optBoolean("showControls",true)?VISIBLE:GONE);b.setAlpha(b.isEnabled()?1:.55f);}
         }
-        void open(){requestFocus();animateTo(true);}
+        void open(){requestFocus();if(sourceItem!=null)sourceItem.setAlpha(0);animateTo(true);}
         void close(){if(closing)return;closing=true;animateTo(false);}
         private void animateTo(boolean opening){
             if(animator!=null)animator.cancel();float start=fraction;
             boolean motion=spec.optBoolean("liquidMotion",true)&&Settings.Global.getFloat(getContext().getContentResolver(),Settings.Global.ANIMATOR_DURATION_SCALE,1)>0;
             animator=ValueAnimator.ofFloat(0,1);animator.setInterpolator(new LinearInterpolator());animator.setDuration(motion?(opening?650:450):150);
-            animator.addUpdateListener(a->{float t=(Float)a.getAnimatedValue();float eased=motion?LiquidGeometry.spring(t):t;fraction=opening?start+(1-start)*eased:start*(1-t)*(1-t);body.setAlpha(Math.max(0,Math.min(1,(fraction-.18f)/.65f)));invalidate();});
-            animator.addListener(new AnimatorListenerAdapter(){public void onAnimationEnd(Animator a){if(!opening){host.removeView(WaterLayer.this);if(expanded==WaterLayer.this)expanded=null;source.requestFocus();}}});animator.start();
+            animator.addUpdateListener(a->{float t=(Float)a.getAnimatedValue();float eased=motion?LiquidGeometry.spring(t):t;fraction=opening?start+(1-start)*eased:start*(1-t)*(1-t);for(int i=0;i<neighbors.size();i++)neighbors.get(i).setTranslationX(translations.get(i)+movements.get(i)*fraction);body.setAlpha(Math.max(0,Math.min(1,(fraction-.18f)/.65f)));invalidate();});
+            animator.addListener(new AnimatorListenerAdapter(){public void onAnimationEnd(Animator a){if(!opening){restore();host.removeView(WaterLayer.this);if(expanded==WaterLayer.this)expanded=null;source.requestFocus();}}});animator.start();
         }
+        private void restore(){if(restored)return;restored=true;for(int i=0;i<neighbors.size();i++)neighbors.get(i).setTranslationX(translations.get(i));if(sourceItem!=null)sourceItem.setAlpha(sourceAlpha);}
         private void outline(){
             float f=fraction;current.set(from.left+(to.left-from.left)*f,from.top,from.right+(to.right-from.right)*f,from.bottom);
-            float l=Math.max(2,current.left),r=Math.min(getWidth()-2,current.right),t=current.top,b=current.bottom,radius=26;
+            float l=Math.max(0,current.left),r=Math.min(getWidth(),current.right),t=current.top,b=current.bottom;
             float wave=(float)(Math.sin(Math.max(0,Math.min(1,f))*Math.PI)*6);
+            if(Math.abs(wave)<.01f){path.reset();path.addRoundRect(new RectF(l,t,r,b),radius,radius,Path.Direction.CW);return;}
+            float k=radius*.55228475f;
             path.reset();path.moveTo(l+radius,t);path.cubicTo(l+current.width()*.35f,t-wave,l+current.width()*.65f,t+wave,r-radius,t);
-            path.cubicTo(r,t,r,t,r,t+radius);path.lineTo(r,b-radius);path.cubicTo(r,b,r,b,r-radius,b);
-            path.cubicTo(l+current.width()*.65f,b+wave,l+current.width()*.35f,b-wave,l+radius,b);path.cubicTo(l,b,l,b,l,b-radius);path.lineTo(l,t+radius);path.cubicTo(l,t,l,t,l+radius,t);path.close();
+            path.cubicTo(r-radius+k,t,r,t+radius-k,r,t+radius);path.lineTo(r,b-radius);path.cubicTo(r,b-radius+k,r-radius+k,b,r-radius,b);
+            path.cubicTo(l+current.width()*.65f,b+wave,l+current.width()*.35f,b-wave,l+radius,b);path.cubicTo(l+radius-k,b,l,b-radius+k,l,b-radius);path.lineTo(l,t+radius);path.cubicTo(l,t+radius-k,l+radius-k,t,l+radius,t);path.close();
         }
         protected void onDraw(Canvas c){
-            paint.setColor(Color.argb((int)(Math.min(1,fraction)*75),0,5,10));c.drawRect(0,0,getWidth(),getHeight(),paint);outline();
+            outline();
             int lifted=Color.rgb(Math.min(255,Color.red(background)+7),Math.min(255,Color.green(background)+10),Math.min(255,Color.blue(background)+12));
             paint.setColor(Color.WHITE);paint.setShader(new LinearGradient(current.left,current.top,current.right,current.bottom,new int[]{lifted,background},null,Shader.TileMode.CLAMP));paint.setStyle(Paint.Style.FILL);c.drawPath(path,paint);paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.2f);paint.setColor(0x55c5e9ed);c.drawPath(path,paint);paint.setStyle(Paint.Style.FILL);
@@ -216,6 +249,6 @@ public final class BambuTile {
         protected void dispatchDraw(Canvas c){outline();c.save();c.clipPath(path);super.dispatchDraw(c);c.restore();}
         public boolean onTouchEvent(android.view.MotionEvent event){if(event.getAction()==MotionEvent.ACTION_UP&&!current.contains(event.getX(),event.getY()))close();return true;}
         public boolean onInterceptTouchEvent(android.view.MotionEvent event){return closing||(animator!=null&&animator.isRunning());}
-        protected void onDetachedFromWindow(){if(animator!=null)animator.cancel();if(expanded==this)expanded=null;super.onDetachedFromWindow();}
+        protected void onDetachedFromWindow(){if(animator!=null)animator.cancel();restore();if(expanded==this)expanded=null;super.onDetachedFromWindow();}
     }
 }
