@@ -48,9 +48,6 @@ function render() {
   });
   if(!modules.length)$('modules').append(el('p','muted','No modules are configured in this profile.'));
   renderDetails(modules[selectedModule]);
-  $('widgets').replaceChildren();
-  widgets.forEach((w,i)=>{const card=el('article','widget');card.append(el('div','module-icon',symbols[w.type]||'▦'),el('strong','',w.name||(w.id==='dk.ultrabarx.screensync'?'Vivo Screen Sync':names[w.type]||w.type||'Widget')),el('small','',String(i+1).padStart(2,'0')+' / '+(names[w.type]||w.type||'')));card.append(rawDetails(w));$('widgets').append(card);});
-  if(!widgets.length)$('widgets').append(el('p','muted','No widgets in this profile.'));
   $('read-time').textContent='Last read '+new Date(snapshot.read_at).toLocaleString('en-GB');
 }
 function renderHardware() {
