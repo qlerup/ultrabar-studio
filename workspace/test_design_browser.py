@@ -38,6 +38,13 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
       page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#manual-connection summary').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
       expect(page.locator('#workspace')).to_be_visible();expect(page.locator('#connection-dialog')).not_to_be_visible()
+      expect(page.locator('.screen-panel')).to_have_count(0)
+      import base64
+      screen_image=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=')
+      page.route('**/api/screen',lambda r:r.fulfill(content_type='image/png',body=screen_image))
+      page.locator('#preview-refresh').click()
+      expect(page.locator('.core-unit .core-screen-image')).to_be_visible()
+      self.assertTrue(page.locator('.core-unit .core-screen-image').evaluate('(image)=>image.complete&&image.naturalWidth>0'))
       page.route('**/api/layout',lambda r:r.fulfill(json=dict(ok=True)))
       page.set_viewport_size(dict(width=1920,height=960))
       # Both asymmetric and reordered layouts keep Core at the viewport midpoint.

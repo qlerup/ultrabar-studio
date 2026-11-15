@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.38 Windows
+# UltraBar Studio — 0.39 Windows
+
+## 0.39 update
+
+Removed the separate CoreBAR screen section from Device overview. The CoreBAR preview remains in the hardware overview alongside the other devices, with capture status below that overview. Refresh previews still updates the artwork; clicking CoreBAR refreshes its screen preview directly. Profiles, widgets and backups are unchanged.
 
 ## 0.38 update
 

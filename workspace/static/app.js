@@ -15,7 +15,7 @@ async function api(path, options={}) {
   if(!response.ok) {const data=await response.json().catch(()=>({}));throw new Error(data.error || 'The request could not be completed.');}
   return response;
 }
-function controls() { $('connect').disabled=busy||layoutSaving;$('discovery-connect').disabled=busy||layoutSaving||!selectedDiscoveryTarget; $('refresh').disabled=busy||layoutSaving||!snapshot; $('screen-button').disabled=busy||screenPolling||!snapshot; $('backup').disabled=busy||!snapshot; }
+function controls() { $('connect').disabled=busy||layoutSaving;$('discovery-connect').disabled=busy||layoutSaving||!selectedDiscoveryTarget; $('refresh').disabled=busy||layoutSaving||!snapshot; $('preview-refresh').disabled=busy||screenPolling||cubeLoading||!snapshot; $('backup').disabled=busy||!snapshot; }
 async function load(connect, target=$('target').value, automatic=false) {
   if(connect&&!automatic){clearTimeout(reconnectTimer);rememberedTarget='';}
   if(window.studioEditor?.hasUnsaved()&&!confirm('There are unsaved editor changes. Save the draft before changing devices or refreshing. Continue?'))return;
@@ -26,8 +26,6 @@ async function load(connect, target=$('target').value, automatic=false) {
     snapshot=await response.json();selectedProfile=Math.max(0,snapshot.profiles.findIndex(p=>p.id===profileId));selectedModule=0;
     connectionStatus(true); if($('connection-dialog').open)$('connection-dialog').close();
     $('empty').hidden=true;$('workspace').hidden=false;
-    if(screenUrl)URL.revokeObjectURL(screenUrl);screenUrl=null;$('screen').hidden=true;$('screen-state').hidden=false;
-    $('screen-state').textContent='Capture a screenshot to see what your CoreBAR is displaying.';
     render();window.studioEditor?.snapshotChanged();notice('Profile loaded. A local backup has been saved.');
     try{localStorage.setItem('ultrabar-target',snapshot.target);}catch{}
   }catch(error){notice(error.message+(automatic?' Retrying automatically in 15 seconds. Use Connect device to choose another connection.':''),true);connectionStatus(false);markHardwareUnknown('Status could not be refreshed. Retrying automatically.');}
@@ -65,7 +63,8 @@ function renderHardware() {
   const strip=$('hardware-preview'),focusedKey=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
   strip.replaceChildren();
   const core=el('button','hardware-unit core-unit'+(hardware.status_error?' is-unknown':''));core.dataset.layoutKey='core';core.append(el('div','unit-screen','COREBAR'),el('span','unit-name','CoreBAR'),el('span','unit-state',hardware.status_error?'Connection unverified':'Connected via ADB'));strip.append(core);
-  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;$('screen').closest('section').scrollIntoView({behavior:'smooth',block:'center'});};
+  core.title='Refresh CoreBAR screen preview';
+  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;captureScreen(true);};
   for(const device of devices){
     const unit=el('button','hardware-unit '+device.type.toLowerCase()+(device.online===false?' is-offline':device.online===null?' is-unknown':''));
     unit.title=`${device.name} · ${device.serial}`;
@@ -247,20 +246,19 @@ function renderCoreScreen(){
 }
 function clearScreen(){
   if(screenUrl)URL.revokeObjectURL(screenUrl);screenUrl=null;screenCapturedAt=null;coreScreenOff=false;
-  $('screen').removeAttribute('src');$('screen').hidden=true;renderCoreScreen();
+  $('screen-state').textContent='';renderCoreScreen();
 }
 async function captureScreen(manual=false){
   if(!snapshot||busy||document.hidden)return;
   if(screenPolling){screenRefreshPending=true;return;}
   const generation=connectionGeneration;
-  screenPolling=true;$('screen-button').disabled=true;
-  $('screen-state').hidden=false;
+  screenPolling=true;controls();
   $('screen-state').textContent=screenCapturedAt?'Refreshing preview…':'Capturing screen…';
   try{
     const response=await api('/api/screen'),blob=await response.blob();
     if(generation!==connectionGeneration)return;
     const nextUrl=URL.createObjectURL(blob),previousUrl=screenUrl;
-    screenUrl=nextUrl;screenCapturedAt=new Date();coreScreenOff=response.headers.get('X-Core-Screen-State')==='OFF';$('screen').src=screenUrl;$('screen').hidden=false;renderCoreScreen();
+    screenUrl=nextUrl;screenCapturedAt=new Date();coreScreenOff=response.headers.get('X-Core-Screen-State')==='OFF';renderCoreScreen();
     if(previousUrl)URL.revokeObjectURL(previousUrl);
     $('screen-state').textContent=(coreScreenOff?'CoreBAR screen is off. Wake it on the device to see its content. ':'')+'Captured '+screenCapturedAt.toLocaleTimeString('en-GB')+' · saved preview; refreshed when configuration changes';
   }catch(error){
@@ -275,7 +273,7 @@ function clearCubeImages(){
 async function captureCubes(){
   if(!snapshot)return;
   if(cubeLoading){cubeRefreshPending=true;return;}
-  const generation=connectionGeneration;cubeLoading=true;
+  const generation=connectionGeneration;cubeLoading=true;controls();
   try{
     const response=await api('/api/cube-previews'),data=await response.json();
     if(generation!==connectionGeneration)return;
@@ -288,9 +286,8 @@ async function captureCubes(){
     }
     renderHardware();
   }catch(error){if(generation===connectionGeneration)$('preview-help').textContent='Could not refresh cube artwork. '+error.message;}
-  finally{cubeLoading=false;if(cubeRefreshPending){cubeRefreshPending=false;captureCubes();}}
+  finally{cubeLoading=false;controls();if(cubeRefreshPending){cubeRefreshPending=false;captureCubes();}}
 }
-$('screen-button').onclick=()=>{captureScreen(true);captureCubes();};
 $('preview-refresh').onclick=()=>{captureScreen(true);captureCubes();};
 $('backup').onclick=async()=>{
   try{const response=await api('/api/backup');const url=URL.createObjectURL(await response.blob());const a=el('a');a.href=url;a.download='ultrabar-profil-backup.xml';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);notice('Backup is ready to download.');}catch(error){notice(error.message,true);}

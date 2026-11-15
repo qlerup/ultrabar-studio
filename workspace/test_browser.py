@@ -78,9 +78,9 @@ def main():
         page.locator('#modules').get_by_role('button', name='KnobKey', exact=False).click()
         assert page.locator('#detail-title').inner_text() == 'KnobKey'
         assert page.locator('#events .event').count() >= 1
-        page.locator('#screen-button').click()
-        expect(page.locator('#screen')).to_be_visible(timeout=65000)
-        assert page.locator('#screen').evaluate('(image) => image.complete && image.naturalWidth > 0')
+        page.locator('#preview-refresh').click()
+        expect(page.locator('.core-unit .core-screen-image')).to_be_visible(timeout=65000)
+        assert page.locator('.core-unit .core-screen-image').evaluate('(image) => image.complete && image.naturalWidth > 0')
         page.screenshot(path=str(output / 'desktop.png'), full_page=True)
         with page.expect_download() as download:
             page.locator('#backup').click()
