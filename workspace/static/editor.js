@@ -17,7 +17,7 @@
   }
   function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[]}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
-  function showMode(next){mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();}
+  function showMode(next){mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
   async function openEditor(){
     if(!snapshot||busy||working)return;
     window.studioStore?.leave();
@@ -292,17 +292,45 @@
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));
   }
   function modules(){const map=new Map((snapshot.hardware?.devices||[]).filter(d=>['DOT_KEY','VIVO_CUBE','KNOB_KEY','SENSE_CUBE'].includes(d.type)).map(d=>[d.serial,{serialNo:d.serial,productId:d.type}]));for(const m of current().module)map.set(m.serialNo,m);return [...map.values()];}
+  function renderActionDevices(){
+    if(!draft)return;
+    const strip=$('action-devices'),focused=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
+    const live=new Map((snapshot.hardware?.devices||[]).map(d=>[d.serial,d]));
+    const cards=new Map();
+    const core=createHardwareUnit();core.title='Edit CoreBAR screen layout';core.onclick=()=>showMode('layout');cards.set('core',core);
+    for(const m of modules()){
+      const device=live.get(m.serialNo)||{serial:m.serialNo,type:m.productId,name:names[m.productId]||m.productId,online:null};
+      const card=createHardwareUnit(device),selected=m.serialNo===moduleSerial;
+      card.classList.toggle('action-device-selected',selected);card.setAttribute('aria-pressed',String(selected));
+      card.setAttribute('aria-label',`${names[m.productId]||m.productId} / ${m.serialNo.slice(-6)}`);
+      card.title=`Configure ${names[m.productId]||m.productId} / ${m.serialNo}`;
+      card.append(el('span','action-device-serial',m.serialNo.slice(-6)));
+      card.onclick=()=>{if(working)return;moduleSerial=m.serialNo;inputKey='';renderModules();};
+      cards.set(m.serialNo,card);
+    }
+    const order=[...new Set([...(snapshot.layout_order||[]),...cards.keys()])];
+    strip.replaceChildren(...order.filter(key=>cards.has(key)).map(key=>cards.get(key)));
+    centerHardware(strip);
+    if(focused)[...strip.children].find(card=>card.dataset.layoutKey===focused)?.focus({preventScroll:true});
+  }
+  window.addEventListener('studio-hardware-changed',()=>{if(mode==='actions'&&!$('editor-content').hidden)renderActionDevices();});
+  new ResizeObserver(()=>centerHardware($('action-devices'))).observe($('action-devices'));
   function renderModules(){
-    const list=modules();if(!list.some(m=>m.serialNo===moduleSerial))moduleSerial=list[0]?.serialNo||'';
-    const select=$('action-module');select.replaceChildren();list.forEach(m=>option(select,m.serialNo,`${names[m.productId]||m.productId} · ${m.serialNo.slice(-6)}`));select.value=moduleSerial;
+    const list=modules();if(!list.some(m=>m.serialNo===moduleSerial)){moduleSerial='';inputKey='';}
+    renderActionDevices();
     const m=list.find(m=>m.serialNo===moduleSerial);const input=$('action-input');input.replaceChildren();
+    $('action-config').hidden=!m;$('action-device-empty').hidden=!!m;
+    $('action-module-title').textContent=m?`${names[m.productId]||m.productId} / ${m.serialNo.slice(-6)}`:'';
+    $('action-module-status').textContent=m?'Choose an input, then add or arrange its actions.':'';
     if(m){if(m.productId==='SENSE_CUBE'){for(let i=0;i<5;i++)option(input,'sense:'+i,'Tap event '+(i+1));}
     else{const slots=m.productId==='DOT_KEY'?[2,3]:m.productId==='KNOB_KEY'?[0]:[...new Set([101,...(Array.isArray(m.config)?m.config.map(c=>c.keyCode):[])])];for(const key of slots)for(const [kind,label] of Object.entries({singleClick:'Single press',doubleClick:'Double press',longPress:'Long press'}))option(input,key+':'+kind,`${m.productId==='VIVO_CUBE'?'Screen button '+key:m.productId==='DOT_KEY'?'Button '+(key-1):'Button'} · ${label}`);}}
+    if(m?.productId==='KNOB_KEY'){option(input,'knob:clockwise','Turn clockwise');option(input,'knob:counterclockwise','Turn counterclockwise');}
     if(![...input.options].some(o=>o.value===inputKey))inputKey=input.options[0]?.value||'';input.value=inputKey;renderActionLibrary();renderSequence();
   }
   function inputScene(create=false){
     let m=current().module.find(m=>m.serialNo===moduleSerial);if(!m&&create){const meta=modules().find(m=>m.serialNo===moduleSerial);if(!meta)return null;m={serialNo:meta.serialNo,productId:meta.productId,config:meta.productId==='KNOB_KEY'?{}:[]};current().module.push(m);}if(!m)return null;
     const [key,kind]=inputKey.split(':');
+    if(key==='knob'){if(!m.config[kind]&&create)m.config[kind]={actions:[],name:kind,type:'MANUAL',enabled:false,show:false};return m.config[kind];}
     if(key==='sense'){let scene=m.config.find(s=>s.mode===Number(kind));if(!scene&&create){scene={mode:Number(kind),actions:[],name:'Tap event '+(Number(kind)+1),type:'MANUAL',enabled:false,show:false};m.config.push(scene);}return scene;}
     let slot=m.productId==='KNOB_KEY'?m.config.button:m.config.find(s=>s.keyCode===Number(key));
     if(!slot&&create){slot={keyCode:Number(key)};if(m.productId==='VIVO_CUBE')slot.widgetType=1;if(m.productId==='KNOB_KEY')m.config.button=slot;else m.config.push(slot);}
@@ -347,7 +375,6 @@
   $('edit-profile').onchange=()=>{profileIndex=Number($('edit-profile').value);widgetIndex=0;renderEditor();};
   $('edit-profile-name').onchange=()=>change(()=>current().name=$('edit-profile-name').value);
   $('edit-show-names').onchange=()=>change(()=>current().showName=$('edit-show-names').checked);
-  $('action-module').onchange=()=>{moduleSerial=$('action-module').value;inputKey='';renderModules();};
   $('action-input').onchange=()=>{inputKey=$('action-input').value;renderSequence();};
   $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;renderEditor();};
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});

@@ -17,6 +17,7 @@ class DesignTests(unittest.TestCase):
 
   profiles[0]['module'] += [dict(serialNo='0000000000000002',productId='VIVO_CUBE',config=[]),dict(serialNo='0000000000000003',productId='KNOB_KEY',config={})]
   devices=[dict(serial=m['serialNo'],type=m['productId'],name=m['productId'],online=True) for m in profiles[0]['module']]
+  devices += [dict(serial='0000000000000004',type='SENSE_CUBE',name='SenseCube',online=True),dict(serial='0000000000000005',type='KNOB_KEY',name='KnobKey',online=False)]
   snapshot=dict(target='192.168.1.148:5555',model='CB01',device_id='preview',read_at='2026-11-14T20:00:00Z',profiles=profiles,backup='fixture.xml',hardware=dict(devices=devices),layout_order=[])
   with tempfile.TemporaryDirectory() as tmp, patch.object(server,'DATA_DIR',Path(tmp)), patch.dict(server.connection,target=snapshot['target'],snapshot=snapshot):
    http=make_server('127.0.0.1',0,server.app,threaded=True);host=f'127.0.0.1:{http.server_port}'
@@ -68,6 +69,42 @@ class DesignTests(unittest.TestCase):
        page.locator('#connection-open').click();expect(page.locator('#discover')).to_be_visible();page.keyboard.press('Escape')
       page.set_viewport_size(dict(width=1440,height=960))
       page.locator('#nav-editor').click()
+      page.locator('#mode-actions').click()
+      expect(page.locator('#action-config')).not_to_be_visible()
+      expect(page.locator('#action-device-empty')).to_be_visible()
+      expect(page.locator('#action-devices .hardware-unit')).to_have_count(6)
+      assert page.locator('#action-devices .hardware-unit').evaluate_all('(cards)=>cards.map(c=>c.dataset.layoutKey)')==page.evaluate('visibleLayoutOrder()')
+      dot=page.locator('#action-devices .dot_key')
+      dot.focus();page.keyboard.press('Enter')
+      expect(page.locator('#action-config')).to_be_visible()
+      expect(page.locator('#action-input')).to_have_value('2:singleClick')
+      page.locator('#action-input').select_option('2:doubleClick')
+      page.locator('#action-library .library-item').first.click()
+      expect(page.locator('#action-sequence .sequence-item')).to_have_count(1)
+      page.locator('#action-devices [data-layout-key="0000000000000003"]').click()
+      page.locator('#action-input').select_option('knob:clockwise')
+      page.locator('#action-library .library-item').first.click()
+      expect(page.locator('#action-sequence .sequence-item')).to_have_count(1)
+      page.locator('#action-devices [data-layout-key="0000000000000005"]').click()
+      expect(page.locator('#action-devices [data-layout-key="0000000000000005"]')).to_have_class('hardware-unit knob_key is-offline action-device-selected')
+      expect(page.locator('#action-sequence .sequence-item')).to_have_count(0)
+      page.locator('#action-library .library-item').first.click()
+      page.locator('#action-devices .vivo_cube').click()
+      page.locator('#action-input').select_option('101:longPress')
+      page.locator('#action-library .library-item').first.click()
+      page.locator('#action-devices .sense_cube').click()
+      page.locator('#action-input').select_option('sense:2')
+      page.locator('#action-library .library-item').first.click()
+      page.evaluate('renderHardware()')
+      expect(page.locator('#action-input')).to_have_value('sense:2')
+      expect(page.locator('#action-sequence .sequence-item')).to_have_count(1)
+      for width in [1920,390]:
+       page.set_viewport_size(dict(width=width,height=960))
+       page.screenshot(path=str(server.ROOT/f'data/qa/design-actions-{width}.png'),full_page=True)
+       assert page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'),page.evaluate("[...document.querySelectorAll('#actions-editor *')].filter(n=>n.getBoundingClientRect().right>innerWidth+1).map(n=>[n.tagName,n.id,n.className,n.getBoundingClientRect().right]).slice(0,15)")
+      page.set_viewport_size(dict(width=1440,height=960))
+      page.locator('#action-devices .core-unit').click()
+      expect(page.locator('#layout-editor')).to_be_visible()
       expect(page.locator('details[data-group="store"] .library-item')).to_have_count(3)
       expect(page.locator('details[data-group="installed"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(1)
       expect(page.locator('details[data-group="store"]').get_by_role('button',name='Original PC widget',exact=True,include_hidden=True)).to_have_count(0)
@@ -122,6 +159,13 @@ class DesignTests(unittest.TestCase):
       page.locator('#draft-save').click()
       expect(page.locator('#editor-notice')).to_contain_text('Draft saved')
       saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
+      module_map={m['serialNo']:m for m in saved['profiles'][0]['module']}
+      assert module_map['0000019F2B129C2C']['config'][0]['doubleClick']['actions']
+      assert module_map['0000000000000003']['config']['clockwise']['actions']
+      assert module_map['0000000000000002']['config'][0]['longPress']['actions']
+      assert module_map['0000000000000005']['config']['button']['singleClick']['actions']
+      assert module_map['0000000000000004']['config'][0]['mode']==2
+      assert module_map['0000000000000004']['config'][0]['actions']
       monitors=[w['param']['payload']['params'] for p in saved['profiles'] for w in p['homeData'] if w.get('param',{}).get('payload',{}).get('params',{}).get('packageId')=='studio.system.widget']
       assert sorted(w['kind'] for w in monitors)==['cpu','cpu','cpu','gpu','memory'],monitors
       assert all(w['kindOptions']==['cpu','memory','gpu'] for w in monitors)

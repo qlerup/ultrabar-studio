@@ -30,6 +30,7 @@ def main():
         expect(page.locator('#editor-notice')).to_contain_text('Draft saved',timeout=30000)
         page.screenshot(path=str(output/'editor-desktop.png'),full_page=True)
         page.locator('#mode-actions').click()
+        page.locator('#action-devices .hardware-unit:not(.core-unit)').first.click()
         expect(page.locator('#action-library .library-item').first).to_be_visible()
         count=page.locator('#action-sequence .sequence-item').count()
         page.locator('#action-library .library-item').first.drag_to(page.locator('#action-sequence'))

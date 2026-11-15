@@ -41,19 +41,11 @@ function render() {
   $('module-count').textContent=modules.length;$('widget-count').textContent=widgets.length;
   $('read-time').textContent='Last read '+new Date(snapshot.read_at).toLocaleString('en-GB');
 }
-function renderHardware() {
-  if(layoutDrag)return;
-  const hardware=snapshot.hardware||{},devices=hardware.devices||[];
-  const online=devices.filter(d=>d.online===true).length;
-  const offline=devices.filter(d=>d.online===false).length;
-  const unknown=devices.length-online-offline;
-  $('hardware-status').textContent=hardware.status_error||`${online} online · ${offline} offline${unknown?' · '+unknown+' unknown':''} · checked ${new Date(hardware.checked_at||snapshot.read_at).toLocaleTimeString('en-GB')} · updates every 5 seconds`;
-  const strip=$('hardware-preview'),focusedKey=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
-  strip.replaceChildren();
-  const core=el('button','hardware-unit core-unit'+(hardware.status_error?' is-unknown':''));core.dataset.layoutKey='core';core.append(el('div','unit-screen','COREBAR'),el('span','unit-name','CoreBAR'),el('span','unit-state',hardware.status_error?'Connection unverified':'Connected via ADB'));strip.append(core);
-  core.title='Refresh CoreBAR screen preview';
-  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;captureScreen(true);};
-  for(const device of devices){
+function createHardwareUnit(device=null){
+  if(!device){
+  const core=el('button','hardware-unit core-unit'+(snapshot.hardware?.status_error?' is-unknown':''));core.dataset.layoutKey='core';core.append(el('div','unit-screen','COREBAR'),el('span','unit-name','CoreBAR'),el('span','unit-state',snapshot.hardware?.status_error?'Connection unverified':'Connected via ADB'));
+  paintCoreScreen(core.querySelector('.unit-screen'));return core;
+  }
     const unit=el('button','hardware-unit '+device.type.toLowerCase()+(device.online===false?' is-offline':device.online===null?' is-unknown':''));
     unit.title=`${device.name} · ${device.serial}`;
     unit.dataset.layoutKey=device.serial;
@@ -63,6 +55,22 @@ function renderHardware() {
     else if(device.type==='SENSE_CUBE'){face.append(el('span','sense-eye'));}
     else{const display=el('span','cube-screen',device.type==='VIVO_CUBE'?(cubeImages[device.serial]?.error||'Loading artwork...'):'?');if(device.type==='VIVO_CUBE')display.title=cubeImages[device.serial]?.source||cubeImages[device.serial]?.error||'Reading saved artwork';if(cubeImages[device.serial]?.url){display.textContent='';const img=el('img','cube-artwork');img.src=cubeImages[device.serial].url;img.alt='Saved VivoCube artwork';img.draggable=false;display.append(img);};face.append(display);}
     unit.append(face,el('span','unit-name',names[device.type]||device.name),el('span','unit-state',device.online===true?'Online':device.online===false?'Offline':'Unknown'));
+  return unit;
+}
+function renderHardware() {
+  if(layoutDrag)return;
+  const hardware=snapshot.hardware||{},devices=hardware.devices||[];
+  const online=devices.filter(d=>d.online===true).length;
+  const offline=devices.filter(d=>d.online===false).length;
+  const unknown=devices.length-online-offline;
+  $('hardware-status').textContent=hardware.status_error||`${online} online · ${offline} offline${unknown?' · '+unknown+' unknown':''} · checked ${new Date(hardware.checked_at||snapshot.read_at).toLocaleTimeString('en-GB')} · updates every 5 seconds`;
+  const strip=$('hardware-preview'),focusedKey=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
+  strip.replaceChildren();
+  const core=createHardwareUnit();strip.append(core);
+  core.title='Refresh CoreBAR screen preview';
+  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;captureScreen(true);};
+  for(const device of devices){
+    const unit=createHardwareUnit(device);
     unit.onclick=()=>{
       if(Date.now()<suppressHardwareClickUntil)return;
       $('hardware-detail').dataset.serial=device.serial;
@@ -81,10 +89,11 @@ function renderHardware() {
   const selected=devices.find(device=>device.serial===$('hardware-detail').dataset.serial);
   if(selected)$('hardware-detail').textContent=`${names[selected.type]||selected.name} · ${selected.serial} · ${selected.online===true?'CoreBAR reports online':selected.online===false?'CoreBAR reports offline':'Status unknown'}`;
   else if($('hardware-detail').dataset.serial){delete $('hardware-detail').dataset.serial;$('hardware-detail').textContent='Select a module to see its connection status.';}
+  window.dispatchEvent(new Event('studio-hardware-changed'));
 }
 // Balance the space around CoreBAR without changing the saved device order.
-function centerHardware(){
-  const strip=$('hardware-preview'),cards=[...strip.children];
+function centerHardware(strip=$('hardware-preview')){
+  const cards=[...strip.children];
   const core=cards.find(card=>card.dataset.layoutKey==='core');
   if(!core||!strip.clientWidth)return;
   // Old centering padding must not hold the strip wider than a resized window.
@@ -191,8 +200,9 @@ async function pollHardware() {
 setInterval(pollHardware,5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollHardware();if(!screenUrl)captureScreen();}});
 $('connect-form').onsubmit=event=>{event.preventDefault();load(true);};$('refresh').onclick=()=>load(false);
-function renderCoreScreen(){
-  const face=document.querySelector('.core-unit .unit-screen');if(!face)return;
+function renderCoreScreen(){document.querySelectorAll('.core-unit .unit-screen').forEach(paintCoreScreen);}
+function paintCoreScreen(face){
+  if(!face)return;
   face.replaceChildren();
   if(screenUrl){const img=el('img','core-screen-image');img.src=screenUrl;img.alt='Actual CoreBAR screen';img.draggable=false;face.append(img);}
   else face.append(el('span','','COREBAR'));

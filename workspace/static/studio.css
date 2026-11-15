@@ -174,3 +174,16 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 @media(max-width:500px){#manual-app-dialog{padding:20px}.manual-folder-fields input{flex-basis:100%}.manual-app-footer{align-items:stretch;flex-direction:column;gap:14px}.manual-app-footer button{justify-content:center}.manual-package-heading{flex-wrap:wrap}}
 
 #updates-open.update-available{background:#bcb2ff;color:#171421;border-color:#bcb2ff;font-weight:700}
+
+/* Module actions share the device overview artwork and saved desk order. */
+.action-device-help{margin-bottom:14px}
+#action-devices{margin:0 0 24px}
+#action-devices .hardware-unit{cursor:pointer;touch-action:pan-x pan-y}
+#action-devices .hardware-unit:active{cursor:pointer}
+#action-devices .action-device-selected{border-color:var(--mint);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--mint)}
+.action-device-serial{display:block;font:10px Consolas,monospace;color:var(--muted);margin-top:6px}
+#action-device-empty{padding:30px 16px;text-align:center;border:1px dashed var(--line)}
+#action-config .action-selector{align-items:center;justify-content:space-between}
+#action-module-title{margin:0 0 4px;font-size:18px}
+#action-module-status{margin:0}
+@media(max-width:750px){#action-config .action-selector{align-items:stretch;flex-direction:column}#action-devices{padding-top:16px;padding-bottom:16px}}

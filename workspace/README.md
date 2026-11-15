@@ -1,4 +1,14 @@
-# UltraBar Studio — 0.41 Windows
+# UltraBar Studio — 0.42 Windows
+
+## 0.42 update
+
+Module actions now uses the same visual device strip, live status, saved artwork and desk order as Device overview. Select a module to reveal its input selector and action editor. Matching devices are distinguished by their serial suffix; offline modules and saved modules absent from live hardware can still be configured. Selecting CoreBAR opens Core layout. Device selection alone does not change the draft.
+
+KnobKey rotation inputs are available alongside button presses. Assignments remain separate for each physical module and use the existing draft, Undo, save and Deploy workflow. Live status refresh preserves the selected module and input.
+
+Device overview no longer repeats the Home screen widgets list or the Modules/configuration inspector. Hardware previews, connection status, profile summary and backup download remain available. Edit layouts and module actions in Design & actions.
+
+Browser acceptance checks cover device selection, two independent KnobKeys, offline configuration, DotKey presses, VivoCube presses, SenseCube taps, KnobKey rotation, persisted draft assignments and desktop/mobile layouts. No physical-device assignment changes were performed for these checks.
 
 ## 0.41 update
 
