@@ -44,3 +44,26 @@ class ScreenSyncTests(unittest.TestCase):
         self.server.adb.side_effect=lambda *a,**kw:' userId=10123\n' if 'dumpsys' in a else b'wrong' if 'exec-out' in a else ''
         with self.assertRaisesRegex(store.StoreError,'verified'):screen_sync.configure(self.server,'core',(b'config',b'cert'))
         self.assertFalse(any('start' in c.args for c in self.server.adb.call_args_list))
+
+    def test_background_settings_preserve_other_preferences_and_start_service(self):
+        import re
+        import xml.etree.ElementTree as ET
+        stored={}
+        def adb(*args,**kwargs):
+            if 'dumpsys' in args:return ' userId=10123\n'
+            if kwargs.get('input_data') is not None:
+                path=re.search(r'cat > (\S+)\.tmp',args[-1]).group(1)
+                stored[path]=kwargs['input_data']
+            if 'exec-out' in args:return stored[args[-1]]
+            if args[-1].startswith('if [ -f '):return '<map><string name="keep">existing value</string></map>'
+            return 'Starting service'
+        self.server.adb.side_effect=adb
+        screen_sync.configure(self.server,'core',(b'private-config',b'cert'),settings=dict(enabled=True,wakeDelayMs=1750),background=True)
+        prefs=ET.fromstring(stored['/data/user/0/'+screen_sync.PACKAGE_ID+'/shared_prefs/sync.xml'])
+        self.assertEqual(prefs.find("./string[@name='keep']").text,'existing value')
+        self.assertEqual(prefs.find("./boolean[@name='enabled']").get('value'),'true')
+        self.assertEqual(prefs.find("./int[@name='wakeDelayMs']").get('value'),'1750')
+        calls=self.server.adb.call_args_list
+        self.assertIn('start-foreground-service',calls[-1].args)
+        self.assertEqual(calls[-1].args[-1],'enable')
+        self.assertFalse(any('.MainActivity' in str(c.args) for c in calls))

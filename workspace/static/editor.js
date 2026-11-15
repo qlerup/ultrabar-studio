@@ -3,6 +3,8 @@
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
   let editorGeneration=0, pcDestination='widget', pcMetrics={};
   let storePresets=[];
+  let backgroundIndex=-1;
+  const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
   const types={CPU:'CPU usage',MEMORY:'RAM usage',STORAGE:'Disk usage',TIME:'Clock',APPS:'Core app',PC_CONTROL:'PC action'};
@@ -13,7 +15,7 @@
     $('draft-status').textContent=!draft?'Loading draft…':dirty?'Unsaved draft changes':`Draft saved · ${new Date(draft.saved_at).toLocaleTimeString()}`;
     $('editor-content').classList.toggle('editor-working',working);
   }
-  function checkpoint(){history.push(clone(draft.profiles));if(history.length>30)history.shift();dirty=true;updateControls();}
+  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[]}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
   function showMode(next){mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();}
   async function openEditor(){
@@ -39,9 +41,11 @@
   function option(select,value,label){const item=el('option','',label);item.value=value;select.append(item);}
   function renderEditor(){
     if(!draft)return;
+    draft.background_apps??=[];for(const app of draft.background_apps)app.settings??={};
+    if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
     const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
-    renderLibrary();renderCanvas();renderProperties();renderModules();updateControls();
+    renderLibrary();renderCanvas();renderBackground();renderProperties();renderModules();updateControls();
   }
   function nativeSpec(w){return w.param?.payload?.action==='studioNative'?w.param.payload.params:null;}
   function nativeTemplate(kind,name,drive='all'){return {type:'PC_CONTROL',name,bgColor:'#192325',iconScale:0,_new:true,_native:true,param:{output:10,payload:{action:'studioNative',params:{kind,accent:'#94d9bb',textColor:'#eef6f2',...(kind==='disk'?{drive}:{})}}}};}
@@ -49,6 +53,7 @@
     try{
       const data=await(await api('/api/store/installed')).json();
       storePresets=(data.widgets||[]).map((w,i)=>{
+        if(w.type==='APPS')return {...w,_storeKey:w._storePackage+':'+w.id};
         const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
@@ -64,7 +69,7 @@
   function stock(){return [{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
     const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>!nativeSpec(w));const seen=new Set();
-    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
+    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w.type==='APPS'?'app:'+w.id:w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
   // Pointer-based dragging avoids native HTML5/WebView drag restrictions and
   // makes the entire scaled Core viewport a target, with a visible insert line.
@@ -76,8 +81,11 @@
     const next=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x<r.left+r.width/2;});
     return next<0?cards.length:next;
   }
+  function overBackground(x,y){const r=$('background-drop').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
+  function dragApp(payload){return payload.widget||(payload.kind==='widget-move'?current().homeData[payload.index]:null);}
   function paintWidgetDrag(){
     const d=widgetPointer;if(!d?.active)return;
+    $('background-drop').classList.toggle('is-drop-target',overBackground(d.x,d.y)&&dragApp(d.payload)?.type==='APPS');
     const screen=$('core-screen').getBoundingClientRect();
     d.ghost.style.left=(d.x+14)+'px';d.ghost.style.top=(d.y+14)+'px';
     let at=widgetDropIndex(d.x,d.y);
@@ -96,9 +104,12 @@
     if(d.node.hasPointerCapture(d.pointerId))d.node.releasePointerCapture(d.pointerId);
     if(!d.active)return;
     cancelAnimationFrame(d.frame);d.ghost.remove();d.marker.remove();d.node.classList.remove('dragging');
+    $('background-drop').classList.remove('is-drop-target');
     const at=widgetDropIndex(d.x,d.y);drag=null;suppressWidgetClickUntil=Date.now()+400;
+    if(!cancel&&overBackground(d.x,d.y)){addBackground(dragApp(d.payload));return;}
     if(cancel||at===null){message('Move cancelled.');return;}
     if(d.payload.kind==='widget-new')addWidget(d.payload.widget,at);
+    else if(d.payload.kind==='widget-background'){const app=d.payload.widget;change(()=>{draft.background_apps.splice(d.payload.index,1);backgroundIndex=-1;current().homeData.splice(at,0,{id:app.id,type:'APPS',name:app.name,iconScale:100});widgetIndex=at;});}
     else moveWidget(d.payload.index,at);
   }
   document.addEventListener('pointermove',event=>{
@@ -156,11 +167,35 @@
     if(!container.children.length)container.append(el('p','muted','No matching widgets.'));
   }
   function addWidget(template,at=current().homeData.length){
-    const widget=clone(template);delete widget._storePackage;delete widget._storeKey;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
+    backgroundIndex=-1;
+    const widget=clone(template);delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
-    change(()=>{current().homeData.splice(at,0,widget);widgetIndex=at;});
+    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);current().homeData.splice(at,0,widget);widgetIndex=at;});
   }
-  function moveWidget(from,to){if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
+  function addBackground(w){
+    if(!w||w.type!=='APPS'){message('Background apps supports Core apps. Display widgets belong on the bar.',true);return;}
+    if(/^(android\.|com\.android\.|com\.ultrabar\.)/.test(w.id)){message('System apps cannot be added to Background apps.',true);return;}
+    const existing=draft.background_apps.findIndex(a=>a.id===w.id);
+    if(existing>=0){backgroundIndex=existing;renderBackground();renderProperties();return;}
+    change(()=>{for(const p of draft.profiles)p.homeData=p.homeData.filter(a=>a.type!=='APPS'||a.id!==w.id);draft.background_apps.push({id:w.id,name:w.name||w.id,settings:w.id===screenSyncId?{enabled:true,wakeDelayMs:1000}:{launch:true}});backgroundIndex=draft.background_apps.length-1;});
+  }
+  function renderBackground(){
+    const list=$('background-apps');list.replaceChildren();
+    $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
+    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',app.id===screenSyncId?(app.settings.enabled===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
+  }
+  function renderBackgroundProperties(panel){
+    const app=draft.background_apps[backgroundIndex];if(!app)return;
+    panel.replaceChildren(el('h3','','Background app settings'),el('span','badge','NO BAR SPACE'),el('h4','',app.name));
+    if(app.id===screenSyncId){
+      const wrap=el('label','property-field','Vivo screens'),select=el('select');select.id='background-sync-mode';option(select,'follow','Follow Core');option(select,'always','Always on');select.value=app.settings.enabled===false?'always':'follow';select.onchange=()=>change(()=>app.settings.enabled=select.value==='follow');wrap.append(select);panel.append(wrap);
+      const delay=field('Wake delay (ms)',app.settings.wakeDelayMs??1000,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=3000&&n%250===0)change(()=>app.settings.wakeDelayMs=n);else{message('Use 0–3000 ms in steps of 250.',true);renderProperties();}},'number');const input=delay.querySelector('input');input.id='background-wake-delay';input.min='0';input.max='3000';input.step='250';panel.append(delay,el('p','muted','VivoCubes follow Core screen power. Wake delay applies when Core turns on. Deploy installs the app, sends these settings and starts syncing in the background.'));
+    }else{
+      const wrap=el('label','property-field','Launch after Deploy'),input=el('input');input.type='checkbox';input.id='background-launch';input.checked=app.settings.launch!==false;input.onchange=()=>change(()=>app.settings.launch=input.checked);wrap.append(input);panel.append(wrap,el('p','muted','Installed without a card on Core. Background behavior depends on the app; apps with their own background service can keep running.'));
+    }
+    panel.append(button('Move onto bar',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;current().homeData.push({id:app.id,type:'APPS',name:app.name,iconScale:100});widgetIndex=current().homeData.length-1;})),button('Remove background app',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;}),'danger-quiet'),el('p','muted','Changes apply on Deploy. Removing an app here stops its background operation on the next Deploy; the Android app remains installed.'));
+  }
+  function moveWidget(from,to){backgroundIndex=-1;if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
     card.replaceChildren(el('strong','native-title',w.name||'Studio'));
@@ -215,7 +250,7 @@
   $('core-next').onclick=()=>{$('core-canvas').scrollLeft+=1424;};
   function renderCanvas(){
     const canvas=$('core-canvas'),position=canvas.scrollLeft;canvas.replaceChildren();
-    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{widgetIndex=i;renderCanvas();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
+    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
     if(!current().homeData.length)canvas.append(el('p','canvas-empty','Drop widgets here to build your Core screen'));
     canvas.scrollLeft=position;requestAnimationFrame(syncCoreScroll);
@@ -224,8 +259,10 @@
   function field(label,value,onchange,type='text'){const wrap=el('label','property-field',label),input=el('input');input.type=type;input.value=value;input.onchange=()=>onchange(input.value);wrap.append(input);return wrap;}
   function button(text,fn,cls=''){const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;}
   function renderProperties(){
+    if(backgroundIndex>=0){renderBackgroundProperties($('widget-properties'));return;}
     const panel=$('widget-properties');panel.replaceChildren(el('h3','','Widget settings'));const w=current().homeData[widgetIndex];if(!w){panel.append(el('p','muted','Select a card to edit it.'));return;}
     const spec=nativeSpec(w);
+    if(w.type==='APPS')panel.append(button('Run in background',()=>addBackground(w)));
     panel.append(el('span','badge',spec?'Studio widget':w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
@@ -288,7 +325,7 @@
     if(!actions.length)box.append(el('p','canvas-empty','Drop actions here, or choose one from the library'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
-  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles})})).json();draft=response.draft;dirty=false;updateControls();}
+  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[]})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
   async function refreshPc(){
     try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
@@ -312,9 +349,9 @@
   $('edit-show-names').onchange=()=>change(()=>current().showName=$('edit-show-names').checked);
   $('action-module').onchange=()=>{moduleSerial=$('action-module').value;inputKey='';renderModules();};
   $('action-input').onchange=()=>{inputKey=$('action-input').value;renderSequence();};
-  $('widget-undo').onclick=()=>{if(working||!history.length)return;draft.profiles=history.pop();dirty=true;renderEditor();};
+  $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;renderEditor();};
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
-  $('draft-deploy').onclick=()=>{if(!draft||working)return;const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','No draft changes. This will verify and resend the current profile package.'));$('deploy-dialog').showModal();};
+  $('draft-deploy').onclick=()=>{if(!draft||working)return;const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
   $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
   $('deploy-progress-close').onclick=()=>$('deploy-progress').close();

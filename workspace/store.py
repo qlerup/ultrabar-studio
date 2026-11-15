@@ -16,6 +16,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from flask import jsonify, request
 import updates
+import screen_sync
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
 ASSET_PREFIX = 'https://github.com/qlerup/ultrabar-store/releases/download/'
@@ -235,7 +236,7 @@ class Store:
     def save(self,data):
         from editor import atomic_json
         atomic_json(self.server.DATA_DIR/'store/installed.json',data)
-    def key(self,p,device): return p['id']+(':'+device if p['type']=='corebar-app' else ':pc')
+    def key(self,p,device): return p['id']+':pc'
     def remember_icons(self,packages):
         self.stats.remember(packages)
         with self.lock:
@@ -256,7 +257,9 @@ class Store:
         return raw
     def templates(self):
         with self.lock:
-            return [dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
+            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
+            templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app')
+            return templates
     def status(self):
         with self.lock:return copy.deepcopy(self.job)
     def update_job(self,**values):
@@ -303,7 +306,8 @@ class Store:
             if not local and (not p or p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256')):raise StoreError('The catalog changed. Refresh the store and review the package again.')
             if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before installing this package.')
             device=body.get('device_id') or ''
-            if p['type']=='corebar-app' and not device:raise StoreError('Connect to CoreBAR before installing this app.')
+            deferred=p['type']=='corebar-app'
+            if screen_sync.applies(p):screen_sync.validate_identity(p)
             with self.lock:
                 old=self.records().get(self.key(p,device))
             if old and valid_version(old['version'])>valid_version(p['version']):raise StoreError('Package downgrades are not supported.')
@@ -322,45 +326,122 @@ class Store:
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
-                else:
+                elif deferred:
                     inspect_apk(server,path,p)
-                    with server.device_lock:
-                        current=server.connection['snapshot'] or {}
-                        target=server.connection['target']
-                        if current.get('device_id')!=device or not target:raise StoreError('The connected Core changed. Reconnect and try again.')
-                        if server.adb('-s',target,'shell','getprop','ro.serialno')!=device:raise StoreError('The connected Core identity changed.')
-                        c=p['compatibility']
-                        if c.get('models') and current.get('model') not in c['models']:raise StoreError('This app does not support the connected model.')
-                        abi=server.adb('-s',target,'shell','getprop','ro.product.cpu.abi')
-                        if c.get('abis') and abi not in c['abis']:raise StoreError('This app does not support the connected CPU.')
-                        if int(server.adb('-s',target,'shell','getprop','ro.build.version.sdk'))<p['android']['minSdk']:raise StoreError('This app requires a newer Android version.')
-                        if c.get('lineosVersions'):
-                            dump=server.adb('-s',target,'shell','dumpsys','package','com.ultrabar.launch').split('Hidden system packages:',1)[0]
-                            version=re.search(r'^\s*versionName=(\S+)',dump,re.M)
-                            if not version or version.group(1) not in c['lineosVersions']:raise StoreError('This app does not support the connected LineOS version.')
-                        import screen_sync
-                        setup_entry=dict(p,id=p['original_id']) if local else p
-                        prepared = screen_sync.prepare(server, target, setup_entry) if screen_sync.applies(setup_entry) else None
-                        self.update_job(message='Installing on CoreBAR. Keep the connection open...')
-                        result=subprocess.run([str(server.ADB),'-s',target,'install','-r',str(path)],capture_output=True,timeout=120,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-                        if result.returncode or 'Success' not in result.stdout.decode(errors='replace'):raise StoreError('Android rejected the installation. The existing app was not uninstalled. Check its signing identity, version and available storage.')
-                        dump=server.adb('-s',target,'shell','dumpsys','package',p['android']['packageId']).split('Hidden system packages:',1)[0]
-                        if not re.search(r'\bversionCode='+str(p['android']['versionCode'])+r'\b',dump):raise StoreError('Installation completed but its version could not be verified. Check Core before retrying.')
-                        if prepared is not None:
-                            self.update_job(message='Configuring Screen Sync for your connected VivoCubes...')
-                            screen_sync.configure(server, target, prepared)
-                        record['android']=p['android']
+                    record.update(deferred=True,device_id=None,android=copy.deepcopy(p['android']),compatibility=copy.deepcopy(p['compatibility']),permissions=list(p['permissions']))
+                    cached=server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
+                    cached.parent.mkdir(parents=True,exist_ok=True)
+                    with self.lock:
+                        cached.with_suffix('.tmp').write_bytes(path.read_bytes());cached.with_suffix('.tmp').replace(cached)
+                        # Keep dependencies for widgets already placed in drafts.
+                        from editor import atomic_json
+                        dependencies=self.dependencies()
+                        dependencies[p['android']['packageId']]=p
+                        atomic_json(cached.parent/'library.json', dependencies)
                 with self.lock:
                     records=self.records();records[self.key(p,device)]=record;self.save(records)
-            self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
+            self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if deferred or p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
         except Exception as exc:
             text=str(exc) if isinstance(exc,(StoreError,server.DeviceError)) else 'Installation could not be completed. Check the connection and retry; Core may already have installed the package.'
             self.update_job(state='error',message=text)
+
+    def install_on_core(self,path,p,device,notify=None,background=None):
+        # Caller holds device_lock, including when invoked during Deploy.
+        server=self.server
+        notify=notify or (lambda message:self.update_job(message=message))
+        current=server.connection['snapshot'] or {}
+        target=server.connection['target']
+        if current.get('device_id')!=device or not target:raise StoreError('The connected Core changed. Reconnect and try again.')
+        if server.adb('-s',target,'shell','getprop','ro.serialno')!=device:raise StoreError('The connected Core identity changed.')
+        c=p['compatibility']
+        if c.get('models') and current.get('model') not in c['models']:raise StoreError('This app does not support the connected model.')
+        abi=server.adb('-s',target,'shell','getprop','ro.product.cpu.abi')
+        if c.get('abis') and abi not in c['abis']:raise StoreError('This app does not support the connected CPU.')
+        if int(server.adb('-s',target,'shell','getprop','ro.build.version.sdk'))<p['android']['minSdk']:raise StoreError('This app requires a newer Android version.')
+        if c.get('lineosVersions'):
+            dump=server.adb('-s',target,'shell','dumpsys','package','com.ultrabar.launch').split('Hidden system packages:',1)[0]
+            version=re.search(r'^\s*versionName=(\S+)',dump,re.M)
+            if not version or version.group(1) not in c['lineosVersions']:raise StoreError('This app does not support the connected LineOS version.')
+        prepared = screen_sync.prepare(server, target, p) if screen_sync.applies(p) else None
+        notify('Installing on CoreBAR. Keep the connection open…')
+        result=subprocess.run([str(server.ADB),'-s',target,'install','-r',str(path)],capture_output=True,timeout=120,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        if result.returncode or 'Success' not in result.stdout.decode(errors='replace'):raise StoreError('Android rejected the installation. The existing app was not uninstalled. Check its signing identity, version and available storage.')
+        dump=server.adb('-s',target,'shell','dumpsys','package',p['android']['packageId']).split('Hidden system packages:',1)[0]
+        if not re.search(r'\bversionCode='+str(p['android']['versionCode'])+r'\b',dump):raise StoreError('Installation completed but its version could not be verified. Check Core before retrying.')
+        if prepared is not None:
+            notify('Configuring Screen Sync for your connected VivoCubes…')
+            if background is not None:screen_sync.configure(server,target,prepared,settings=background.get('settings',{}),background=True)
+            else:screen_sync.configure(server, target, prepared)
+        elif background is not None:
+            self.start_background(p['android']['packageId'],background.get('settings',{}))
+
+    def start_background(self,package_id,settings):
+        server=self.server;target=server.connection['target']
+        if settings.get('launch',True):
+            result=server.adb('-s',target,'shell','am','start','-a','android.intent.action.MAIN','-c','android.intent.category.LAUNCHER','-p',package_id)
+            if re.search(r'error|exception',result,re.I):raise StoreError('Could not launch the background app: '+package_id)
+        else:server.adb('-s',target,'shell','am','force-stop',package_id)
+
+    def stop_removed_background(self,previous,current,profiles=None):
+        visible={w['id'] for p in profiles or [] for w in p.get('homeData',[]) if w.get('type')=='APPS'}
+        removed={a['id'] for a in previous}-{a['id'] for a in current}-visible
+        for package_id in sorted(removed):
+            if package_id==screen_sync.PACKAGE_ID:screen_sync.start_sync(self.server,self.server.connection['target'],False)
+            else:self.server.adb('-s',self.server.connection['target'],'shell','am','force-stop',package_id)
+
+    def dependencies(self):
+        try:
+            data=json.loads((self.server.DATA_DIR/'store/app-packages/library.json').read_text(encoding='utf-8'))
+            if not isinstance(data,dict):raise ValueError()
+            return data
+        except FileNotFoundError:return {}
+        except (OSError,ValueError) as exc:
+            raise StoreError('Could not read the Core app library. Install the required apps again from Store.') from exc
+
+    def deploy_dependencies(self,profiles,device,notify,background_apps=None):
+        # No device access or package work unless an app is placed in a profile.
+        requested={w['id'] for p in profiles for w in p.get('homeData',[]) if w.get('type')=='APPS'}
+        background={a['id']:a for a in background_apps or []}
+        requested.update(background)
+        if not requested:return
+        with self.lock:
+            dependencies=self.dependencies()
+        plan=[];existing_background=[]
+        for package_id in sorted(requested):
+            if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')
+            p=dependencies.get(package_id)
+            if p is None:
+                # Existing Core apps and drafts from earlier Studio versions.
+                target=self.server.connection['target']
+                if package_id==screen_sync.PACKAGE_ID and package_id in background:raise StoreError('Install Vivo Screen Sync into the library before using it in the background.')
+                if self.server.adb('-s',target,'shell','pm','path',package_id).startswith('package:'):
+                    if package_id in background:existing_background.append(package_id)
+                    continue
+                raise StoreError('Add the missing Core app to the Studio library before deploying: '+package_id)
+            validate_entry(p)
+            if p['type']!='corebar-app' or p['android']['packageId']!=package_id:raise StoreError('Invalid Core app library package.')
+            if screen_sync.applies(p):screen_sync.validate_identity(p)
+            if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before deploying '+p['name']+'.')
+            path=self.server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
+            try:
+                if path.stat().st_size!=p['artifact']['size']:raise StoreError('Core app package integrity check failed. Install it again from Store: '+p['name'])
+                raw=path.read_bytes()
+            except OSError as exc:raise StoreError('Core app package is missing. Install it again from Store: '+p['name']) from exc
+            if hashlib.sha256(raw).hexdigest()!=p['artifact']['sha256']:
+                raise StoreError('Core app package integrity check failed. Install it again from Store: '+p['name'])
+            notify('Verifying '+p['name']+'…')
+            inspect_apk(self.server,path,p)
+            plan.append((path,p))
+        for path,p in plan:
+            notify('Preparing '+p['name']+' on CoreBAR…')
+            self.install_on_core(path,p,device,notify,background=background.get(p['android']['packageId']))
+        for package_id in existing_background:self.start_background(package_id,background[package_id].get('settings',{}))
+
     def remove_plugin(self,package_id):
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Wait for the current installation to finish.')
             records=self.records();key=package_id+':pc'
-            if key not in records or records[key]['type'] not in ('studio-plugin','corebar-widget'):raise StoreError('Installed plugin not found.')
+            if key not in records or (records[key]['type'] not in ('studio-plugin','corebar-widget') and not records[key].get('deferred')):raise StoreError('Installed plugin not found.')
             del records[key];self.save(records)
         return dict(ok=True)
 

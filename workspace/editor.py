@@ -59,14 +59,46 @@ def draft_path(server, device_id):
 def fresh_draft(snapshot):
     return dict(device_id=snapshot['device_id'], base_hash=digest(snapshot['profiles']),
                 base_profiles=deepcopy(snapshot['profiles']), profiles=deepcopy(snapshot['profiles']),
-                revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
+                revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat(), background_apps=[])
+
+
+def background_path(server,device):
+    return draft_path(server,device).with_suffix('.background.json')
+
+
+def saved_background(server,device):
+    try:
+        value=json.loads(background_path(server,device).read_text(encoding='utf-8'))
+    except FileNotFoundError:return []
+    except (OSError,ValueError) as exc:raise EditError('Could not read saved background apps. Existing data was preserved.') from exc
+    validate_background(value)
+    return value
+
+
+def validate_background(value):
+    import store
+    import screen_sync
+    if not isinstance(value,list) or len(value)>64:raise EditError('Choose at most 64 background apps.')
+    seen=set()
+    for app in value:
+        if not isinstance(app,dict) or set(app)-{'id','name','settings'}:raise EditError('Invalid background app.')
+        key=app.get('id')
+        if not isinstance(key,str) or not store.ANDROID_ID.fullmatch(key) or key.startswith(('android.','com.android.','com.ultrabar.')) or key in seen:raise EditError('Invalid or duplicate background app.')
+        seen.add(key)
+        if not isinstance(app.get('name'),str) or not 1<=len(app['name'])<=100:raise EditError('Give each background app a name.')
+        settings=app.get('settings',{})
+        if key==screen_sync.PACKAGE_ID:screen_sync.validate_settings(settings)
+        elif not isinstance(settings,dict) or set(settings)-{'launch'} or type(settings.get('launch',True)) is not bool:raise EditError('Invalid background app settings.')
 
 
 def load_draft(server, snapshot):
     path = draft_path(server, snapshot['device_id'])
     if path.exists():
-        return json.loads(path.read_text(encoding='utf-8'))
+        draft=json.loads(path.read_text(encoding='utf-8'))
+        if 'background_apps' not in draft:draft['background_apps']=saved_background(server,snapshot['device_id'])
+        return draft
     draft = fresh_draft(snapshot)
+    draft['background_apps']=saved_background(server,snapshot['device_id'])
     atomic_json(path, draft)
     return draft
 
@@ -248,7 +280,9 @@ def register_editor(server):
                 return jsonify(error='The device or draft changed. Reopen the editor before saving.'), 409
             profiles = body.get('profiles')
             validate(profiles, draft['base_profiles'])
-            draft.update(profiles=profiles, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
+            background=body.get('background_apps',draft.get('background_apps',[]))
+            validate_background(background)
+            draft.update(profiles=profiles, background_apps=background, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
             atomic_json(draft_path(server, snapshot['device_id']), draft)
             return jsonify(draft=draft)
 
@@ -265,6 +299,7 @@ def register_editor(server):
                 return jsonify(error='A different CoreBAR is now connected. Reconnect.'), 409
             server.connection['snapshot'] = latest
             draft = fresh_draft(latest)
+            draft['background_apps']=saved_background(server,latest['device_id'])
             atomic_json(draft_path(server, latest['device_id']), draft)
             return jsonify(draft=draft, snapshot=latest)
 
@@ -302,16 +337,20 @@ def register_editor(server):
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
             validate(draft['profiles'], draft['base_profiles'])
+            validate_background(draft.get('background_apps',[]))
             payload = to_wire(draft['profiles'])
             stage('Reading Core settings and creating a backup…')
             latest = server.read_snapshot(server.connection['target'])  # Also saves original XML before any write.
             if latest['device_id'] != draft['device_id'] or digest(latest['profiles']) != draft['base_hash']:
                 return jsonify(error='Settings changed on CoreBAR since this draft was started. Download your draft, then reload from Core before editing again.'), 409
             rollback = dict(device_id=latest['device_id'], profiles=latest['profiles'], backup=latest['backup'])
+            rollback['background_apps']=saved_background(server,latest['device_id'])
             rollback_path = draft_path(server, latest['device_id']).with_suffix('.rollback.json')
             atomic_json(rollback_path, rollback)
             stage('Waking Core and waiting for the screen…')
             wake_for_deploy(server, server.connection['target'])
+            server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))
+            server.store.stop_removed_background(rollback['background_apps'],draft.get('background_apps',[]),draft['profiles'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'])
             # A timeout is ambiguous: always read back, and never blindly resend a write.
@@ -337,9 +376,11 @@ def register_editor(server):
             if verified is None:
                 return jsonify(error='Deployment could not be verified. Core may have changed. Your draft and pre-deploy backup are preserved; reload device settings before retrying.',
                                backup=latest['backup'], acknowledged=acknowledged), 502
+            atomic_json(background_path(server,latest['device_id']),draft.get('background_apps',[]))
             snapshot = dict(latest, profiles=verified, read_at=datetime.now(timezone.utc).isoformat())
             server.connection['snapshot'] = snapshot
             new_draft = fresh_draft(snapshot)
+            new_draft['background_apps']=deepcopy(draft.get('background_apps',[]))
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
@@ -378,6 +419,8 @@ def register_editor(server):
                 return jsonify(error='The connected CoreBAR changed.'), 409
             restored = fresh_draft(latest)
             restored['profiles'] = retain_cleared_slots(previous['profiles'], latest['profiles'])
+            restored['background_apps']=previous.get('background_apps',[])
+            validate_background(restored['background_apps'])
             validate(restored['profiles'], restored['base_profiles'])
             atomic_json(draft_path(server, snapshot['device_id']), restored)
             server.connection['snapshot'] = latest

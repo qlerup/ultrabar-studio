@@ -144,3 +144,19 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 @keyframes deploy-indeterminate{0%{transform:translateX(-110%)}100%{transform:translateX(390%)}}
 @media(prefers-reduced-motion:reduce){#deploy-progress-spinner span{animation:none;width:100%;opacity:.65}}
 @media(max-width:500px){#deploy-progress{padding:22px}.deploy-heading{gap:12px}#deploy-progress-title{font-size:21px}.deploy-state-icon{flex-basis:40px;height:40px}}
+
+.background-drop{border:1px dashed #45495e;background:#151720;padding:16px;margin:0 0 18px;min-height:106px;transition:border-color .15s,background .15s}
+.background-drop.is-drop-target{border-color:var(--mint);background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--mint)}
+.background-heading h4{margin:0 0 3px;font-size:12px;font-weight:600;display:flex;align-items:center;gap:9px}
+#background-count{color:var(--muted);font-size:10px;font-variant-numeric:tabular-nums;border:1px solid var(--line);padding:0 5px}
+.background-heading .muted{font-size:11px}
+.background-apps{display:flex;flex-wrap:wrap;gap:8px}
+.background-app{display:flex;align-items:center;gap:9px;padding:9px 12px;max-width:100%;font-size:12px;margin-top:12px;touch-action:none}
+.background-app span:not(.background-app-dot){overflow-wrap:anywhere;text-align:left}
+.background-app small{font-size:10px;color:var(--muted);border-left:1px solid #45495e;padding-left:9px}
+.background-app.selected{border-color:var(--mint);background:var(--accent-soft)}
+.background-app-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);flex-shrink:0}
+.background-empty{font-size:11px;color:#858da7;margin:14px 0 0}
+.background-empty[hidden]{display:none}
+#widget-properties>.badge+h4{margin:16px 0;font-size:15px}
+@media(max-width:500px){.background-drop{padding:12px}.background-app{flex-wrap:wrap}.background-app small{margin-left:15px}}

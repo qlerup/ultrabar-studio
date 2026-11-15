@@ -65,10 +65,14 @@ class StoreTests(unittest.TestCase):
             if args[-1]=='ro.build.version.sdk':return '29'
             return 'Packages:\n versionCode=1'
         with patch.dict(server.connection,target='10.0.0.2:5555',snapshot=dict(device_id='expected-core',model='CB01')),patch.object(server,'adb',side_effect=adb),patch.object(store,'inspect_apk'),patch.object(store.subprocess,'run') as install:
-            self.assertEqual(self.install(p,raw,device_id='expected-core')['state'],'error')
+            self.assertEqual(self.install(p,raw,device_id='expected-core')['state'],'complete')
+            with self.assertRaisesRegex(store.StoreError,'identity'):
+                self.service.deploy_dependencies([dict(homeData=[dict(type='APPS',id=p['android']['packageId'])])],'expected-core',lambda _:None)
             install.assert_not_called()
         with patch.dict(server.connection,target='10.0.0.2:5555',snapshot=dict(device_id='actual-core',model='CB01')),patch.object(server,'adb',side_effect=adb),patch.object(store,'inspect_apk'),patch.object(store.subprocess,'run',return_value=SimpleNamespace(returncode=0,stdout=b'Success')) as install:
             self.assertEqual(self.install(p,raw,device_id='actual-core')['state'],'complete')
+            install.assert_not_called()
+            self.service.deploy_dependencies([dict(homeData=[dict(type='APPS',id=p['android']['packageId'])])],'actual-core',lambda _:None)
             self.assertIn('dk.test.clock',[x['android']['packageId'] for x in self.service.records().values()])
             args=install.call_args.args[0];self.assertIn('-r',args);self.assertNotIn('-d',args)
 

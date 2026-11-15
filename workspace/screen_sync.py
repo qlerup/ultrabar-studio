@@ -8,14 +8,19 @@ SIGNER = '6b663d4525f5a8f192df55e4548582e96c52188809cc76123e2e7dbd44ebff1f'
 
 
 def applies(entry):
-    return entry.get('id') == 'studio.vivo.screensync'
+    return entry.get('original_id', entry.get('id')) == 'studio.vivo.screensync'
 
 
-def prepare(server, target, entry):
+def validate_identity(entry):
     from store import StoreError
     android = entry.get('android', {})
     if entry.get('type') != 'corebar-app' or android.get('packageId') != PACKAGE_ID or android.get('signerSha256') != SIGNER:
         raise StoreError('Screen Sync requires its approved Android identity and signing key.')
+
+
+def prepare(server, target, entry):
+    from store import StoreError
+    validate_identity(entry)
     if server.adb('-s', target, 'shell', 'id', '-u') != '0':
         raise StoreError('Screen Sync setup requires root-enabled WiFi ADB on Core.')
     snapshot = server.read_snapshot(target)
@@ -35,7 +40,19 @@ def prepare(server, target, entry):
     return json.dumps(dict(token=token, serials=serials)).encode(), (server.ROOT/'assets/corebridge.crt').read_bytes()
 
 
-def configure(server, target, prepared):
+def validate_settings(settings):
+    from store import StoreError
+    if not isinstance(settings,dict) or set(settings)-{'enabled','wakeDelayMs'} or type(settings.get('enabled',True)) is not bool or type(settings.get('wakeDelayMs',1000)) is not int or not 0<=settings.get('wakeDelayMs',1000)<=3000 or settings.get('wakeDelayMs',1000)%250:
+        raise StoreError('Choose Follow Core or Always on, and a wake delay from 0 to 3000 ms in steps of 250.')
+
+
+def start_sync(server,target,enabled):
+    from store import StoreError
+    result=server.adb('-s',target,'shell','am','start-foreground-service','-n',PACKAGE_ID+'/.SyncService','-a','enable' if enabled else 'disable')
+    if re.search(r'error|exception',result,re.I):raise StoreError('Screen Sync could not start in the background. Check Core and retry Deploy.')
+
+
+def configure(server, target, prepared, settings=None, background=False):
     from store import StoreError
     dump = server.adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE_ID).split('Hidden system packages:', 1)[0]
     match = re.search(r'^\s*userId=(\d+)\s*$', dump, re.M)
@@ -49,5 +66,25 @@ def configure(server, target, prepared):
         path = base + '/' + name
         server.adb('-s', target, 'shell', f'umask 077; cat > {path}.tmp && chown {uid}:{uid} {path}.tmp && chmod 600 {path}.tmp && mv {path}.tmp {path} && restorecon {path}', input_data=raw)
         if server.adb('-s', target, 'exec-out', 'cat', path, binary=True) != raw:
-            raise StoreError('Screen Sync installed, but setup could not be verified. Retry installation from Store.')
-    server.adb('-s', target, 'shell', 'am', 'start', '-n', PACKAGE_ID+'/.MainActivity')
+            raise StoreError('Screen Sync installed, but setup could not be verified. Check the connection and retry Deploy.')
+    if settings is not None or background:
+        settings=settings or {}
+        validate_settings(settings)
+        prefs='/data/user/0/'+PACKAGE_ID+'/shared_prefs'
+        path=prefs+'/sync.xml'
+        raw=server.adb('-s',target,'shell',f'if [ -f {path} ]; then cat {path}; else printf "<map />"; fi')
+        try:
+            root=ET.fromstring(raw)
+            if root.tag!='map':raise ValueError()
+        except (ET.ParseError,ValueError) as exc:raise StoreError('Could not read Screen Sync preferences. Existing settings were preserved.') from exc
+        for key,tag,value in [('enabled','boolean',str(settings.get('enabled',True)).lower()),('wakeDelayMs','int',str(settings.get('wakeDelayMs',1000)))]:
+            for old in list(root):
+                if old.get('name')==key:root.remove(old)
+            ET.SubElement(root,tag,name=key,value=value)
+        data=ET.tostring(root,encoding='utf-8',xml_declaration=True)
+        server.adb('-s',target,'shell',f'mkdir -p {prefs} && chown {uid}:{uid} {prefs} && chmod 700 {prefs}')
+        server.adb('-s',target,'shell',f'umask 077; cat > {path}.tmp && chown {uid}:{uid} {path}.tmp && chmod 600 {path}.tmp && mv {path}.tmp {path} && restorecon {path}',input_data=data)
+        if server.adb('-s',target,'exec-out','cat',path,binary=True)!=data:raise StoreError('Screen Sync preferences could not be verified. Retry Deploy.')
+        start_sync(server,target,settings.get('enabled',True))
+    else:
+        server.adb('-s', target, 'shell', 'am', 'start', '-n', PACKAGE_ID+'/.MainActivity')

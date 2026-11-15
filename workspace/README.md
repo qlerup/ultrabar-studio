@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.37 Windows
+# UltraBar Studio — 0.38 Windows
+
+## 0.38 update
+
+All Store Core apps, including local APK packages, now install into the PC library without a CoreBAR connection. Add an app to the layout, or to the Background apps area above the Core preview, then Deploy. Deploy verifies cached APK checksums, metadata, signer and device compatibility, installs the required apps and performs supported setup before sending the layout. Library removal preserves existing draft dependencies and does not uninstall Android apps.
+
+Background apps apply to the whole device and take no space on Core's home bar. Drag Core apps into the area, select a chip to configure it, or move it back onto the bar. Changes support Undo, draft save, deploy and recovery. Removing a background app stops it at the next successful deployment, unless it is still placed on the visible bar; it remains installed on Android.
+
+Vivo Screen Sync offers Follow Core / Always on and a 0–3000 ms wake delay in 250 ms steps. Deploy writes only these preferences while preserving other app preferences, configures online VivoCubes using the existing approved bridge credential, and starts its foreground service without opening its settings screen. Root WiFi ADB and an online VivoCube are still required at deployment. Other background apps offer Launch after Deploy and rely on their own Android background support. Offline tests cover installation, drag/drop, settings, persistence, dependency verification and hidden apps staying out of the LineOS widget payload; physical-device service startup remains to be verified.
 
 ## 0.37 update
 
