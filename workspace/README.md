@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.32 Windows
+# UltraBar Studio — 0.33 Windows
+
+## 0.33 update
+
+Studio has a new desktop/window/sidebar icon. Store cards automatically resolve the package's source repository and provide Repository, Issues and Pull requests links in the system browser. Links are derived from validated GitHub source references rather than arbitrary client URLs; new install records retain source references for delisted packages. Local development packages are not presented as verified GitHub publishers.
 
 ## 0.32 update
 

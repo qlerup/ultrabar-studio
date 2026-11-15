@@ -10,6 +10,7 @@ import tempfile
 import threading
 import time
 import secrets
+import webbrowser
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -25,6 +26,21 @@ HEX = re.compile(r'[a-f0-9]{64}')
 
 class StoreError(ValueError):
     pass
+
+
+def package_links(package):
+    if package.get('origin')=='local':return {}
+    value=package.get('source','')
+    if not isinstance(value,str):return {}
+    try:source=urlsplit(value)
+    except (ValueError,TypeError):return {}
+    parts=source.path.strip('/').split('/')
+    if source.scheme!='https' or source.netloc!='github.com' or source.query or source.fragment or len(parts)<2:return {}
+    owner,repo=parts[:2]
+    if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}',owner) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.-]{0,99}',repo):return {}
+    if len(parts)>2 and parts[2] not in ('blob','tree'):return {}
+    base='https://github.com/'+owner+'/'+repo
+    return dict(repository=base,issues=base+'/issues',pulls=base+'/pulls')
 
 class SafeRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -206,7 +222,7 @@ def inspect_apk(server,path,entry):
 
 class Store:
     def __init__(self,server):
-        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None
+        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None;self.github_links={}
     def records(self):
         try:
             data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text())
@@ -221,6 +237,8 @@ class Store:
     def remember_icons(self,packages):
         with self.lock:
             for p in packages:
+                links=package_links(p)
+                if links:self.github_links[p['id']]=links
                 if p.get('icon'):
                     validate_icon_metadata(p['icon']);self.icon_sources[p['icon']['sha256']]=p['icon']
     def icon(self,digest):
@@ -295,6 +313,7 @@ class Store:
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
                 if p.get('publisher'):record['publisher']=p['publisher']
+                if p.get('source'):record['source']=p['source']
                 if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p['type'] in ('studio-plugin','corebar-widget'):
@@ -349,13 +368,23 @@ def register_store(server):
     @server.app.get('/api/store')
     def get_store():
         with store.lock:installed=list(store.records().values())
-        packages=catalog();store.remember_icons(packages+installed)
-        return jsonify(packages=packages,installed=installed,job=store.status())
+        packages=catalog();store.remember_icons(installed+packages)
+        return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],job=store.status())
     @server.app.get('/api/store/installed')
     def installed():
         with store.lock:
             installed=list(store.records().values());store.remember_icons(installed)
-            return jsonify(installed=installed,widgets=store.templates(),job=store.status())
+            return jsonify(installed=[dict(p,links=package_links(p)) for p in installed],widgets=store.templates(),job=store.status())
+    @server.app.post('/api/store/open-link')
+    def open_link():
+        body=request.get_json(silent=True) or {}
+        if not isinstance(body,dict) or body.get('kind') not in ('repository','issues','pulls'):raise StoreError('Choose a GitHub link from a package card.')
+        with store.lock:url=store.github_links.get(str(body.get('id','')),{}).get(body['kind'])
+        if not url:raise StoreError('This package has no verified GitHub repository link. Refresh Store and try again.')
+        try:opened=webbrowser.open(url)
+        except (OSError,webbrowser.Error):opened=False
+        if not opened:raise StoreError('Could not open the system browser.')
+        return jsonify(ok=True)
     @server.app.get('/api/store/icons/<digest>')
     def icon(digest):
         from flask import Response

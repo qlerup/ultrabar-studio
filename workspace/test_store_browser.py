@@ -8,11 +8,11 @@ from test_store import fixture,icon_fixture
 
 class StoreBrowserTests(unittest.TestCase):
  def test_catalog_approval_install_remove_and_offline(self):
-  p,raw=fixture();approved=[];icon,icon_raw=icon_fixture();p["icon"]=icon;p['publisher']='qlerup'
+  p,raw=fixture();approved=[];icon,icon_raw=icon_fixture();p["icon"]=icon;p['publisher']='qlerup';p['source']='https://github.com/qlerup/studio-system-monitor/blob/'+'a'*40+'/widget.json'
   def download(url,limit,destination=None):
    if destination is None:return icon_raw
    destination.write(raw);return len(raw)
-  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download):
+  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download),patch.object(store.webbrowser,'open',return_value=True) as browser_open:
    server.store.job=None
    http=make_server('127.0.0.1',0,server.app,threaded=True);host=f'127.0.0.1:{http.server_port}'
    with patch.dict(server.app.config,ALLOWED_HOSTS={host}):
@@ -28,6 +28,12 @@ class StoreBrowserTests(unittest.TestCase):
       approved.append(p);page.locator('#store-refresh').click()
       expect(page.locator('.store-card')).to_contain_text('Test presets')
       expect(page.locator('.store-publisher')).to_have_text('Uploaded by @qlerup')
+      expect(page.locator('.brand-mark img')).to_be_visible()
+      for name,suffix in [('Repository',''),('Issues','/issues'),('Pull requests','/pulls')]:
+       link=page.locator('.store-links').get_by_role('link',name=name,exact=True)
+       expect(link).to_have_attribute('href','https://github.com/qlerup/studio-system-monitor'+suffix)
+       link.click();page.wait_for_timeout(100)
+       browser_open.assert_called_with('https://github.com/qlerup/studio-system-monitor'+suffix)
       expect(page.locator('.store-card-icon img')).to_be_visible()
       page.wait_for_function("document.querySelector('.store-card-icon img')?.naturalWidth===256")
       page.locator('.store-card').get_by_role('button',name='Install',exact=True).click()

@@ -100,3 +100,6 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .store-card-title{min-width:0}.store-card-title h2{font-size:19px;line-height:1.3;margin:7px 0 0}.store-card-title .eyebrow{font-size:9px}
 .store-card-description{line-height:1.6;margin:4px 0;flex:1}.store-card .muted{margin:0;line-height:1.5}
 .store-empty{grid-column:1/-1}
+
+/* Studio identity and per-package contributor links. */
+.brand-mark{background:transparent;box-shadow:none}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}.store-links{display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid var(--line);padding-top:12px;margin-top:4px;font-size:12px}.store-links a{color:var(--mint);text-underline-offset:3px}.store-links a:focus-visible{outline:2px solid var(--mint);outline-offset:4px}

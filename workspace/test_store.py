@@ -142,3 +142,22 @@ class MeasurementOptionsTests(unittest.TestCase):
         for options in ([],['cpu'],['cpu','cpu'],['cpu','disk'],['memory','gpu'],'cpu'):
             bad=copy.deepcopy(w);bad['kindOptions']=options
             with self.assertRaises(store.StoreError):parse(bad)
+
+
+class RepositoryLinksTests(unittest.TestCase):
+    def test_pinned_source_resolves_to_package_repository(self):
+        links=store.package_links(dict(source='https://github.com/alice/my-widget/blob/'+'a'*40+'/widget.json'))
+        self.assertEqual(links,dict(repository='https://github.com/alice/my-widget',issues='https://github.com/alice/my-widget/issues',pulls='https://github.com/alice/my-widget/pulls'))
+    def test_external_credentials_and_local_packages_have_no_links(self):
+        for source in ('http://github.com/alice/widget','https://github.com.evil.example/alice/widget','https://github.com@evil.example/alice/widget','https://github.com/alice/widget?token=private','file:///tmp/widget','javascript:alert(1)'):
+            self.assertEqual(store.package_links(dict(source=source)),{})
+        self.assertEqual(store.package_links(dict(source='https://github.com/alice/widget',origin='local')),{})
+    def test_open_uses_cached_package_link_and_ignores_arbitrary_client_url(self):
+        server.store.remember_icons([dict(id='test.links',source='https://github.com/alice/my-widget/blob/'+'a'*40+'/widget.json')])
+        client=server.app.test_client();headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
+        with patch.object(store.webbrowser,'open',return_value=True) as browser:
+            result=client.post('/api/store/open-link',json=dict(id='test.links',kind='issues',url='https://evil.example'),headers=headers)
+            self.assertEqual(result.status_code,200);browser.assert_called_once_with('https://github.com/alice/my-widget/issues')
+            self.assertEqual(client.post('/api/store/open-link',json=dict(id='missing.package',kind='issues'),headers=headers).status_code,400)
+            self.assertEqual(client.post('/api/store/open-link',json=dict(id='test.links',kind='delete'),headers=headers).status_code,400)
+        self.assertEqual(client.post('/api/store/open-link',json={},headers={'Host':'127.0.0.1:8741'}).status_code,403)

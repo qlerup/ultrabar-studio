@@ -38,7 +38,9 @@
         const remove=el('button','','Remove from library');remove.disabled=active;
         remove.onclick=async()=>{if(!confirm('Remove this package from the library? Existing draft and deployed widgets are kept. Remove them from your layout and Deploy to remove them from Core.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Package removed from library.');}catch(e){status(e.message,true);}};tools.append(remove);
       }
-      card.append(tools);box.append(card);showIcon(p,icon);
+      card.append(tools);
+      if(p.links?.repository){const links=el('nav','store-links');links.setAttribute('aria-label',p.name+' on GitHub');for(const [kind,label] of [['repository','Repository'],['issues','Issues'],['pulls','Pull requests']]){if(!p.links[kind])continue;const a=el('a','',label);a.href=p.links[kind];a.target='_blank';a.rel='noopener noreferrer';a.onclick=async e=>{e.preventDefault();try{await api('/api/store/open-link',{method:'POST',body:JSON.stringify({id:p.id,kind})});}catch(error){status(error.message,true);}};links.append(a);}card.append(links);}
+      box.append(card);showIcon(p,icon);
     }
     if(!visible.length)box.append(el('p','store-empty',packages.length?'No matching packages.':'No approved packages yet. New submissions appear here after the owner merges them into the store catalog.'));
   }
