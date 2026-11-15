@@ -1,4 +1,14 @@
-# UltraBar Studio — 0.39 Windows
+# UltraBar Studio — 0.40 Windows
+
+## 0.40 update
+
+SenseCube's hardware preview now includes the original-style vertical division on its front face.
+
+Install from folder now opens a manual-app dialog. Browse for a package folder or paste its full path and choose Check folder. Required files, format, icon, checksums and Studio compatibility are validated; APK metadata, permissions and signing identity are also checked for Core apps. Device-specific compatibility remains a Deploy check and is clearly labelled. Invalid or unchecked folders cannot be added.
+
+Add manual app registers a local Store card without installing anything. Install on that card separately adds it to the library. Registration retains a verified copy, so the original folder can move or change without changing the reviewed package. Manual cards persist across restarts and remain available when the catalog is offline. Local packages are marked Manual app / Not Store reviewed.
+
+The native folder chooser now runs through an owned WinForms dialog on the Studio UI thread, disposes resources and restores the owner on cancellation, close or failure. Isolated native checks cover Cancel, Close, reopening and continued WebView responsiveness without controlling installed Studio. Browser tests cover the popup, cancellation, validation, explicit add followed by separate installation and narrow layouts.
 
 ## 0.39 update
 

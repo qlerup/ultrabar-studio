@@ -223,7 +223,7 @@ def inspect_apk(server,path,entry):
 
 class Store:
     def __init__(self,server):
-        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None;self.github_links={}
+        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None;self.github_links={};self.local_preview_lock=threading.Lock()
         from package_stats import PackageStats
         self.stats=PackageStats()
     def records(self):
@@ -271,31 +271,87 @@ class Store:
             self.job=dict(state='running',message='Checking approved package...',id=body['id'])
         threading.Thread(target=self.install,args=(dict(body),),daemon=True,name='StudioStoreInstall').start()
         return self.status()
-    def preview_local(self):
-        picker=getattr(self.server,'package_folder_picker',None)
-        if picker is None:raise StoreError('Folder selection is available in the Studio desktop app.')
-        selected=picker()
-        if not selected:return dict(cancelled=True)
+    def preview_local(self,body=None):
+        if not self.local_preview_lock.acquire(blocking=False):raise StoreError('A folder check is already running.')
+        try:return self._preview_local(body)
+        finally:self.local_preview_lock.release()
+
+    def _preview_local(self,body):
+        with self.lock:self.local_pending=None
+        if body is not None and (not isinstance(body,dict) or set(body)-{'folder'}):raise StoreError('Choose a package folder.')
+        folder=body.get('folder') if body else None
+        if folder is not None:
+            if not isinstance(folder,str) or not 1<=len(folder.strip())<=4096 or not Path(folder.strip()).is_absolute():raise StoreError('Enter the full folder path, or use Browse.')
+            folder=folder.strip()
+        else:
+            picker=getattr(self.server,'package_folder_picker',None)
+            if picker is None:raise StoreError('Browse is available in the Studio desktop app. You can also paste a folder path.')
+            try:selected=picker()
+            except Exception as exc:raise StoreError('Could not open the folder chooser. Paste the folder path instead.') from exc
+            if not selected:return dict(cancelled=True)
+            folder=selected[0]
         from local_packages import read_folder
-        try:p,raw,icon=read_folder(self.server,selected[0])
+        try:p,raw,icon=read_folder(self.server,folder)
         except StoreError:raise
         except (ValueError,OSError,TypeError,KeyError,AttributeError):raise StoreError('The selected folder does not contain a valid package.') from None
+        if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('This package requires a newer or unsupported Studio version. Update Studio before adding it.')
         token=secrets.token_urlsafe(32)
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Wait for the current installation to finish.')
             self.local_pending=(token,time.monotonic()+600,p,raw)
             self.remember_icons([p])
             path=self.server.DATA_DIR/'store/icons'/(p['icon']['sha256']+'.png');path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(icon)
-        return dict(token=token,package=p)
+        files=['icon.png','app.apk' if p['type']=='corebar-app' else 'widget.json' if p['type']=='corebar-widget' else 'plugin.json']
+        if p['type']=='corebar-app':files.insert(0,'manifest.json')
+        checks=[dict(label='Required package files',detail=', '.join(files)),dict(label='Package format and integrity',detail='Manifest, settings, checksums and icon validated.'),dict(label='Studio compatibility',detail='Compatible with Studio '+updates.VERSION)]
+        if p['type']=='corebar-app':checks.append(dict(label='Android identity and signature',detail='Release APK, package identity, permissions and signer validated.'))
+        return dict(token=token,package=p,folder_name=Path(folder).name,checks=checks)
+
+    def manual_packages(self):
+        try:
+            data=json.loads((self.server.DATA_DIR/'store/manual.json').read_text(encoding='utf-8'))
+            if not isinstance(data,dict):raise ValueError()
+            return data
+        except FileNotFoundError:return {}
+        except (OSError,ValueError) as exc:raise StoreError('Could not read manual apps. Existing data was preserved.') from exc
+
+    def add_local(self,body):
+        if not isinstance(body,dict):raise StoreError('Check a package folder first.')
+        with self.lock:
+            pending=self.local_pending
+            if not pending or not isinstance(body.get('token'),str) or not secrets.compare_digest(pending[0],body['token']) or time.monotonic()>pending[1]:raise StoreError('Folder check expired. Check the folder again.')
+            _,_,p,raw=pending
+            path=self.server.DATA_DIR/'store/manual-packages'/p['artifact']['sha256']
+            path.parent.mkdir(parents=True,exist_ok=True)
+            path.with_suffix('.tmp').write_bytes(raw);path.with_suffix('.tmp').replace(path)
+            from editor import atomic_json
+            packages=self.manual_packages();packages[p['id']]=p
+            atomic_json(self.server.DATA_DIR/'store/manual.json',packages)
+            self.local_pending=None
+            return dict(package=p)
     def start_local(self,body):
         if not isinstance(body,dict):raise StoreError('Select a local package folder first.')
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Another installation is already running.')
-            pending=self.local_pending
-            if not pending or not isinstance(body.get('token'),str) or not secrets.compare_digest(pending[0],body['token']) or time.monotonic()>pending[1]:
-                raise StoreError('Local preview expired. Select the folder again.')
-            self.local_pending=None
-            _,_,p,raw=pending
+            if body.get('id'):
+                if not isinstance(body['id'],str):raise StoreError('Choose a manual app from Store.')
+                p=self.manual_packages().get(body['id'])
+                if not p:raise StoreError('Manual app not found. Add its folder again.')
+                p=validate_entry(p)
+                if p.get('origin')!='local' or not p['id'].startswith('local.'):raise StoreError('Invalid manual app registration.')
+                if p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256'):raise StoreError('The manual app changed. Refresh Store and review it again.')
+                try:
+                    path=self.server.DATA_DIR/'store/manual-packages'/p['artifact']['sha256']
+                    if path.stat().st_size!=p['artifact']['size']:raise StoreError('Manual app files changed. Add its folder again.')
+                    raw=path.read_bytes()
+                except OSError as exc:raise StoreError('Manual app files are missing. Add its folder again.') from exc
+                if len(raw)!=p['artifact']['size'] or hashlib.sha256(raw).hexdigest()!=p['artifact']['sha256']:raise StoreError('Manual app files changed. Add its folder again.')
+            else:
+                pending=self.local_pending
+                if not pending or not isinstance(body.get('token'),str) or not secrets.compare_digest(pending[0],body['token']) or time.monotonic()>pending[1]:
+                    raise StoreError('Local preview expired. Select the folder again.')
+                self.local_pending=None
+                _,_,p,raw=pending
             self.job=dict(state='running',message='Verifying local development package...',id=p['id'])
         threading.Thread(target=self.install,args=(dict(body),(p,raw)),daemon=True,name='StudioLocalInstall').start()
         return self.status()
@@ -458,13 +514,13 @@ def register_store(server):
     @server.app.get('/api/store')
     def get_store():
         with store.lock:installed=list(store.records().values())
-        packages=catalog();store.remember_icons(installed+packages)
-        return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],job=store.status())
+        packages=catalog()+list(store.manual_packages().values());store.remember_icons(installed+packages)
+        return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],manual=list(store.manual_packages().values()),job=store.status())
     @server.app.get('/api/store/installed')
     def installed():
         with store.lock:
-            installed=list(store.records().values());store.remember_icons(installed)
-            return jsonify(installed=[dict(p,links=package_links(p)) for p in installed],widgets=store.templates(),job=store.status())
+            installed=list(store.records().values());manual=list(store.manual_packages().values());store.remember_icons(installed+manual)
+            return jsonify(installed=[dict(p,links=package_links(p)) for p in installed],widgets=store.templates(),manual=manual,job=store.status())
     @server.app.post('/api/store/open-link')
     def open_link():
         body=request.get_json(silent=True) or {}
@@ -488,7 +544,9 @@ def register_store(server):
     @server.app.post('/api/store/install')
     def install():return jsonify(store.start(request.get_json(silent=True))),202
     @server.app.post('/api/store/local/preview')
-    def preview_local():return jsonify(store.preview_local())
+    def preview_local():return jsonify(store.preview_local(request.get_json(silent=True)))
+    @server.app.post('/api/store/local/add')
+    def add_local():return jsonify(store.add_local(request.get_json(silent=True)))
     @server.app.post('/api/store/local/install')
     def install_local():return jsonify(store.start_local(request.get_json(silent=True))),202
     @server.app.get('/api/store/job')

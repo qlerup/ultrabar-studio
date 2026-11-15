@@ -49,7 +49,8 @@ def main():
             timer.start()
         server.update_launcher = queue_update
         server.program_picker = lambda: window.create_file_dialog(file_types=('Programs (*.exe)',))
-        server.package_folder_picker = lambda: window.create_file_dialog(webview.FileDialog.FOLDER)
+        from desktop_dialogs import pick_package_folder
+        server.package_folder_picker = lambda: pick_package_folder(window)
         # Reuse normal startup reconnect when reopening Studio after an update.
         if '--resume-editor' in sys.argv:
             def resume_editor():

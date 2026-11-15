@@ -9,11 +9,13 @@ if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'The Inno Setup compi
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 & $studioPython verify_tray.py
 if ($LASTEXITCODE -ne 0) { throw 'Native tray checks failed.' }
+& $studioPython verify_folder_dialog.py
+if ($LASTEXITCODE -ne 0) { throw 'Native folder chooser checks failed.' }
 & $studioPython ../native-widgets/build.py
 if ($LASTEXITCODE -ne 0) { throw 'Native widget build failed.' }
 & $studioPython -m PyInstaller --noconfirm 'UltraBar Studio.spec'
 if ($LASTEXITCODE -ne 0) { throw 'App build failed.' }
 & $studioCompiler installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
-Get-FileHash 'release/UltraBarStudio-Setup-0.39.0.exe' -Algorithm SHA256
+Get-FileHash 'release/UltraBarStudio-Setup-0.40.0.exe' -Algorithm SHA256
 

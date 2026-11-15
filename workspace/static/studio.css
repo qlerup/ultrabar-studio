@@ -160,3 +160,15 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .background-empty[hidden]{display:none}
 #widget-properties>.badge+h4{margin:16px 0;font-size:15px}
 @media(max-width:500px){.background-drop{padding:12px}.background-app{flex-wrap:wrap}.background-app small{margin-left:15px}}
+
+#manual-app-dialog{font:inherit;width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 32px);overflow:auto;padding:28px;border:1px solid #414557;border-radius:6px;background:var(--panel);color:var(--text);box-shadow:0 24px 80px #0007}
+#manual-app-dialog h2{font-size:25px}#manual-app-dialog>.muted{margin:8px 0 22px}
+#manual-folder-form>label{display:block;font-size:12px;margin-bottom:8px}
+.manual-folder-fields{display:flex;gap:8px;flex-wrap:wrap}.manual-folder-fields input{flex:1 1 220px;width:auto;min-width:0}.manual-folder-fields button{padding:10px 14px}
+#manual-app-status{padding:14px 0;font-size:12px;color:var(--muted);min-height:46px;overflow-wrap:anywhere}#manual-app-status.error{color:#ffc5ce}
+#manual-app-results{border:1px solid var(--line);padding:18px;background:#151720}#manual-app-results[hidden]{display:none}
+.manual-package-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.manual-package-heading h3{margin:5px 0;font-size:18px;overflow-wrap:anywhere}.manual-package-heading .badge{color:#9adfc9;border-color:#355a50;white-space:nowrap}
+.manual-app-checks{list-style:none;padding:0;margin:20px 0}.manual-app-checks li{display:flex;gap:12px;margin:14px 0}.manual-check-icon{color:#9adfc9;flex-shrink:0}.manual-app-checks strong{font-size:12px}.manual-app-checks p{margin:3px 0 0;font-size:11px}
+.manual-app-footer{display:flex;align-items:center;gap:24px;justify-content:space-between;border-top:1px solid var(--line);margin-top:22px;padding-top:18px}.manual-app-footer .muted{max-width:340px;font-size:11px}.manual-app-footer button{flex-shrink:0}
+.sense-eye{position:relative;overflow:hidden}.sense-eye::after{content:'';position:absolute;top:0;bottom:0;left:66%;right:0;border-left:1px solid #46535b;background:#101619}
+@media(max-width:500px){#manual-app-dialog{padding:20px}.manual-folder-fields input{flex-basis:100%}.manual-app-footer{align-items:stretch;flex-direction:column;gap:14px}.manual-app-footer button{justify-content:center}.manual-package-heading{flex-wrap:wrap}}

@@ -1,6 +1,7 @@
 'use strict';
 (()=>{
-  let packages=[],installed=[],job=null,pending=null,loading=false,opened=false;
+  let packages=[],installed=[],manualPackages=[],job=null,pending=null,loading=false,opened=false;
+  let manualPreview=null,manualBusy=false,manualGeneration=0;
   const iconCache=new Map();
   const statsCache=new Map(),visibleStats=new Set(),statsPackages=new Map();let fetchingStats=false;
   const statsKey=p=>p.id+'|'+p.artifact?.url+'|'+p.links?.repository;
@@ -22,14 +23,15 @@
     $('store-device').textContent=snapshot?`Selected CoreBAR: ${snapshot.model} / ${snapshot.target}`:'No CoreBAR connected. Apps and widgets can still be installed into your library on this PC.';
     const box=$('store-packages');statsObserver.disconnect();visibleStats.clear();statsPackages.clear();box.replaceChildren();
     const query=$('store-search').value.trim().toLowerCase(),filter=$('store-filter').value;
-    const all=packages.slice();for(const p of installed){if(!p.device_id&&!all.some(x=>x.id===p.id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
+    const all=[...new Map([...packages,...manualPackages].map(p=>[p.id,p])).values()];for(const p of installed){if(!p.device_id&&!all.some(x=>x.id===p.id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
     $('store-local-folder').disabled=job?.state==='running';
     for(const p of visible){
       const card=el('article','store-card'),saved=record(p),active=job?.state==='running';
+      card.dataset.packageId=p.id;
       const heading=el('div','store-card-heading'),icon=el('div','store-card-icon',p.name.slice(0,1).toUpperCase()),title=el('div','store-card-title');
       title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
-      title.append(el('p','muted store-publisher',p.origin==='local'?'LOCAL DEVELOPMENT / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
+      title.append(el('p','muted store-publisher',p.origin==='local'?'MANUAL APP / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
       if(p.type==='corebar-app')card.append(el('p','muted','Install into your library. Add the app to your Core layout, then Deploy to install it on CoreBAR.'));
       let badges=null;if(p.links?.repository&&p.artifact?.url){badges=el('div','store-badges');badges.dataset.id=p.id;badges.setAttribute('aria-live','polite');for(const kind of ['downloads','issues']){const badge=el('span','store-stat');badge.dataset.stat=kind;badges.append(badge);}statsPackages.set(p.id,p);card.append(badges);}
@@ -52,16 +54,17 @@
     if(!visible.length)box.append(el('p','store-empty',packages.length?'No matching packages.':'No approved packages yet. New submissions appear here after the owner merges them into the store catalog.'));
     paintStats();
   }
-  async function local(){const d=await(await api('/api/store/installed')).json();installed=d.installed||[];job=d.job;render();}
+  async function local(){const d=await(await api('/api/store/installed')).json();installed=d.installed||[];manualPackages=d.manual||[];job=d.job;render();}
   async function refresh(){
     if(loading)return;loading=true;$('store-refresh').disabled=true;
     if(job?.state!=='running')status('Refreshing approved catalog...');
-    try{const d=await(await api('/api/store')).json();packages=d.packages||[];installed=d.installed||[];job=d.job;render();status(job?.state==='running'?job.message:'Catalog up to date.');}
+    try{const d=await(await api('/api/store')).json();packages=d.packages||[];installed=d.installed||[];manualPackages=d.manual||[];job=d.job;render();status(job?.state==='running'?job.message:'Catalog up to date.');}
     catch(e){try{await local();}catch(_){}status(e.message+' Previously loaded packages are retained.',true);}
     finally{loading=false;$('store-refresh').disabled=false;}
   }
   function confirmInstall(p){
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256};
+    if(p.origin==='local')pending.local=true;
     if(p.localToken){pending.token=p.localToken;pending.local=true;}
     const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?'Add this app to your Studio library on this PC. No CoreBAR connection is needed. Add its widget to your layout and Deploy to install the app on Core.':p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions on Core during Deploy: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
     if(p.origin==='local')box.prepend(el('p','','Local development package. This folder has not been reviewed by the Store. Local widgets use a separate library identity; an APK updates the same Android app if already installed.'));
@@ -69,7 +72,54 @@
     $('store-install-dialog').showModal();
   }
   $('store-install-confirm').onclick=async()=>{const body=pending;if(!body)return;pending=null;$('store-install-dialog').close();try{job=await(await api(body.local?'/api/store/local/install':'/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();}catch(e){status(e.message,true);}};
-  $('store-local-folder').onclick=async()=>{const button=$('store-local-folder');button.disabled=true;status('Choose a package folder...');try{const d=await(await api('/api/store/local/preview',{method:'POST',signal:null})).json();if(d.cancelled){status('Folder selection cancelled.');return;}confirmInstall({...d.package,localToken:d.token});}catch(e){status(e.message,true);}finally{button.disabled=job?.state==='running';}};
+  function manualControls(){
+    $('manual-folder-browse').disabled=manualBusy;$('manual-folder-path').disabled=manualBusy;
+    $('manual-folder-check').disabled=manualBusy||!$('manual-folder-path').value.trim();
+    $('manual-app-add').disabled=manualBusy||!manualPreview;
+  }
+  function clearManualPreview(text,error=false){manualPreview=null;$('manual-app-results').hidden=true;$('manual-app-status').textContent=text;$('manual-app-status').classList.toggle('error',error);manualControls();}
+  $('store-local-folder').onclick=()=>{
+    manualGeneration++;manualBusy=false;$('manual-folder-path').value='';$('manual-app-add').textContent='Add manual app';
+    clearManualPreview('Choose a folder to get started.');$('manual-app-dialog').showModal();
+  };
+  $('manual-app-dialog').addEventListener('close',()=>{manualGeneration++;manualBusy=false;manualPreview=null;});
+  $('manual-folder-path').oninput=()=>{clearManualPreview('Check this folder before adding the package.');};
+  async function checkManualFolder(browse=false){
+    if(manualBusy)return;
+    const generation=++manualGeneration;manualBusy=true;clearManualPreview(browse?'Choose a package folder…':'Checking package files…');
+    try{
+      const body=browse?{}:{folder:$('manual-folder-path').value.trim()};
+      const data=await(await api('/api/store/local/preview',{method:'POST',body:JSON.stringify(body),signal:null})).json();
+      if(generation!==manualGeneration)return;
+      if(data.cancelled){clearManualPreview('Folder selection cancelled. You can choose another folder.');return;}
+      manualPreview=data;
+      $('manual-package-title').textContent=data.package.name;
+      $('manual-package-kind').textContent=data.package.type==='corebar-app'?'CORE APP':data.package.type==='corebar-widget'?'CORE WIDGET':'PRESET';
+      $('manual-package-version').textContent='Version '+data.package.version+' · '+data.folder_name;
+      const checks=$('manual-app-checks');checks.replaceChildren();
+      for(const check of data.checks||[]){const item=el('li',''),icon=el('span','manual-check-icon','✓'),copy=el('div','');icon.setAttribute('aria-hidden','true');copy.append(el('strong','',check.label),el('p','muted',check.detail));item.append(icon,copy);checks.append(item);}
+      const c=data.package.compatibility;
+      $('manual-app-requirements').textContent='Core requirements'+(c.models?.length?': '+c.models.join(', '):'')+(c.lineosVersions?.length?' · LineOS '+c.lineosVersions.join(' / '):'')+'. Device compatibility is verified during Deploy; CoreBAR is not needed to add this package.';
+      $('manual-app-status').textContent='Checks passed. Ready to add to your manual apps.';
+      $('manual-app-results').hidden=false;
+      $('manual-app-add').textContent=data.package.type==='corebar-widget'?'Add manual widget':data.package.type==='studio-plugin'?'Add manual preset':'Add manual app';
+    }catch(error){if(generation===manualGeneration)clearManualPreview(error.message,true);}
+    finally{if(generation===manualGeneration){manualBusy=false;manualControls();}}
+  }
+  $('manual-folder-browse').onclick=()=>checkManualFolder(true);
+  $('manual-folder-form').onsubmit=event=>{event.preventDefault();checkManualFolder();};
+  $('manual-app-add').onclick=async()=>{
+    if(manualBusy||!manualPreview)return;
+    const generation=manualGeneration,preview=manualPreview;manualBusy=true;manualControls();$('manual-app-status').textContent='Adding manual app…';
+    try{
+      await api('/api/store/local/add',{method:'POST',body:JSON.stringify({token:preview.token})});
+      if(generation!==manualGeneration)return;
+      $('store-filter').value='all';$('store-search').value='';await local();$('manual-app-dialog').close();
+      status('Manual app added. Choose Install on its card to add it to your library.');
+      [...document.querySelectorAll('.store-card')].find(card=>card.dataset.packageId===preview.package.id)?.scrollIntoView({block:'center',behavior:'smooth'});
+    }catch(error){if(generation===manualGeneration)clearManualPreview(error.message,true);}
+    finally{if(generation===manualGeneration){manualBusy=false;manualControls();}}
+  };
   $('store-install-cancel').onclick=()=>{pending=null;$('store-install-dialog').close();};
   $('store-refresh').onclick=refresh;$('store-search').oninput=render;$('store-filter').onchange=render;
   $('nav-store').onclick=()=>{opened=true;document.body.classList.remove('editing');document.body.classList.add('store-open');$('store-content').hidden=false;for(const id of ['nav-overview','nav-editor']){$(id).classList.remove('nav-active');$(id).setAttribute('aria-pressed','false');}$('nav-store').classList.add('nav-active');$('nav-store').setAttribute('aria-pressed','true');refresh();};

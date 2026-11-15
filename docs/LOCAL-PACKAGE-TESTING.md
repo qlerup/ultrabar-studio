@@ -1,12 +1,16 @@
 # Test a package locally before submitting it
 
-1. Open UltraBar Studio 0.32+ and select **App & Plugin Store > Install from folder**.
-2. Select the directory containing your package. Review the name, type and permissions.
-3. Select **Install**. Nothing is installed merely by choosing the folder.
-4. Widgets/presets appear in the library. Drag a block onto Core, edit its settings
-   and Deploy. APKs require a connected Core and appear in its Android app list.
-5. After editing your package, choose **Install from folder** again to snapshot and
-   install the new build. Local packages are not submitted to GitHub or Store.
+1. Open UltraBar Studio 0.40+ and select **App & Plugin Store > Install from folder**.
+2. In the popup, use **Browse** or paste an absolute folder path and choose **Check
+   folder**. Review the package and the file, integrity and Studio compatibility checks.
+3. Select **Add manual app**, widget or preset. This creates a local Store card;
+   nothing is installed by checking or adding the folder.
+4. Select **Install** on the manual card to add the package to your library.
+5. Add an app/widget to the Core layout, or put a Core app in **Background apps**,
+   then Deploy. Core apps are installed and checked against the device during Deploy;
+   adding the manual card or installing into the library does not require Core.
+6. After editing your package, open **Install from folder** again to check and add the
+   new build. Local packages are not submitted to GitHub or the public Store.
 
 ## Folder contents
 
@@ -37,8 +41,10 @@ Android package ID: installing a matching signed APK updates that Android app an
 preserves its data. A different signing key is rejected by Android. No automatic
 uninstall or downgrade is performed. Remove APKs through Core settings.
 
-The preview uses a bounded snapshot and expires after ten minutes. Changing files
-after preview does not change what Install applies; select the folder again to
-load new content. A folder picker is available in the desktop app; the browser-only
-development server has no native folder picker. Local testing does not replace
+The preview uses a bounded snapshot and expires after ten minutes. Adding the package
+retains that verified snapshot for the manual Store card, including across restarts.
+Changing or moving the source folder does not change what Install applies; check and
+add the folder again to load new content. Manual cards are available offline. A folder
+picker is available in the desktop app; the browser-only development server can accept
+a folder path accessible to that server. Local testing does not replace
 Store review, licensing checks or testing on physical hardware.

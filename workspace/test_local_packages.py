@@ -61,9 +61,48 @@ class LocalPackagesTests(unittest.TestCase):
     def test_apk_requires_manifest_and_inspection_before_install(self):
         (self.folder/'plugin.json').unlink();(self.folder/'app.apk').write_bytes(b'not apk')
         with self.assertRaisesRegex(store.StoreError,'manifest'):read_folder(server,self.folder)
+
+    def test_manual_registration_is_separate_from_install_and_keeps_snapshot(self):
+        preview=self.service.preview_local(dict(folder=str(self.folder)))
+        self.assertGreaterEqual(len(preview['checks']),3)
+        with patch.object(server,'adb') as adb:
+            added=self.service.add_local(dict(token=preview['token']))['package']
+            adb.assert_not_called()
+        self.assertEqual(self.service.records(),{})
+        self.assertEqual(self.service.templates(),[])
+        restarted=store.Store(server)
+        self.assertEqual(restarted.manual_packages()[added['id']],added)
+        (self.folder/'plugin.json').write_bytes(b'changed after registration')
+        with patch.object(store.threading,'Thread') as thread:
+            restarted.start_local(dict(id=added['id'],version=added['version'],sha256=added['artifact']['sha256']))
+            self.assertEqual(thread.call_args.kwargs['args'][1][1],self.raw)
+
+    def test_manual_preview_incompatible_missing_cancel_and_stale_token(self):
+        (self.folder/'manifest.json').write_text(json.dumps(dict(self.p,compatibility=dict(minStudioVersion='99.0.0',hostApi=1))))
+        with self.assertRaisesRegex(store.StoreError,'Studio'):self.service.preview_local(dict(folder=str(self.folder)))
+        self.assertIsNone(self.service.local_pending)
+        (self.folder/'manifest.json').unlink()
+        preview=self.service.preview_local(dict(folder=str(self.folder)))
+        with patch.object(server,'package_folder_picker',Mock(return_value=None),create=True):self.assertTrue(self.service.preview_local()['cancelled'])
+        with self.assertRaisesRegex(store.StoreError,'expired'):self.service.add_local(dict(token=preview['token']))
+        (self.folder/'icon.png').unlink()
+        with self.assertRaisesRegex(store.StoreError,'icon.png'):self.service.preview_local(dict(folder=str(self.folder)))
+        self.assertEqual(self.service.manual_packages(),{})
+
+    def test_manual_preview_lock_is_released_after_picker_error(self):
+        with patch.object(server,'package_folder_picker',Mock(side_effect=OSError('picker failed')),create=True):
+            with self.assertRaisesRegex(store.StoreError,'chooser'):self.service.preview_local()
+        self.assertTrue(self.service.preview_local(dict(folder=str(self.folder)))['token'])
+
+    def test_manual_install_rejects_changed_package_and_tampered_snapshot(self):
+        preview=self.service.preview_local(dict(folder=str(self.folder)))
+        added=self.service.add_local(dict(token=preview['token']))['package']
+        with self.assertRaisesRegex(store.StoreError,'changed'):self.service.start_local(dict(id=added['id'],version='99.0.0',sha256=added['artifact']['sha256']))
+        (server.DATA_DIR/'store/manual-packages'/added['artifact']['sha256']).write_bytes(b'changed')
+        with self.assertRaisesRegex(store.StoreError,'changed'):self.service.start_local(dict(id=added['id'],version=added['version'],sha256=added['artifact']['sha256']))
     def test_protected_local_endpoints_and_no_picker_in_browser_mode(self):
         client=server.app.test_client()
-        for path in ('/api/store/local/preview','/api/store/local/install'):
+        for path in ('/api/store/local/preview','/api/store/local/add','/api/store/local/install'):
             self.assertEqual(client.post(path,headers={'Host':'127.0.0.1:8741'}).status_code,403)
         with patch.object(server,'package_folder_picker',None,create=True):
             with self.assertRaisesRegex(store.StoreError,'desktop'):self.service.preview_local()

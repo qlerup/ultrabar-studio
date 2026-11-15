@@ -58,6 +58,14 @@
       <p class="muted">Apps and widgets install into your library on this PC. Add them to your Core layout and Deploy to install them on CoreBAR. Removing a library entry keeps existing drafts and device apps. Remove Android apps through CoreBAR settings.</p>
     </section>
   </main>
+  <dialog id="manual-app-dialog" aria-labelledby="manual-app-title">
+    <div class="guide-heading"><div><div class="eyebrow">YOUR LOCAL PACKAGES</div><h2 id="manual-app-title">Add a manual app</h2></div><form method="dialog"><button aria-label="Close manual app dialog">Close</button></form></div>
+    <p class="muted">Choose a package folder. Studio checks its files and compatibility before you add it to the Store on this PC.</p>
+    <form id="manual-folder-form"><label for="manual-folder-path">Package folder</label><div class="manual-folder-fields"><input id="manual-folder-path" type="text" placeholder="Paste a full folder path, or browse" autocomplete="off" spellcheck="false"><button id="manual-folder-browse" type="button">Browse…</button><button id="manual-folder-check" type="submit">Check folder</button></div></form>
+    <p id="manual-app-status" role="status" aria-live="polite">Choose a folder to get started.</p>
+    <section id="manual-app-results" hidden aria-labelledby="manual-package-title"><div class="manual-package-heading"><div><span id="manual-package-kind" class="eyebrow"></span><h3 id="manual-package-title"></h3><p id="manual-package-version" class="muted"></p></div><span class="badge">Ready to add</span></div><ul id="manual-app-checks" class="manual-app-checks"></ul><p id="manual-app-requirements" class="muted"></p></section>
+    <div class="manual-app-footer"><p class="muted">Manual apps are not reviewed by Store. Add only packages you trust. Adding an app does not install it.</p><button id="manual-app-add" class="primary" disabled>Add manual app</button></div>
+  </dialog>
   <dialog id="store-install-dialog" aria-labelledby="store-install-title"><h2 id="store-install-title">Install package?</h2><div id="store-install-summary"></div><p class="muted">Only continue if you trust the publisher and the listed permissions.</p><div class="editor-buttons"><button id="store-install-cancel">Cancel</button><button id="store-install-confirm" class="primary">Install</button></div></dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO</div><h2 id="settings-title">Settings</h2></div><form method="dialog"><button>Close</button></form></div>
