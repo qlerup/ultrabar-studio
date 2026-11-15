@@ -11,7 +11,7 @@ const symbols = {DOT_KEY:'⠿',VIVO_CUBE:'▣',KNOB_KEY:'◉',SENSE_CUBE:'◇',M
 function el(tag, className, text) { const node=document.createElement(tag); if(className) node.className=className; if(text!==undefined) node.textContent=text; return node; }
 function notice(text, error=false) { $('notice').textContent=text; $('connection-notice').textContent=text; $('connection-notice').classList.toggle('error',error); $('notice').classList.toggle('error',error); $('setup-error-help').hidden=!error; }
 async function api(path, options={}) {
-  const response=await fetch(path,{...options,headers:{'X-Studio-Token':token,'Content-Type':'application/json'},signal:AbortSignal.timeout(65000)});
+  const response=await fetch(path,{...options,headers:{'X-Studio-Token':token,'Content-Type':'application/json'},signal:options.signal===null?undefined:AbortSignal.timeout(65000)});
   if(!response.ok) {const data=await response.json().catch(()=>({}));throw new Error(data.error || 'The request could not be completed.');}
   return response;
 }

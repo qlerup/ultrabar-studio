@@ -16,13 +16,14 @@
     $('store-device').textContent=snapshot?`Selected CoreBAR: ${snapshot.model} / ${snapshot.target}`:'No CoreBAR connected. Studio plugins can still be installed on this PC.';
     const box=$('store-packages');box.replaceChildren();
     const query=$('store-search').value.trim().toLowerCase(),filter=$('store-filter').value;
-    const all=packages.slice();for(const p of installed){if(!all.some(x=>x.id===p.id)&&(p.type!=='corebar-app'||p.device_id===snapshot?.device_id))all.push({...p,description:'Installed package is no longer listed in the current catalog.',unlisted:true});}
+    const all=packages.slice();for(const p of installed){if(!all.some(x=>x.id===p.id)&&(p.type!=='corebar-app'||p.device_id===snapshot?.device_id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
+    $('store-local-folder').disabled=job?.state==='running';
     for(const p of visible){
       const card=el('article','store-card'),saved=record(p),active=job?.state==='running';
       const heading=el('div','store-card-heading'),icon=el('div','store-card-icon',p.name.slice(0,1).toUpperCase()),title=el('div','store-card-title');
       title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
-      title.append(el('p','muted store-publisher',p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
+      title.append(el('p','muted store-publisher',p.origin==='local'?'LOCAL DEVELOPMENT / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
@@ -51,11 +52,14 @@
   }
   function confirmInstall(p){
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256,device_id:p.type==='corebar-app'?snapshot?.device_id:null};
+    if(p.localToken){pending.token=p.localToken;pending.local=true;}
     const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?`Install on CoreBAR ${snapshot?.target}.`:p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
-    if(p.id==='studio.vivo.screensync')box.append(el('p','', 'Setup uses root ADB to copy your existing approved Studio bridge credential into this app?s private storage and configure all currently online VivoCubes. Choose Follow Core in the app to enable it. Reinstall refreshes the cube list and preserves your settings.'));
+    if(p.origin==='local')box.prepend(el('p','','Local development package. This folder has not been reviewed by the Store. Local widgets use a separate library identity; an APK updates the same Android app if already installed.'));
+    if(p.id==='studio.vivo.screensync')box.append(el('p','', 'Setup uses root ADB to copy your existing approved Studio bridge credential into this app\'s private storage and configure all currently online VivoCubes. Choose Follow Core in the app to enable it. Reinstall refreshes the cube list and preserves your settings.'));
     $('store-install-dialog').showModal();
   }
-  $('store-install-confirm').onclick=async()=>{const body=pending;if(!body)return;pending=null;$('store-install-dialog').close();try{job=await(await api('/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();}catch(e){status(e.message,true);}};
+  $('store-install-confirm').onclick=async()=>{const body=pending;if(!body)return;pending=null;$('store-install-dialog').close();try{job=await(await api(body.local?'/api/store/local/install':'/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();}catch(e){status(e.message,true);}};
+  $('store-local-folder').onclick=async()=>{const button=$('store-local-folder');button.disabled=true;status('Choose a package folder...');try{const d=await(await api('/api/store/local/preview',{method:'POST',signal:null})).json();if(d.cancelled){status('Folder selection cancelled.');return;}if(d.package.type==='corebar-app'&&!snapshot){status('Connect CoreBAR before installing a local APK.',true);return;}confirmInstall({...d.package,localToken:d.token});}catch(e){status(e.message,true);}finally{button.disabled=job?.state==='running';}};
   $('store-install-cancel').onclick=()=>{pending=null;$('store-install-dialog').close();};
   $('store-refresh').onclick=refresh;$('store-search').oninput=render;$('store-filter').onchange=render;
   $('nav-store').onclick=()=>{opened=true;document.body.classList.remove('editing');document.body.classList.add('store-open');$('store-content').hidden=false;for(const id of ['nav-overview','nav-editor']){$(id).classList.remove('nav-active');$(id).setAttribute('aria-pressed','false');}$('nav-store').classList.add('nav-active');$('nav-store').setAttribute('aria-pressed','true');refresh();};

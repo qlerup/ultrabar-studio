@@ -9,6 +9,7 @@ import subprocess
 import tempfile
 import threading
 import time
+import secrets
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
@@ -205,7 +206,7 @@ def inspect_apk(server,path,entry):
 
 class Store:
     def __init__(self,server):
-        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={}
+        self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None
     def records(self):
         try:
             data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text())
@@ -246,11 +247,39 @@ class Store:
             self.job=dict(state='running',message='Checking approved package...',id=body['id'])
         threading.Thread(target=self.install,args=(dict(body),),daemon=True,name='StudioStoreInstall').start()
         return self.status()
-    def install(self,body):
+    def preview_local(self):
+        picker=getattr(self.server,'package_folder_picker',None)
+        if picker is None:raise StoreError('Folder selection is available in the Studio desktop app.')
+        selected=picker()
+        if not selected:return dict(cancelled=True)
+        from local_packages import read_folder
+        try:p,raw,icon=read_folder(self.server,selected[0])
+        except StoreError:raise
+        except (ValueError,OSError,TypeError,KeyError,AttributeError):raise StoreError('The selected folder does not contain a valid package.') from None
+        token=secrets.token_urlsafe(32)
+        with self.lock:
+            if self.job and self.job['state']=='running':raise StoreError('Wait for the current installation to finish.')
+            self.local_pending=(token,time.monotonic()+600,p,raw)
+            self.remember_icons([p])
+            path=self.server.DATA_DIR/'store/icons'/(p['icon']['sha256']+'.png');path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(icon)
+        return dict(token=token,package=p)
+    def start_local(self,body):
+        if not isinstance(body,dict):raise StoreError('Select a local package folder first.')
+        with self.lock:
+            if self.job and self.job['state']=='running':raise StoreError('Another installation is already running.')
+            pending=self.local_pending
+            if not pending or not isinstance(body.get('token'),str) or not secrets.compare_digest(pending[0],body['token']) or time.monotonic()>pending[1]:
+                raise StoreError('Local preview expired. Select the folder again.')
+            self.local_pending=None
+            _,_,p,raw=pending
+            self.job=dict(state='running',message='Verifying local development package...',id=p['id'])
+        threading.Thread(target=self.install,args=(dict(body),(p,raw)),daemon=True,name='StudioLocalInstall').start()
+        return self.status()
+    def install(self,body,local=None):
         server=self.server
         try:
-            p=next((p for p in catalog() if p['id']==body['id']),None)
-            if not p or p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256'):raise StoreError('The catalog changed. Refresh the store and review the package again.')
+            p=local[0] if local else next((p for p in catalog() if p['id']==body['id']),None)
+            if not local and (not p or p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256')):raise StoreError('The catalog changed. Refresh the store and review the package again.')
             if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before installing this package.')
             device=body.get('device_id') or ''
             if p['type']=='corebar-app' and not device:raise StoreError('Connect to CoreBAR before installing this app.')
@@ -260,10 +289,13 @@ class Store:
             self.update_job(message='Downloading and verifying package...')
             with tempfile.TemporaryDirectory(prefix='ultrabar-store-') as folder:
                 path=Path(folder)/('package.apk' if p['type']=='corebar-app' else 'plugin.json')
-                with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
+                if local:path.write_bytes(local[1]);size=len(local[1])
+                else:
+                    with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
                 if p.get('publisher'):record['publisher']=p['publisher']
+                if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
@@ -285,7 +317,8 @@ class Store:
                             version=re.search(r'^\s*versionName=(\S+)',dump,re.M)
                             if not version or version.group(1) not in c['lineosVersions']:raise StoreError('This app does not support the connected LineOS version.')
                         import screen_sync
-                        prepared = screen_sync.prepare(server, target, p) if screen_sync.applies(p) else None
+                        setup_entry=dict(p,id=p['original_id']) if local else p
+                        prepared = screen_sync.prepare(server, target, setup_entry) if screen_sync.applies(setup_entry) else None
                         self.update_job(message='Installing on CoreBAR. Keep the connection open...')
                         result=subprocess.run([str(server.ADB),'-s',target,'install','-r',str(path)],capture_output=True,timeout=120,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
                         if result.returncode or 'Success' not in result.stdout.decode(errors='replace'):raise StoreError('Android rejected the installation. The existing app was not uninstalled. Check its signing identity, version and available storage.')
@@ -330,6 +363,10 @@ def register_store(server):
         return Response(store.icon(digest),mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
     @server.app.post('/api/store/install')
     def install():return jsonify(store.start(request.get_json(silent=True))),202
+    @server.app.post('/api/store/local/preview')
+    def preview_local():return jsonify(store.preview_local())
+    @server.app.post('/api/store/local/install')
+    def install_local():return jsonify(store.start_local(request.get_json(silent=True))),202
     @server.app.get('/api/store/job')
     def job():return jsonify(job=store.status())
     @server.app.post('/api/store/remove-plugin')

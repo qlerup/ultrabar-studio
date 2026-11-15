@@ -1,4 +1,4 @@
-import tempfile,threading,time,unittest
+import tempfile,threading,time,unittest,json
 from pathlib import Path
 from unittest.mock import patch
 from werkzeug.serving import make_server
@@ -49,6 +49,21 @@ class StoreBrowserTests(unittest.TestCase):
       page.locator('.store-card').get_by_role('button',name='Remove from library').click()
       expect(page.locator('#store-status')).to_have_text('Package removed from library.')
       self.assertEqual(server.store.templates(),[])
+      folder=Path(tmp)/'local-package';folder.mkdir()
+      (folder/'plugin.json').write_bytes(raw);(folder/'icon.png').write_bytes(icon_raw)
+      (folder/'manifest.json').write_text(json.dumps(p))
+      with patch.object(server,'package_folder_picker',return_value=[str(folder)],create=True):
+       page.locator('#store-local-folder').click()
+       expect(page.locator('#store-install-summary')).to_contain_text('Local development package')
+       page.locator('#store-install-cancel').click();self.assertEqual(server.store.templates(),[])
+       page.locator('#store-local-folder').click();page.locator('#store-install-confirm').click()
+       expect(page.locator('#store-status')).to_contain_text('Installed.',timeout=15000)
+      expect(page.locator('.store-publisher').filter(has_text='LOCAL DEVELOPMENT')).to_be_visible()
+      self.assertEqual(server.store.templates()[0]['_storePackage'],'local.studio.test')
+      page.screenshot(path=str(server.ROOT/'data/qa/store-local-mobile.png'))
+      page.set_viewport_size(dict(width=1440,height=960));page.screenshot(path=str(server.ROOT/'data/qa/store-local-desktop.png'))
+      page.locator('.store-card').filter(has_text='LOCAL DEVELOPMENT').get_by_role('button',name='Remove from library').click()
+      expect(page.locator('#store-status')).to_have_text('Package removed from library.')
       page.locator('#nav-overview').click();expect(page.locator('#store-content')).not_to_be_visible()
       assert not errors,errors
       browser.close()

@@ -47,6 +47,7 @@ def main():
             timer.start()
         server.update_launcher = queue_update
         server.program_picker = lambda: window.create_file_dialog(file_types=('Programs (*.exe)',))
+        server.package_folder_picker = lambda: window.create_file_dialog(webview.FileDialog.FOLDER)
         # Used when reopening Studio after an update; normal launches still show discovery.
         if '--resume-editor' in sys.argv:
             def resume_editor():

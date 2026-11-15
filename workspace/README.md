@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.31 Windows
+# UltraBar Studio — 0.32 Windows
+
+## 0.32 update
+
+Install from folder previews and installs local development packages without Store publication or a catalog connection. Widget/preset packages use separate local library IDs and an explicit Local development label. They can be edited and deployed like Store widgets. Local APKs require complete Android metadata and a signed non-debuggable APK; installation uses the same device, compatibility and Android identity checks. Folder contents are snapshotted before confirmation and are never executed as setup/build scripts.
 
 ## 0.31 update
 
