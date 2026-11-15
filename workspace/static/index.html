@@ -12,6 +12,7 @@
     <button id="nav-overview" aria-pressed="true" class="nav-active" type="button">Device overview</button>
     <button id="nav-editor" aria-pressed="false" class="profile-button" type="button" disabled>Design &amp; actions</button>
     <button id="nav-store" class="profile-button" type="button" aria-pressed="false">App &amp; Plugin Store</button>
+    <button id="settings-open" class="profile-button" type="button" aria-haspopup="dialog">Settings</button>
     <div class="section-label profile-label">DEVICE PROFILES</div>
     <div id="profiles"><p class="muted sidebar-note">Connect to load profiles.</p></div>
     <div class="sidebar-bottom"><span class="version">WINDOWS APP / __APP_VERSION__</span><p>Made for your desk.<br>Designed around you.</p><p class="tray-hint">Close keeps Studio running.<br>Use the tray icon to reopen or exit.</p></div>
@@ -57,6 +58,13 @@
     </section>
   </main>
   <dialog id="store-install-dialog" aria-labelledby="store-install-title"><h2 id="store-install-title">Install package?</h2><div id="store-install-summary"></div><p class="muted">Only continue if you trust the publisher and the listed permissions.</p><div class="editor-buttons"><button id="store-install-cancel">Cancel</button><button id="store-install-confirm" class="primary">Install</button></div></dialog>
+  <dialog id="settings-dialog" aria-labelledby="settings-title">
+    <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO</div><h2 id="settings-title">Settings</h2></div><form method="dialog"><button>Close</button></form></div>
+    <h3>Startup</h3>
+    <label class="settings-option"><input id="start-with-windows" type="checkbox" disabled><span><strong>Start with Windows</strong><span class="muted">Open Studio automatically when you sign in to Windows.</span></span></label>
+    <p id="settings-status" role="status" aria-live="polite" class="muted"></p>
+    <h3>Connection</h3><p class="muted">Studio remembers your last successful connection and reconnects automatically when it opens. If CoreBAR is offline, Studio keeps trying until it is available.</p>
+  </dialog>
   <dialog id="updates-dialog" aria-labelledby="updates-title">
     <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO / __APP_VERSION__</div><h2 id="updates-title">App updates</h2></div><form method="dialog"><button>Close</button></form></div>
     <p id="updates-status" role="status" aria-live="polite"></p>

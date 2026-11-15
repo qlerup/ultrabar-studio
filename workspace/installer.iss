@@ -1,7 +1,7 @@
 [Setup]
 AppId={{B5CF5A95-A196-49BD-969D-031B243623DB}
 AppName=UltraBar Studio
-AppVersion=0.35.0
+AppVersion=0.36.0
 AppPublisher=UltraBar Studio
 DefaultDirName={localappdata}\Programs\UltraBar Studio
 DefaultGroupName=UltraBar Studio
@@ -10,7 +10,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=release
-OutputBaseFilename=UltraBarStudio-Setup-0.35.0
+OutputBaseFilename=UltraBarStudio-Setup-0.36.0
 SetupIconFile=assets\studio.ico
 UninstallDisplayIcon={app}\UltraBar Studio.exe
 Compression=lzma2
@@ -34,6 +34,9 @@ Name: "{autodesktop}\UltraBar Studio"; Filename: "{app}\UltraBar Studio.exe"; Ta
 
 [Run]
 Filename: "{app}\UltraBar Studio.exe"; Description: "Start UltraBar Studio"; Flags: nowait postinstall skipifsilent
+
+[Registry]
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "UltraBar Studio"; Flags: uninsdeletevalue
 
 [Code]
 function InitializeSetup(): Boolean;

@@ -16,7 +16,8 @@ async function api(path, options={}) {
   return response;
 }
 function controls() { $('connect').disabled=busy||layoutSaving;$('discovery-connect').disabled=busy||layoutSaving||!selectedDiscoveryTarget; $('refresh').disabled=busy||layoutSaving||!snapshot; $('screen-button').disabled=busy||screenPolling||!snapshot; $('backup').disabled=busy||!snapshot; }
-async function load(connect, target=$('target').value) {
+async function load(connect, target=$('target').value, automatic=false) {
+  if(connect&&!automatic){clearTimeout(reconnectTimer);rememberedTarget='';}
   if(window.studioEditor?.hasUnsaved()&&!confirm('There are unsaved editor changes. Save the draft before changing devices or refreshing. Continue?'))return;
   if(busy||layoutSaving||layoutDrag)return; busy=true;connectionGeneration++;clearScreen();clearCubeImages();controls();notice(connect?'Connecting and loading your setup …':'Reading your current setup …');
   const profileId=snapshot?.profiles[selectedProfile]?.id;
@@ -29,7 +30,7 @@ async function load(connect, target=$('target').value) {
     $('screen-state').textContent='Capture a screenshot to see what your CoreBAR is displaying.';
     render();window.studioEditor?.snapshotChanged();notice('Profile loaded. A local backup has been saved.');
     try{localStorage.setItem('ultrabar-target',snapshot.target);}catch{}
-  }catch(error){notice(error.message,true);connectionStatus(false);markHardwareUnknown('Status could not be refreshed. Retrying automatically.');}
+  }catch(error){notice(error.message+(automatic?' Retrying automatically in 15 seconds. Use Connect device to choose another connection.':''),true);connectionStatus(false);markHardwareUnknown('Status could not be refreshed. Retrying automatically.');}
   finally{busy=false;controls();if(snapshot){captureScreen();captureCubes();}}
 }
 function render() {
@@ -103,6 +104,8 @@ function centerHardware(){
   const strip=$('hardware-preview'),cards=[...strip.children];
   const core=cards.find(card=>card.dataset.layoutKey==='core');
   if(!core||!strip.clientWidth)return;
+  // Old centering padding must not hold the strip wider than a resized window.
+  strip.style.paddingLeft='14px';strip.style.paddingRight='14px';
   const gap=parseFloat(getComputedStyle(strip).columnGap)||0,base=14;
   const index=cards.indexOf(core);
   const span=items=>items.reduce((width,card)=>width+card.getBoundingClientRect().width+gap,0);
@@ -180,7 +183,7 @@ function connectionStatus(connected) {
   $('connection-badge').classList.toggle('connected',connected);
   $('connection-open').textContent=connected?'Manage connection':'Connect device';
 }
-function openConnection(){if($('connection-dialog').open)return;$('manual-connection').open=false;$('connection-notice').textContent='';$('connection-dialog').showModal();discoverDevices();}
+function openConnection(){if($('connection-dialog').open)return;clearTimeout(reconnectTimer);rememberedTarget='';$('manual-connection').open=false;$('connection-notice').textContent='';$('connection-dialog').showModal();discoverDevices();}
 $('connection-open').onclick=openConnection;
 function markHardwareUnknown(message) {
   connectionStatus(false);
@@ -327,7 +330,36 @@ $('discover').onclick=discoverDevices;
 document.querySelectorAll('.setup-guide-trigger').forEach(button=>button.addEventListener('click',()=>{if(!$('setup-guide').open)$('setup-guide').showModal();}));
 $('guide-find-devices').onclick=()=>{$('setup-guide').close();openConnection();};
 $('setup-guide').addEventListener('close',()=>{api('/api/setup-seen',{method:'POST'}).catch(()=>{});});
-api('/api/preferences').then(response=>response.json()).then(data=>{if(!busy&&!snapshot&&!targetEdited&&document.activeElement!==$('target'))$('target').value=data.target; if(!data.setup_seen&&!$('setup-guide').open)$('setup-guide').showModal();}).catch(()=>{});
+let reconnectTimer=null,rememberedTarget='';
+async function reconnectRemembered(){
+  if(!rememberedTarget||snapshot||targetEdited)return;
+  if(!busy&&!$('connection-dialog').open)await load(true,rememberedTarget,true);
+  if(rememberedTarget&&!snapshot&&!targetEdited)reconnectTimer=setTimeout(reconnectRemembered,15000);
+}
+const startupReady=api('/api/preferences').then(response=>response.json()).then(async data=>{
+  if(busy||snapshot||targetEdited||document.activeElement===$('target')||$('connection-dialog').open)return;
+  $('target').value=data.target;
+  if(data.target){rememberedTarget=data.target;await reconnectRemembered();}
+  else if(!data.setup_seen&&!$('setup-guide').open)$('setup-guide').showModal();
+}).catch(()=>{});
+
+let savedStartup=false;
+$('settings-open').onclick=async()=>{
+  $('settings-dialog').showModal();$('start-with-windows').disabled=true;$('settings-status').textContent='Loading settings...';
+  try{
+    const data=await(await api('/api/settings')).json();savedStartup=data.start_with_windows;
+    $('start-with-windows').checked=savedStartup;$('start-with-windows').disabled=!data.startup_supported;
+    $('settings-status').textContent=data.startup_supported?'Changes are saved automatically.':'Available in the installed Windows app.';
+  }catch(error){$('settings-status').textContent=error.message;}
+};
+$('start-with-windows').onchange=async()=>{
+  const input=$('start-with-windows');input.disabled=true;$('settings-status').textContent='Saving...';
+  try{
+    const data=await(await api('/api/settings',{method:'POST',body:JSON.stringify({start_with_windows:input.checked})})).json();
+    savedStartup=data.start_with_windows;input.checked=savedStartup;$('settings-status').textContent='Settings saved.';
+  }catch(error){input.checked=savedStartup;$('settings-status').textContent=error.message;}
+  finally{input.disabled=false;}
+};
 
 let updateJob={state:'idle'};
 function showUpdateJob(job){

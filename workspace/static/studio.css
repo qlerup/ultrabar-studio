@@ -107,3 +107,11 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .store-badges{display:flex;flex-wrap:wrap;gap:7px}.store-stat{font-size:11px;line-height:1.5;padding:3px 7px;border:1px solid var(--line);border-radius:2px;color:var(--muted);background:var(--bg);font-variant-numeric:tabular-nums}
 
 .sidebar-bottom p.tray-hint{font-size:11px;line-height:1.5;color:var(--muted);margin-top:18px}
+
+#settings-dialog{font:inherit;width:min(640px,calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;padding:28px;border:1px solid var(--line);border-radius:2px;background:var(--panel);color:var(--text)}
+#settings-dialog::backdrop{background:#050609bb}
+#settings-dialog h3{margin-top:28px}
+.settings-option{display:flex;align-items:flex-start;gap:14px;padding:18px;border:1px solid var(--line);cursor:pointer}
+.settings-option input{width:18px;height:18px;margin:3px 0;flex-shrink:0;accent-color:#b8adff}
+.settings-option span span{display:block;margin-top:6px;line-height:1.5}
+@media(max-width:650px){#settings-dialog{padding:20px}}

@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.35 Windows
+# UltraBar Studio — 0.36 Windows
+
+## 0.36 update
+
+Studio reconnects to the last successfully saved CoreBAR address at launch, including after restarting Windows. If CoreBAR or the network is offline, startup retries every 15 seconds. Opening Manage connection / Connect device stops these retries so you can choose a different device. A failed connection never replaces the saved address. If CoreBAR's IP address changes, select it again through Connect device.
+
+Settings in the sidebar includes Start with Windows (off by default), saved immediately for the current Windows user in installed builds. Uninstall removes Studio's login startup entry. Startup registration follows the [Windows per-user Run key](https://learn.microsoft.com/en-us/windows/win32/setupapi/run-and-runonce-registry-keys). The development server shows this setting as unavailable.
 
 ## Independence, testing and responsibility
 

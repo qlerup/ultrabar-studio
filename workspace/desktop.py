@@ -50,10 +50,10 @@ def main():
         server.update_launcher = queue_update
         server.program_picker = lambda: window.create_file_dialog(file_types=('Programs (*.exe)',))
         server.package_folder_picker = lambda: window.create_file_dialog(webview.FileDialog.FOLDER)
-        # Used when reopening Studio after an update; normal launches still show discovery.
+        # Reuse normal startup reconnect when reopening Studio after an update.
         if '--resume-editor' in sys.argv:
             def resume_editor():
-                window.evaluate_js("api('/api/preferences').then(r=>r.json()).then(async p=>{document.getElementById('target').value=p.target;await load(true);if(snapshot)document.getElementById('nav-editor').click();}).catch(()=>{}); void 0")
+                window.evaluate_js("startupReady.then(()=>{if(snapshot)document.getElementById('nav-editor').click();}).catch(()=>{}); void 0")
             window.events.loaded += resume_editor
         # A test-only mode verifies the actual packaged WebView and clean shutdown.
         if '--smoke-test' in sys.argv:

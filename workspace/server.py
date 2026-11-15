@@ -14,6 +14,7 @@ import xml.etree.ElementTree as ET
 
 from flask import Flask, jsonify, request, send_file
 import updates
+import startup
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent
@@ -211,6 +212,28 @@ def preferences():
         return jsonify(target=validate_target(data.get('target')), setup_seen=(DATA_DIR / 'setup-seen').exists())
     except (OSError, ValueError, TypeError, AttributeError):
         return jsonify(target='', setup_seen=(DATA_DIR / 'setup-seen').exists())
+
+
+@app.get('/api/settings')
+def get_settings():
+    try:
+        return jsonify(start_with_windows=startup.enabled(), startup_supported=startup.supported())
+    except OSError as exc:
+        raise DeviceError('Could not read Windows startup settings. Please try again.') from exc
+
+
+@app.post('/api/settings')
+def save_settings():
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or set(data) != {'start_with_windows'} or type(data['start_with_windows']) is not bool:
+        return jsonify(error='Choose whether Studio should start with Windows.'), 400
+    if not startup.supported():
+        return jsonify(error='Install the Windows app to enable startup with Windows.'), 409
+    try:
+        startup.set_enabled(data['start_with_windows'])
+        return jsonify(start_with_windows=startup.enabled(), startup_supported=True)
+    except OSError as exc:
+        raise DeviceError('Could not save Windows startup settings. Please try again.') from exc
 
 
 @app.post('/api/setup-seen')
