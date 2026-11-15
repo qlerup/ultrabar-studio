@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.42 Windows
+# UltraBar Studio — 0.42.1 Windows
+
+## 0.42.1 update
+
+Selected Core layout widgets keep their lavender selection border while hovered.
+The selection rule now takes precedence over the general button hover styling.
+Browser acceptance verifies the selected border with the pointer over the widget
+and after moving it away, using reduced motion to check final colors without
+transition timing affecting the result.
 
 ## 0.42 update
 

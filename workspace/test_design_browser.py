@@ -116,6 +116,13 @@ class DesignTests(unittest.TestCase):
       studio=page.locator('details[data-group="store"]')
       expect(stock.get_by_role('button',name='Clock',exact=True)).to_have_count(1)
       expect(stock.get_by_role('button',name='Clock',exact=True)).to_be_visible()
+      page.emulate_media(reduced_motion='reduce')
+      selected=page.locator('#core-canvas .canvas-widget.selected')
+      selected.hover()
+      assert selected.evaluate('(node)=>node.matches(":hover")'), 'Selected widget is not hovered'
+      expect(selected).to_have_css('border-top-color','rgb(185, 178, 255)')
+      page.locator('#library-search').hover()
+      expect(selected).to_have_css('border-top-color','rgb(185, 178, 255)')
       expect(studio.get_by_role('button',name='System Monitor',exact=True)).to_be_visible()
       studio.locator('summary').click()
       expect(studio).not_to_have_attribute('open','')
