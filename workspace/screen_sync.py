@@ -52,6 +52,14 @@ def start_sync(server,target,enabled):
     if re.search(r'error|exception',result,re.I):raise StoreError('Screen Sync could not start in the background. Check Core and retry Deploy.')
 
 
+def write_private_file(server, target, path, uid, raw):
+    # Keep binary stdin out of shell-v2 CR handling. Finish metadata in a separate
+    # command: exec-in may terminate a shell command chain when stdin closes.
+    server.adb('-s', target, 'exec-in', f'umask 077; cat > {path}.tmp', input_data=raw)
+    server.adb('-s', target, 'shell', f'chown {uid}:{uid} {path}.tmp && chmod 600 {path}.tmp && mv {path}.tmp {path} && restorecon {path}')
+    return server.adb('-s', target, 'exec-out', 'cat', path, binary=True) == raw
+
+
 def configure(server, target, prepared, settings=None, background=False):
     from store import StoreError
     dump = server.adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE_ID).split('Hidden system packages:', 1)[0]
@@ -62,10 +70,10 @@ def configure(server, target, prepared, settings=None, background=False):
     base = '/data/user/0/' + PACKAGE_ID + '/files'
     server.adb('-s', target, 'shell', 'am', 'force-stop', PACKAGE_ID)
     server.adb('-s', target, 'shell', f'mkdir -p {base} && chown {uid}:{uid} {base} && chmod 700 {base}')
+    # ADB shell input removes CR bytes on this firmware; exec-in preserves file bytes.
     for name, raw in zip(('config.json', 'server.crt'), prepared):
         path = base + '/' + name
-        server.adb('-s', target, 'shell', f'umask 077; cat > {path}.tmp && chown {uid}:{uid} {path}.tmp && chmod 600 {path}.tmp && mv {path}.tmp {path} && restorecon {path}', input_data=raw)
-        if server.adb('-s', target, 'exec-out', 'cat', path, binary=True) != raw:
+        if not write_private_file(server, target, path, uid, raw):
             raise StoreError('Screen Sync installed, but setup could not be verified. Check the connection and retry Deploy.')
     if settings is not None or background:
         settings=settings or {}
@@ -83,8 +91,7 @@ def configure(server, target, prepared, settings=None, background=False):
             ET.SubElement(root,tag,name=key,value=value)
         data=ET.tostring(root,encoding='utf-8',xml_declaration=True)
         server.adb('-s',target,'shell',f'mkdir -p {prefs} && chown {uid}:{uid} {prefs} && chmod 700 {prefs}')
-        server.adb('-s',target,'shell',f'umask 077; cat > {path}.tmp && chown {uid}:{uid} {path}.tmp && chmod 600 {path}.tmp && mv {path}.tmp {path} && restorecon {path}',input_data=data)
-        if server.adb('-s',target,'exec-out','cat',path,binary=True)!=data:raise StoreError('Screen Sync preferences could not be verified. Retry Deploy.')
+        if not write_private_file(server,target,path,uid,data):raise StoreError('Screen Sync preferences could not be verified. Retry Deploy.')
         start_sync(server,target,settings.get('enabled',True))
     else:
         server.adb('-s', target, 'shell', 'am', 'start', '-n', PACKAGE_ID+'/.MainActivity')

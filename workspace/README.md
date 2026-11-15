@@ -1,4 +1,18 @@
-# UltraBar Studio — 0.42.2 Windows
+# UltraBar Studio — 0.42.3 Windows
+
+## 0.42.3 update
+
+Fixed Screen Sync setup failing certificate verification when Windows files contain
+CRLF line endings. Setup now transfers file bytes through raw ADB exec-in, then
+applies ownership, permissions, atomic rename and SELinux labels in a separate
+command. Config, certificate and preferences still require exact readback before
+the service is started; verification is not relaxed.
+
+Reproduced the line-ending corruption with a harmless scratch file on CB01.
+Verified the corrected setup on the connected Core using its saved Follow Core
+and 1000 ms wake delay settings. Setup files/preferences passed byte-for-byte
+verification and Android reported the Screen Sync foreground service running.
+No profiles or button assignments were deployed during this verification.
 
 ## 0.42.2 update
 

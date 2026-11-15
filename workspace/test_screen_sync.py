@@ -28,10 +28,12 @@ class ScreenSyncTests(unittest.TestCase):
         self.server.adb.return_value='0';self.server.read_snapshot.return_value={}
         with self.assertRaisesRegex(store.StoreError,'VivoCube'):screen_sync.prepare(self.server,'core',self.entry)
     def test_private_setup_verified_and_preferences_untouched(self):
-        prepared=(b'private-config',b'certificate');stored={}
+        prepared=(b'private-config',b'certificate\r\nsecond line\r\n');stored={}
         def adb(*args,**kwargs):
             if 'dumpsys' in args:return 'Packages:\n userId=10123\n'
-            if kwargs.get('input_data') is not None:stored['config.json' if 'config.json.tmp' in args[-1] else 'server.crt']=kwargs['input_data']
+            if kwargs.get('input_data') is not None:
+                raw=kwargs['input_data']
+                stored['config.json' if 'config.json.tmp' in args[-1] else 'server.crt']=raw.replace(b'\r',b'') if 'shell' in args else raw
             if 'exec-out' in args:return stored[args[-1].split('/')[-1]]
             return ''
         self.server.adb.side_effect=adb
@@ -39,7 +41,28 @@ class ScreenSyncTests(unittest.TestCase):
         calls=self.server.adb.call_args_list
         self.assertFalse(any('private-config' in str(c.args) or 'shared_prefs' in str(c.args) for c in calls))
         self.assertTrue(any('chmod 600' in str(c.args) for c in calls))
+        self.assertTrue(all('exec-in' in c.args for c in calls if c.kwargs.get('input_data') is not None))
         self.assertIn('start',calls[-1].args)
+    def test_binary_transfer_finishes_metadata_after_stdin_closed(self):
+        files={}
+        path='/data/user/0/'+screen_sync.PACKAGE_ID+'/files/server.crt'
+        raw=b'certificate\r\nsecond line\r\n'
+        def adb(*args,**kwargs):
+            if kwargs.get('input_data') is not None:
+                # Raw exec-in writes bytes but cannot finish a trailing shell chain.
+                self.assertIn('exec-in',args)
+                self.assertNotIn('&&',args[-1])
+                files[path+'.tmp']=kwargs['input_data']
+            elif 'shell' in args:
+                self.assertIn('chmod 600',args[-1])
+                self.assertIn('restorecon',args[-1])
+                files[path]=files.pop(path+'.tmp')
+            elif 'exec-out' in args:return files.get(path,b'')
+            return ''
+        self.server.adb.side_effect=adb
+        self.assertTrue(screen_sync.write_private_file(self.server,'core',path,'10123',raw))
+        self.assertEqual(files,{path:raw})
+
     def test_incomplete_write_does_not_launch(self):
         self.server.adb.side_effect=lambda *a,**kw:' userId=10123\n' if 'dumpsys' in a else b'wrong' if 'exec-out' in a else ''
         with self.assertRaisesRegex(store.StoreError,'verified'):screen_sync.configure(self.server,'core',(b'config',b'cert'))
@@ -64,6 +87,7 @@ class ScreenSyncTests(unittest.TestCase):
         self.assertEqual(prefs.find("./boolean[@name='enabled']").get('value'),'true')
         self.assertEqual(prefs.find("./int[@name='wakeDelayMs']").get('value'),'1750')
         calls=self.server.adb.call_args_list
+        self.assertTrue(all('exec-in' in c.args for c in calls if c.kwargs.get('input_data') is not None))
         self.assertIn('start-foreground-service',calls[-1].args)
         self.assertEqual(calls[-1].args[-1],'enable')
         self.assertFalse(any('.MainActivity' in str(c.args) for c in calls))
