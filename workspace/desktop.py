@@ -38,9 +38,8 @@ def main():
         webview.settings['ALLOW_FILE_URLS'] = False
         window = webview.create_window('UltraBar Studio', f'http://127.0.0.1:{port}',
                                       width=1440, height=960, min_size=(640, 520), maximized=True, resizable=False, background_color='#101116')
-        # Fixed border disables resize/snap and the restore button. Also handle
-        # OS/taskbar restore requests, while leaving minimization available.
-        window.events.restored += window.maximize
+        from window_policy import lock_maximized
+        window.events.before_show += lambda: lock_maximized(window)
         def queue_update(path):
             pending_update.append(Path(path))
             timer = threading.Timer(0.5, window.destroy)

@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.28 Windows
+# UltraBar Studio — 0.29 Windows
+
+## 0.29 update
+
+Studio stays maximized when the title bar is dragged or double-clicked, and when Windows requests Move, Size or Restore. Minimize and Close remain available. A native Windows message hook prevents drag-to-restore, and a UI-thread state guard maximizes any programmatically restored window. Native regression checks cover title-bar operations, system commands, direct state changes and minimize/restore.
 
 ## 0.28 update
 
