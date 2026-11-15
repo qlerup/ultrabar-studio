@@ -37,6 +37,7 @@ class DeferredAppBrowserTests(unittest.TestCase):
                         page.route('**/api/pc', lambda r:r.fulfill(json=dict(actions=[], metrics={})))
                         page.route('**/api/hardware', lambda r:r.fulfill(json=dict(target=snapshot['target'], hardware=snapshot['hardware'])))
                         page.route('**/api/screen*', lambda r:r.fulfill(status=502, json=dict(error='Offline preview')))
+                        page.route('**/api/editor/icons/**',lambda r:r.fulfill(status=502,json=dict(error='Offline icon')))
                         page.route('**/api/cube-previews', lambda r:r.fulfill(json=dict(previews={})))
                         # Already installed apps must not duplicate the Store entry.
                         page.route('**/api/editor/catalog', lambda r:r.fulfill(json=dict(apps=[dict(id=screen_sync.PACKAGE_ID, type='APPS', name='Vivo Screen Sync', iconScale=100)])))

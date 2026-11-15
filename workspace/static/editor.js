@@ -3,7 +3,9 @@
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
   let editorGeneration=0, pcDestination='widget', pcMetrics={};
   let storePresets=[];
+  const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
+  let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
@@ -11,13 +13,15 @@
   const glyphs={CPU:'▥',MEMORY:'▤',STORAGE:'◴',TIME:'◷',APPS:'▦',PC_CONTROL:'↗'};
   const message=(text,error=false)=>{$('editor-notice').textContent=text;$('editor-notice').classList.toggle('error',error);};
   function updateControls(){
-    for(const id of ['draft-save','draft-deploy','draft-reset','draft-restore','widget-undo'])$(id).disabled=working||!draft;
+    for(const id of ['draft-save','draft-deploy','draft-reset','draft-restore','widget-undo'])$(id).disabled=working||actionSaving||!draft;
     $('draft-status').textContent=!draft?'Loading draft…':dirty?'Unsaved draft changes':`Draft saved · ${new Date(draft.saved_at).toLocaleTimeString()}`;
-    $('editor-content').classList.toggle('editor-working',working);
+    $('editor-content').classList.toggle('editor-working',working||actionSaving);
+    $('edit-profile').disabled=working||actionSaving;
+    $('action-undo').disabled=working||actionSaving||!history.length;
   }
   function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[]}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
-  function showMode(next){mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
+  function showMode(next){if(actionSaving)return;mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
   async function openEditor(){
     if(!snapshot||busy||working)return;
     window.studioStore?.leave();
@@ -36,7 +40,7 @@
     }catch(error){message(error.message,true);}
     finally{working=false;updateControls();}
   }
-  function overview(){if(working)return;window.studioStore?.leave();document.body.classList.remove('editing');$('nav-editor').classList.remove('nav-active');$('nav-overview').classList.add('nav-active');$('overview-content').hidden=false;$('editor-content').hidden=true;$('nav-editor').setAttribute('aria-pressed','false');$('nav-overview').setAttribute('aria-pressed','true');}
+  function overview(){if(working||actionSaving)return;window.studioStore?.leave();document.body.classList.remove('editing');$('nav-editor').classList.remove('nav-active');$('nav-overview').classList.add('nav-active');$('overview-content').hidden=false;$('editor-content').hidden=true;$('nav-editor').setAttribute('aria-pressed','false');$('nav-overview').setAttribute('aria-pressed','true');}
   async function loadCatalog(){try{apps=(await (await api('/api/editor/catalog')).json()).apps;renderLibrary();renderActionLibrary();}catch(error){message(error.message,true);}}
   function option(select,value,label){const item=el('option','',label);item.value=value;select.append(item);}
   function renderEditor(){
@@ -52,6 +56,8 @@
   async function loadStorePresets(){
     try{
       const data=await(await api('/api/store/installed')).json();
+      storeIconByPackage.clear();storeIconByApp.clear();
+      for(const p of data.installed||[]){if(/^[a-f0-9]{64}$/.test(p.icon?.sha256||'')){storeIconByPackage.set(p.id,p.icon.sha256);if(p.android?.packageId)storeIconByApp.set(p.android.packageId,p.icon.sha256);}}
       storePresets=(data.widgets||[]).map((w,i)=>{
         if(w.type==='APPS')return {...w,_storeKey:w._storePackage+':'+w.id};
         const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
@@ -142,6 +148,19 @@
     if(nativeSpec(w)||w.param?.payload?.action==='studioAction')return 'studio';
     return ['CPU','MEMORY','STORAGE','TIME'].includes(w.type)?'ultrabar':'installed';
   }
+  async function showLibraryIcon(w,box){
+    const packageId=w._storePackage||nativeSpec(w)?.packageId;
+    const digest=storeIconByPackage.get(packageId)||storeIconByApp.get(w.id);
+    const path=digest?'/api/store/icons/'+digest:w.type==='TIME'?'/api/editor/icons/clock':w.type==='APPS'?'/api/editor/icons/app/'+encodeURIComponent(w.id):null;
+    if(!path)return;
+    const key=path.startsWith('/api/store/')?path:snapshot.device_id+':'+snapshot.target+':'+path;
+    if(Date.now()-(libraryIconFailures.get(key)||0)<30000)return;
+    try{
+      if(!libraryIconCache.has(key))libraryIconCache.set(key,api(path).then(r=>r.blob()).then(blob=>URL.createObjectURL(blob)).catch(error=>{libraryIconCache.delete(key);throw error;}));
+      const url=await libraryIconCache.get(key);if(!box.isConnected)return;
+      const img=el('img');img.src=url;img.alt='';img.width=32;img.height=32;img.draggable=false;box.replaceChildren(img);
+    }catch(_){libraryIconFailures.set(key,Date.now());/* Keep the package initial while an icon is unavailable. */}
+  }
   function renderLibrary(){
     if(!draft)return;
     const container=$('widget-library');
@@ -160,7 +179,7 @@
       group.open=query?true:libraryExpanded[key];if(query)group.dataset.searching='true';
       const summary=el('summary','library-group-heading');summary.append(el('span','',title),el('span','library-count',String(items.length)));
       const content=el('div','library-group-content');content.append(el('p','muted library-group-help',help));
-      for(const w of items){const b=el('button','library-item');b.type='button';b.append(el('span','library-glyph',glyphs[w.type]||'?'),el('span','',w.name||types[w.type]||w.type));b.setAttribute('aria-label',w.name||types[w.type]||w.type);b.title='Add '+(w.name||w.type);b.onclick=()=>addWidget(w);draggable(b,{kind:'widget-new',widget:w});content.append(b);}
+      for(const w of items){const b=el('button','library-item');b.type='button';const icon=el('span','library-icon',(w.name||types[w.type]||w.type||'?').slice(0,1).toUpperCase());b.append(icon,el('span','',w.name||types[w.type]||w.type));b.setAttribute('aria-label',w.name||types[w.type]||w.type);b.title='Add '+(w.name||w.type);b.onclick=()=>addWidget(w);draggable(b,{kind:'widget-new',widget:w});content.append(b);showLibraryIcon(w,icon);}
       if(!items.length)content.append(el('p','muted','No items available.'));
       group.append(summary,content);container.append(group);
     }
@@ -304,7 +323,7 @@
       card.setAttribute('aria-label',`${names[m.productId]||m.productId} / ${m.serialNo.slice(-6)}`);
       card.title=`Configure ${names[m.productId]||m.productId} / ${m.serialNo}`;
       card.append(el('span','action-device-serial',m.serialNo.slice(-6)));
-      card.onclick=()=>{if(working)return;moduleSerial=m.serialNo;inputKey='';renderModules();};
+      card.onclick=()=>{if(working||actionSaving)return;moduleSerial=m.serialNo;inputKey='';resetActionComposer();renderModules();};
       cards.set(m.serialNo,card);
     }
     const order=[...new Set([...(snapshot.layout_order||[]),...cards.keys()])];
@@ -314,19 +333,43 @@
   }
   window.addEventListener('studio-hardware-changed',()=>{if(mode==='actions'&&!$('editor-content').hidden)renderActionDevices();});
   new ResizeObserver(()=>centerHardware($('action-devices'))).observe($('action-devices'));
+  function moduleInputs(m){
+    const choices=[];if(!m)return choices;
+    const add=(key,label,hint)=>choices.push({key,label,hint});
+    if(m.productId==='SENSE_CUBE'){for(let i=0;i<5;i++)add('sense:'+i,'Tap event '+(i+1),'Use this configured tap event.');}
+    else{
+      const slots=m.productId==='DOT_KEY'?[2,3]:m.productId==='KNOB_KEY'?[0]:[...new Set([101,...(Array.isArray(m.config)?m.config.map(c=>c.keyCode):[])])];
+      for(const key of slots)for(const [kind,label,hint] of [['singleClick','Single press','Press once.'],['doubleClick','Double press','Press twice quickly.'],['longPress','Long press','Press and hold.']]){
+        const prefix=m.productId==='DOT_KEY'?'Button '+(key-1)+' / ':m.productId==='VIVO_CUBE'?'Screen button '+key+' / ':'';
+        add(key+':'+kind,prefix+label,hint);
+      }
+      if(m.productId==='KNOB_KEY'){add('knob:clockwise','Turn clockwise','Turn the dial to the right.');add('knob:counterclockwise','Turn counterclockwise','Turn the dial to the left.');}
+    }
+    return choices;
+  }
+  function currentInput(){return inputChoices.find(item=>item.key===inputKey);}
   function renderModules(){
-    const list=modules();if(!list.some(m=>m.serialNo===moduleSerial)){moduleSerial='';inputKey='';}
+    const list=modules();if(!list.some(m=>m.serialNo===moduleSerial)){moduleSerial='';inputKey='';resetActionComposer();}
     renderActionDevices();
-    const m=list.find(m=>m.serialNo===moduleSerial);const input=$('action-input');input.replaceChildren();
+    const m=list.find(m=>m.serialNo===moduleSerial);inputChoices=moduleInputs(m);
+    if(inputKey&&!currentInput()){inputKey='';resetActionComposer();}
     $('action-config').hidden=!m;$('action-device-empty').hidden=!!m;
     $('action-module-title').textContent=m?`${names[m.productId]||m.productId} / ${m.serialNo.slice(-6)}`:'';
-    $('action-module-status').textContent=m?'Choose an input, then add or arrange its actions.':'';
-    if(m){if(m.productId==='SENSE_CUBE'){for(let i=0;i<5;i++)option(input,'sense:'+i,'Tap event '+(i+1));}
-    else{const slots=m.productId==='DOT_KEY'?[2,3]:m.productId==='KNOB_KEY'?[0]:[...new Set([101,...(Array.isArray(m.config)?m.config.map(c=>c.keyCode):[])])];for(const key of slots)for(const [kind,label] of Object.entries({singleClick:'Single press',doubleClick:'Double press',longPress:'Long press'}))option(input,key+':'+kind,`${m.productId==='VIVO_CUBE'?'Screen button '+key:m.productId==='DOT_KEY'?'Button '+(key-1):'Button'} · ${label}`);}}
-    if(m?.productId==='KNOB_KEY'){option(input,'knob:clockwise','Turn clockwise');option(input,'knob:counterclockwise','Turn counterclockwise');}
-    if(![...input.options].some(o=>o.value===inputKey))inputKey=input.options[0]?.value||'';input.value=inputKey;renderActionLibrary();renderSequence();
+    $('action-module-status').textContent='Set up one press or gesture at a time.';
+    $('action-vivo-help').hidden=m?.productId!=='VIVO_CUBE';
+    const box=$('action-input-choices'),focused=box.contains(document.activeElement)?document.activeElement.dataset.inputKey:null;box.replaceChildren();
+    for(const item of inputChoices){
+      const b=button('',()=>{if(working||actionSaving)return;inputKey=item.key;resetActionComposer();renderModules();});
+      b.dataset.inputKey=item.key;b.setAttribute('aria-label',item.label);b.setAttribute('aria-pressed',String(inputKey===item.key));
+      b.append(el('strong','',item.label),el('span','',item.hint));box.append(b);
+    }
+    if(focused)[...box.children].find(b=>b.dataset.inputKey===focused)?.focus({preventScroll:true});
+    $('action-step-type').hidden=!inputKey;
+    $('action-step-type-help').textContent=currentInput()?`When you use ${currentInput().label.toLowerCase()}, what should happen?`:'';
+    renderActionLibrary();renderSequence();
   }
   function inputScene(create=false){
+    if(!inputKey||!moduleSerial)return null;
     let m=current().module.find(m=>m.serialNo===moduleSerial);if(!m&&create){const meta=modules().find(m=>m.serialNo===moduleSerial);if(!meta)return null;m={serialNo:meta.serialNo,productId:meta.productId,config:meta.productId==='KNOB_KEY'?{}:[]};current().module.push(m);}if(!m)return null;
     const [key,kind]=inputKey.split(':');
     if(key==='knob'){if(!m.config[kind]&&create)m.config[kind]={actions:[],name:kind,type:'MANUAL',enabled:false,show:false};return m.config[kind];}
@@ -335,7 +378,21 @@
     if(!slot&&create){slot={keyCode:Number(key)};if(m.productId==='VIVO_CUBE')slot.widgetType=1;if(m.productId==='KNOB_KEY')m.config.button=slot;else m.config.push(slot);}
     if(!slot)return null;if(!slot[kind]&&create)slot[kind]={actions:[],name:kind,type:'MANUAL',enabled:false,show:false};return slot[kind];
   }
-  function actionName(a){if(a.type==='ACTIVITY')return apps.find(w=>w.id===a.values?.[0]?.value)?.name||a.values?.[0]?.value||'Open Core app';if(a.type==='PC_CONTROL'){const payload=a.values?.[0]?.value?.payload;return pcActions.find(p=>p.id===payload?.params?.id)?.name||a.name||payload?.action||'PC action';}return a.name||a.type||'Action';}
+  function readableAppName(id){
+    const app=[...apps,...storePresets].find(w=>w.id===id);
+    if(app?.name&&app.name!==id)return app.name;
+    const text=String(id||'Core app').split('.').pop().replace(/[_-]/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2');
+    return text.charAt(0).toUpperCase()+text.slice(1);
+  }
+  function savedPcAction(a){return a.type==='PC_CONTROL'?pcActions.find(p=>p.id===a.values?.[0]?.value?.payload?.params?.id):null;}
+  function actionName(a){
+    if(a.type==='ACTIVITY')return 'Launch '+readableAppName(a.values?.[0]?.value);
+    const saved=savedPcAction(a);if(saved)return saved.name;
+    const payload=a.values?.[0]?.value?.payload;
+    const label=a.name||payload?.action||a.type||'Action';
+    return ({startApp:'Open PC program',PC_CONTROL:'PC action',PC_VOLUME:'Volume control',PC_MEDIA:'Media control'})[label]||label.replace(/_/g,' ').replace(/([a-z])([A-Z])/g,'$1 $2');
+  }
+  function actionDetail(a){const saved=savedPcAction(a);return saved?`${saved.kind==='url'?'Website':'PC program'} / ${saved.target}`:a.type==='ACTIVITY'?'Opens on CoreBAR':'Existing device action';}
   function pcParam(a){return {output:10,payload:{action:'studioAction',params:{id:a.id}}};}
   function pcAction(a){return {type:'PC_CONTROL',values:[{id:'1',value:pcParam(a)}]};}
   function actionLibrary(){
@@ -343,13 +400,84 @@
     function walk(v){if(!v||typeof v!=='object')return;if(Array.isArray(v.actions))list.push(...v.actions);else Object.values(v).forEach(walk);}
     draft.profiles.forEach(p=>walk(p.module));const seen=new Set();return list.filter(a=>{const key=JSON.stringify(a);if(seen.has(key))return false;seen.add(key);return true;});
   }
-  function renderActionLibrary(){if(!draft)return;const box=$('action-library');box.replaceChildren();for(const a of actionLibrary()){const b=button(actionName(a),()=>addAction(a),'library-item');draggable(b,{kind:'action-new',action:a});box.append(b);}}
+  function resetActionComposer(){
+    actionType='';editingActionIndex=null;actionChoiceItems=[];
+    $('action-setup-form').reset();$('action-setup-error').textContent='';$('action-feedback').textContent='';
+    $('action-step-settings').hidden=true;
+  }
+  function renderActionLibrary(){
+    if(!draft)return;
+    const other=actionLibrary().filter(a=>a.type!=='ACTIVITY'&&!a.type?.startsWith('PC_'));
+    for(const b of document.querySelectorAll('[data-action-type]')){b.setAttribute('aria-pressed',String(b.dataset.actionType===actionType));if(b.dataset.actionType==='existing')b.hidden=!other.length;}
+    $('action-step-settings').hidden=!inputKey||!actionType;
+    if(!actionType)return;
+    const custom=actionType==='website'||actionType==='program';
+    $('action-target-fields').hidden=!custom;$('action-choice-field').hidden=custom;
+    $('action-target').required=custom;$('action-choice').required=!custom;
+    $('action-target').disabled=!custom;
+    $('action-browse-program').hidden=actionType!=='program';
+    $('action-target-label').textContent=actionType==='website'?'Website URL':'Program on this PC';
+    $('action-target').type=actionType==='website'?'url':'text';
+    $('action-target').placeholder=actionType==='website'?'https://example.com':'C:\\Program Files\\App\\App.exe';
+    const labels={website:'Which website should open?',program:'Which program should open?', 'core-app':'Which Core app should open?', 'pc-action':'Which PC action should run?',existing:'Which existing action should run?'};
+    $('action-step-settings-title').textContent=labels[actionType];
+    $('action-settings-help').textContent=custom?(actionType==='website'?'Opens in your default PC browser. Keep Studio running on this PC.':'Choose an existing .exe file on this PC. Keep Studio running for this action to work.'):actionType==='core-app'?'The app opens on CoreBAR when you use this input.':'Choose an action already configured for this device. PC controls may require their original PC software.';
+    $('action-setup-submit').textContent=editingActionIndex===null?'Add action':'Update action';
+    $('action-choice-empty').hidden=true;$('action-setup-submit').disabled=actionSaving;
+    if(custom){$('action-choice').disabled=true;return;}
+    const select=$('action-choice'),previous=select.selectedOptions[0]?.dataset.identity;select.replaceChildren();
+    if(actionType==='core-app'){
+      const seen=new Set();actionChoiceItems=[...apps.filter(a=>a.type==='APPS').map(a=>({type:'ACTIVITY',id:'activity',values:[{id:'1',value:a.id}]})),...storePresets.filter(a=>a.type==='APPS').map(a=>({type:'ACTIVITY',id:'activity',values:[{id:'1',value:a.id}]})),...actionLibrary().filter(a=>a.type==='ACTIVITY')].filter(a=>{const id=a.values?.[0]?.value;if(!id||seen.has(id))return false;seen.add(id);return true;});
+    }else actionChoiceItems=actionLibrary().filter(a=>actionType==='pc-action'?a.type?.startsWith('PC_'):a.type!=='ACTIVITY'&&!a.type?.startsWith('PC_'));
+    actionChoiceItems.forEach((a,i)=>{option(select,String(i),actionName(a));select.lastChild.dataset.identity=JSON.stringify(a);});
+    const match=[...select.options].find(o=>o.dataset.identity===previous);if(match)select.value=match.value;
+    select.disabled=!actionChoiceItems.length;$('action-setup-submit').disabled=actionSaving||!actionChoiceItems.length;
+    $('action-choice-label').textContent=actionType==='core-app'?'App on CoreBAR':'Saved action';
+    if(!actionChoiceItems.length){$('action-choice-empty').hidden=false;$('action-choice-empty').textContent=actionType==='core-app'?'No Core apps are available. Refresh the connection to load apps from CoreBAR.':'No saved actions of this type are available. Choose Open website or Open PC program to create a PC action.';}
+  }
+  function chooseActionType(type){if(working||actionSaving)return;const index=editingActionIndex;resetActionComposer();editingActionIndex=index;actionType=type;renderActionLibrary();}
+  function commitWizardAction(a){
+    const index=editingActionIndex;resetActionComposer();
+    change(()=>{const scene=inputScene(true);scene.actions??=[];if(index!==null)scene.actions.splice(index,1,clone(a));else scene.actions.push(clone(a));});
+    $('action-feedback').textContent=(index===null?'Action added.':'Action updated.')+' Save your draft, then Deploy to Core when ready.';
+  }
+  function editAssignedAction(a,index){
+    resetActionComposer();editingActionIndex=index;const saved=savedPcAction(a);
+    actionType=a.type==='ACTIVITY'?'core-app':saved?(saved.kind==='url'?'website':'program'):a.type?.startsWith('PC_')?'pc-action':'existing';
+    renderActionLibrary();
+    if(saved){$('action-target').value=saved.target;$('action-name').value=saved.name;}
+    else{const match=actionChoiceItems.findIndex(item=>JSON.stringify(item)===JSON.stringify(a));if(match>=0)$('action-choice').value=String(match);}
+    $('action-step-settings').scrollIntoView({block:'nearest'});
+  }
+  for(const b of document.querySelectorAll('[data-action-type]'))b.onclick=()=>chooseActionType(b.dataset.actionType);
+  $('action-setup-cancel').onclick=()=>{resetActionComposer();renderActionLibrary();};
+  $('action-browse-program').onclick=async()=>{
+    const browse=$('action-browse-program'),context=[draft.device_id,current().id,moduleSerial,inputKey,actionType].join('|');browse.disabled=true;
+    try{const data=await(await api('/api/pc/browse',{method:'POST',body:'{}'})).json();if(context===[draft?.device_id,current()?.id,moduleSerial,inputKey,actionType].join('|')&&data.path)$('action-target').value=data.path;}
+    catch(error){$('action-setup-error').textContent=error.message;}finally{browse.disabled=false;}
+  };
+  $('action-setup-form').onsubmit=async event=>{
+    event.preventDefault();if(working||actionSaving||!inputKey||!actionType)return;
+    $('action-setup-error').textContent='';
+    if(actionType!=='website'&&actionType!=='program'){const a=actionChoiceItems[Number($('action-choice').value)];if(a)commitWizardAction(a);return;}
+    const context=[draft.device_id,current().id,moduleSerial,inputKey].join('|');
+    const target=$('action-target').value.trim(),kind=actionType==='website'?'url':'program';
+    const fallback=kind==='url'?target.replace(/^https?:\/\//,'').split('/')[0]:target.split(/[\\/]/).pop().replace(/\.exe$/i,'');
+    const name=$('action-name').value.trim()||('Open '+fallback).slice(0,100);
+    actionSaving=true;busy=true;updateControls();$('action-setup-submit').disabled=true;
+    try{
+      const data=await(await api('/api/pc/actions',{method:'POST',body:JSON.stringify({name,kind,target,device_id:draft.device_id})})).json();pcActions=data.actions;
+      if(context!==[draft?.device_id,current()?.id,moduleSerial,inputKey].join('|'))throw new Error('The selected input changed. Your PC action was saved; choose it under PC action to assign it.');
+      commitWizardAction(pcAction(data.action));
+    }catch(error){$('action-setup-error').textContent=error.message;}
+    finally{actionSaving=false;busy=false;updateControls();renderActionLibrary();}
+  };
   function addAction(a,index=null){if(!inputKey){message('Select a module input first.',true);return;}change(()=>{const s=inputScene(true);s.actions??=[];s.actions.splice(index??s.actions.length,0,clone(a));});}
-  function moveAction(from,to){change(()=>{const list=inputScene().actions;const [a]=list.splice(from,1);list.splice(to>from?to-1:to,0,a);});}
+  function moveAction(from,to){resetActionComposer();change(()=>{const list=inputScene().actions;const [a]=list.splice(from,1);list.splice(to>from?to-1:to,0,a);});}
   function renderSequence(){
-    const box=$('action-sequence');box.replaceChildren();$('action-input-title').textContent=$('action-input').selectedOptions[0]?.textContent||'No module selected';
-    const actions=inputScene()?.actions||[];actions.forEach((a,i)=>{const row=el('div','sequence-item');row.append(el('span','step-number',String(i+1).padStart(2,'0')),el('strong','',actionName(a)),el('small','muted',a.type));const controls=el('div','sequence-buttons');controls.append(button('↑',()=>moveAction(i,Math.max(0,i-1))),button('↓',()=>moveAction(i,Math.min(actions.length,i+2))),button('Remove',()=>change(()=>inputScene().actions.splice(i,1))));row.append(controls);draggable(row,{kind:'action-move',index:i});dropzone(row,data=>{if(data.kind==='action-new')addAction(data.action,i);if(data.kind==='action-move')moveAction(data.index,i);});box.append(row);});
-    if(!actions.length)box.append(el('p','canvas-empty','Drop actions here, or choose one from the library'));
+    const box=$('action-sequence');box.replaceChildren();$('assigned-actions').hidden=!inputKey;$('action-input-title').textContent=currentInput()?'Actions for '+currentInput().label:'Assigned actions';
+    const actions=inputScene()?.actions||[];actions.forEach((a,i)=>{const row=el('div','sequence-item');row.append(el('span','step-number',String(i+1).padStart(2,'0')),el('strong','',actionName(a)),el('small','muted',actionDetail(a)));const controls=el('div','sequence-buttons');controls.append(button('Edit',()=>editAssignedAction(a,i)),button('↑',()=>moveAction(i,Math.max(0,i-1))),button('↓',()=>moveAction(i,Math.min(actions.length,i+2))),button('Remove',()=>{resetActionComposer();change(()=>inputScene().actions.splice(i,1));}));row.append(controls);draggable(row,{kind:'action-move',index:i});dropzone(row,data=>{if(data.kind==='action-new')addAction(data.action,i);if(data.kind==='action-move')moveAction(data.index,i);});box.append(row);});
+    if(!actions.length)box.append(el('p','canvas-empty','No actions assigned yet. Choose what happens in step 2, then fill in step 3.'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
   async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[]})})).json();draft=response.draft;dirty=false;updateControls();}
@@ -366,16 +494,16 @@
   $('pc-action-kind').onchange=()=>{const web=$('pc-action-kind').value==='url';$('pc-action-target-label').textContent=web?'Website URL':'Full path to program';$('pc-action-target').placeholder=web?'https://example.com':'C:\\Program Files\\App\\App.exe';$('pc-action-browse').hidden=web;};
   $('pc-action-browse').onclick=async()=>{try{const data=await (await api('/api/pc/browse',{method:'POST',body:'{}'})).json();if(data.path)$('pc-action-target').value=data.path;}catch(error){$('pc-action-error').textContent=error.message;}};
   $('pc-action-cancel').onclick=()=>$('pc-action-dialog').close();
-  $('new-pc-widget').onclick=()=>showPcDialog('widget');$('new-pc-action').onclick=()=>showPcDialog('action');
+  $('new-pc-widget').onclick=()=>showPcDialog('widget');
   $('pc-connect').onclick=async()=>{try{await api('/api/pc/connect',{method:'POST',body:'{}'});await refreshPc();}catch(error){message(error.message,true);}};
   $('nav-editor').onclick=openEditor;$('nav-overview').onclick=overview;
   for(const m of ['layout','actions','pc'])$('mode-'+m).onclick=()=>showMode(m);
   $('library-search').oninput=renderLibrary;
-  $('edit-profile').onchange=()=>{profileIndex=Number($('edit-profile').value);widgetIndex=0;renderEditor();};
+  $('edit-profile').onchange=()=>{if(actionSaving)return;profileIndex=Number($('edit-profile').value);widgetIndex=0;moduleSerial='';inputKey='';resetActionComposer();renderEditor();};
   $('edit-profile-name').onchange=()=>change(()=>current().name=$('edit-profile-name').value);
   $('edit-show-names').onchange=()=>change(()=>current().showName=$('edit-show-names').checked);
-  $('action-input').onchange=()=>{inputKey=$('action-input').value;renderSequence();};
-  $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;renderEditor();};
+  $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;resetActionComposer();renderEditor();};
+  $('action-undo').onclick=()=>$('widget-undo').click();
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
   $('draft-deploy').onclick=()=>{if(!draft||working)return;const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();

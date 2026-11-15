@@ -9,8 +9,9 @@ import uuid
 import threading
 from functools import wraps
 
-from flask import jsonify, request
+from flask import jsonify, request, Response
 import bridge
+from library_icons import CoreIcons
 
 
 class EditError(ValueError):
@@ -234,6 +235,7 @@ def matches(expected, actual):
 
 
 def register_editor(server):
+    core_icons = CoreIcons()
     app = server.app
 
     @app.errorhandler(EditError)
@@ -263,10 +265,29 @@ def register_editor(server):
                 apps = bridge.request(server.connection['target'], server.adb, server.ROOT, 1000, None)
                 if not isinstance(apps, list):
                     raise ValueError()
-                return jsonify(apps=[dict(id=x['packageName'], name=x.get('appName', x['packageName']), type='APPS', iconScale=100)
-                                     for x in apps if isinstance(x, dict) and isinstance(x.get('packageName'), str)])
+                result=[]
+                for app in apps:
+                    if not isinstance(app,dict):continue
+                    package=app.get('packageName') or app.get('application')
+                    if not isinstance(package,str) or not re.fullmatch(r'[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+',package):continue
+                    name=app.get('appName')
+                    result.append(dict(id=package,name=name if isinstance(name,str) and name.strip() else package,type='APPS',iconScale=100))
+                return jsonify(apps=result)
             except Exception as exc:
                 raise server.DeviceError('Could not load installed apps. Existing widgets remain available.') from exc
+
+    @app.get('/api/editor/icons/<kind>')
+    @app.get('/api/editor/icons/<kind>/<ident>')
+    def library_icon(kind,ident=''):
+        with server.device_lock:
+            snapshot=current()
+            target=server.validate_target(server.connection['target'])
+            device_id=snapshot['device_id']
+        try:
+            raw=core_icons.get(target,kind,ident,server.adb,device_id)
+        except Exception as exc:
+            raise server.DeviceError('The device icon is unavailable. Existing widgets remain usable.') from exc
+        return Response(raw,mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, no-store'})
 
     @app.post('/api/editor/draft')
     def save_draft():

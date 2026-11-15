@@ -1,4 +1,29 @@
-# UltraBar Studio — 0.42.3 Windows
+# UltraBar Studio — 0.43 Windows
+
+## 0.43 update
+
+Module action setup now unfolds in three numbered panels: choose a press or gesture,
+choose what happens, then enter only the settings needed for that action. Website
+and PC program actions use inline URL/path fields; program browsing supports
+cancellation. Core app launch and saved PC controls have their own selectors.
+Changes are assigned only with Add action or Update action, then use the existing
+Save draft and Deploy workflow. Existing assignments remain available for editing,
+reordering, removal and Undo. Switching devices/profiles resets the composer;
+background status polling preserves unfinished fields. PC action saves lock the
+selection until completion to prevent assignment to a different input.
+
+The widget library now shows verified Store package icons and real Core app/Clock
+icons instead of generic glyphs. Core icons are read through a temporary local ADB
+forward, validated as bounded PNGs, cached by device and never taken from arbitrary
+URLs in app metadata. Unavailable icons retain a usable initial. The app catalog
+accepts both application and packageName identifiers, fixing empty catalogs and
+missing friendly app names on supported Core firmware.
+
+Offline browser checks cover progressive disclosure, URL validation, program picker
+cancellation, saved PC controls, Core app launch, editing, Undo, profile/device
+isolation, a delayed save, and desktop/mobile layouts. Core Clock and Calculator
+icon retrieval was also verified read-only on the connected device. No module
+assignments or profiles were deployed during these checks.
 
 ## 0.42.3 update
 
