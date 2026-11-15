@@ -23,8 +23,7 @@ def main():
         page.locator('.discovered-device').first.click()
         page.locator('#discovery-connect').click()
         expect(page.locator('#connection-badge')).to_have_class('badge connected', timeout=65000)
-        assert page.locator('.module-card').count() >= 1
-        assert page.locator('.widget').count() >= 1
+        assert page.locator('#modules, #details, #widgets').count() == 0
         assert page.locator('.hardware-unit:not(.core-unit)').count() == 6
         assert page.locator('.hardware-unit.sense_cube').count() == 1
         assert page.locator('.hardware-unit.vivo_cube').count() == 2
@@ -75,9 +74,6 @@ def main():
         assert page.locator('.hardware-unit:not(.is-unknown)').count() == 0
         page.unroute('**/api/hardware')
         expect(page.locator('#hardware-status')).to_contain_text('updates every 5 seconds', timeout=12000)
-        page.locator('#modules').get_by_role('button', name='KnobKey', exact=False).click()
-        assert page.locator('#detail-title').inner_text() == 'KnobKey'
-        assert page.locator('#events .event').count() >= 1
         page.locator('#preview-refresh').click()
         expect(page.locator('.core-unit .core-screen-image')).to_be_visible(timeout=65000)
         assert page.locator('.core-unit .core-screen-image').evaluate('(image) => image.complete && image.naturalWidth > 0')

@@ -1,7 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="studio-token"]').content;
-let snapshot = null, selectedProfile = 0, selectedModule = 0, busy = false, screenUrl = null;
+let snapshot = null, selectedProfile = 0, busy = false, screenUrl = null;
 let hardwarePolling = false, connectionGeneration = 0;
 let screenPolling = false, screenCapturedAt = null, coreScreenOff = false;
 let cubeImages = {}, cubeLoading = false, screenRefreshPending = false, cubeRefreshPending = false;
@@ -23,7 +23,7 @@ async function load(connect, target=$('target').value, automatic=false) {
   const profileId=snapshot?.profiles[selectedProfile]?.id;
   try {
     const response=await api(connect?'/api/connect':'/api/refresh',{method:'POST',body:connect?JSON.stringify({target}):undefined});
-    snapshot=await response.json();selectedProfile=Math.max(0,snapshot.profiles.findIndex(p=>p.id===profileId));selectedModule=0;
+    snapshot=await response.json();selectedProfile=Math.max(0,snapshot.profiles.findIndex(p=>p.id===profileId));
     connectionStatus(true); if($('connection-dialog').open)$('connection-dialog').close();
     $('empty').hidden=true;$('workspace').hidden=false;
     render();window.studioEditor?.snapshotChanged();notice('Profile loaded. A local backup has been saved.');
@@ -34,20 +34,11 @@ async function load(connect, target=$('target').value, automatic=false) {
 function render() {
   renderHardware();
   $('profiles').replaceChildren();
-  snapshot.profiles.forEach((p,i)=>{const button=el('button','profile-button'+(i===selectedProfile?' selected':''),p.name||p.id||'Unnamed profile');button.onclick=()=>{selectedProfile=i;selectedModule=0;render();};$('profiles').append(button);});
+  snapshot.profiles.forEach((p,i)=>{const button=el('button','profile-button'+(i===selectedProfile?' selected':''),p.name||p.id||'Unnamed profile');button.onclick=()=>{selectedProfile=i;render();};$('profiles').append(button);});
   const p=snapshot.profiles[selectedProfile];
   $('profile-name').textContent=p?.name||'No profiles';$('profile-meta').textContent=p?(p.default?'Default profile':'Saved profile')+' · '+snapshot.model:'There are no saved profiles on this device.';
   const modules=p?.module||[],widgets=p?.homeData||[];
   $('module-count').textContent=modules.length;$('widget-count').textContent=widgets.length;
-  $('modules').replaceChildren();
-  modules.forEach((module,i)=>{
-    const button=el('button','module-card'+(i===selectedModule?' selected':''));button.setAttribute('aria-pressed',i===selectedModule?'true':'false');
-    button.append(el('span','module-icon',symbols[module.productId]||'◇'),el('strong','',names[module.productId]||String(module.productId||'Module')));
-    const bottom=el('span','module-bottom');bottom.append(el('small','',events(module.config).length+' configured inputs'),el('span','','↗'));button.append(bottom);
-    button.onclick=()=>{selectedModule=i;render();};$('modules').append(button);
-  });
-  if(!modules.length)$('modules').append(el('p','muted','No modules are configured in this profile.'));
-  renderDetails(modules[selectedModule]);
   $('read-time').textContent='Last read '+new Date(snapshot.read_at).toLocaleString('en-GB');
 }
 function renderHardware() {
@@ -76,10 +67,6 @@ function renderHardware() {
       if(Date.now()<suppressHardwareClickUntil)return;
       $('hardware-detail').dataset.serial=device.serial;
       $('hardware-detail').textContent=`${names[device.type]||device.name} · ${device.serial} · ${device.online===true?'CoreBAR reports online':device.online===false?'CoreBAR reports offline':'Status unknown'}`;
-      const modules=snapshot.profiles[selectedProfile]?.module||[];
-      const index=modules.findIndex(m=>m.serialNo===device.serial);
-      if(index>=0){selectedModule=index;renderDetails(modules[index]);document.querySelectorAll('.module-card').forEach((card,i)=>{card.classList.toggle('selected',i===index);card.setAttribute('aria-pressed',i===index?'true':'false');});}
-      else{$('hardware-detail').textContent+=' · No actions in the selected profile.';$('details').hidden=true;}
     };
     strip.append(unit);
   }
@@ -203,36 +190,6 @@ async function pollHardware() {
 }
 setInterval(pollHardware,5000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden){pollHardware();if(!screenUrl)captureScreen();}});
-const inputNames={singleClick:'Single press',doubleClick:'Double press',longPress:'Long press',longClick:'Long press',button:'Button',clockwise:'Turn clockwise',counterclockwise:'Turn counterclockwise'};
-function events(config) {
-  if(!config||typeof config!=='object')return [];
-  if(Array.isArray(config))return config.flatMap((entry,i)=>{
-    if(!entry||typeof entry!=='object')return [];
-    const inputs=Object.keys(entry).filter(k=>inputNames[k]);
-    return inputs.length?inputs.map(k=>({name:'Button '+(entry.keyCode??i+1)+' · '+inputNames[k],value:entry[k]})):[{name:entry.name||('Input '+(entry.mode??i+1)),value:entry}];
-  });
-  return Object.entries(config).filter(([k])=>k!=='@type').map(([k,v])=>({name:inputNames[k]||k,value:v}));
-}
-function rawDetails(value) {const details=el('details');details.append(el('summary','','Show saved data'),el('pre','',JSON.stringify(value,(key,v)=>key==='@type'||key==='icon'?undefined:v,2)));return details;}
-function findActions(value) {
-  if(!value||typeof value!=='object')return [];
-  if(Array.isArray(value))return value.flatMap(findActions);
-  if(Array.isArray(value.actions))return value.actions;
-  if(value.type&&!value.singleClick)return [value];
-  return Object.entries(value).filter(([k])=>k!=='@type').flatMap(([,v])=>findActions(v));
-}
-function renderDetails(module) {
-  $('details').hidden=!module;if(!module)return;
-  $('detail-title').textContent=names[module.productId]||module.productId;$('detail-serial').textContent=module.serialNo||'';$('events').replaceChildren();
-  for(const event of events(module.config)){
-    const row=el('div','event');row.append(el('div','event-heading',event.name));
-    const actions=findActions(event.value);
-    for(const action of actions){const item=el('div','action');item.append(el('div','action-type',action.type||'ACTION'),el('div','',action.name||action.id||'Configured action'));row.append(item);}
-    if(!actions.length)row.append(el('p','muted','No actions found for this input.'));
-    row.append(rawDetails(event.value));$('events').append(row);
-  }
-  if(!$('events').children.length)$('events').append(el('p','muted','No inputs configured.'));
-}
 $('connect-form').onsubmit=event=>{event.preventDefault();load(true);};$('refresh').onclick=()=>load(false);
 function renderCoreScreen(){
   const face=document.querySelector('.core-unit .unit-screen');if(!face)return;
