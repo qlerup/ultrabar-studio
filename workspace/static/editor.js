@@ -69,7 +69,7 @@
   function stock(){return [{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
   function library(){
     const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>!nativeSpec(w));const seen=new Set();
-    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w.type==='APPS'?'app:'+w.id:w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
+    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w.type==='APPS'?'app:'+w.id:w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w.type==='TIME'?'TIME':w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
   // Pointer-based dragging avoids native HTML5/WebView drag restrictions and
   // makes the entire scaled Core viewport a target, with a visible insert line.
