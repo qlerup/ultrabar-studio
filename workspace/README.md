@@ -192,57 +192,77 @@ Status errors replace previous online/offline indicators with Unknown and retry 
 
 Latest installer: `release/UltraBarStudio-Setup-0.3.0.exe`. Earlier version notes below describe the original 0.2 packaging.
 
-## Windows-installation
+## Historical Windows packaging notes (0.2)
 
-Kør `release/UltraBarStudio-Setup-0.2.0.exe`. Appen installeres for den aktuelle Windows-bruger og får en Start-menu-genvej samt en almindelig afinstallation under Installerede apps. En skrivebordsgenvej kan vælges i installationsguiden.
+The original Windows installer installed Studio for the current Windows user,
+with a Start menu shortcut and optional desktop shortcut. Python, ADB and runtime
+libraries were bundled. Setup checked for Microsoft Edge WebView2 Runtime.
+Studio opened its own window, started a private loopback server on an available
+port and stopped that server when the window closed.
 
-Programmet har sit eget vindue. Python, ADB og programafhængigheder følger med. Microsoft Edge WebView2 Runtime skal være installeret; det kontrollerer installationsprogrammet. Ingen browser skal åbnes og ingen server skal startes manuelt. Appen starter en privat loopback-server på en ledig port og lukker den sammen med vinduet.
+Backups, the remembered IP address and logs are stored in
+`%LOCALAPPDATA%/UltraBar Studio`, separately from installed program files. They
+survive updates and uninstalling. The app and installer were not code-signed.
 
-Backups, husket IP-adresse og log gemmes i `%LOCALAPPDATA%/UltraBar Studio`, separat fra installationsmappen. De bevares ved opdatering og afinstallation. Installer og app er endnu ikke kodesigneret.
+### Hardware preview
 
-## Hardware-preview
+The module list comes from authenticated CoreBridge request `30730` (runtime
+supervisor), independently of profile actions. Names and types come from Core's
+endpoint registry. New runtime modules without known metadata appear as unknown;
+old registry entries without runtime membership are excluded.
 
-Modullisten kommer fra den autentificerede CoreBridge-forespørgsel `30730` (runtime supervisor). Den er uafhængig af profilernes actions. Modulnavn og type slås op i CoreBARs endpoint-register. Nye runtime-moduler uden kendt type vises som ukendte; gamle registreringer uden runtime-status indsættes ikke i previewet.
+The initial test reported six modules: two VivoCubes, two KnobKeys, one DotKey and
+one SenseCube. Five were online and one KnobKey was offline. The preview shows
+reported state and its read timestamp. Positions are schematic rather than a
+verified physical order. Cube images are illustrations rather than live video.
 
-CoreBAR rapporterede ved testen seks moduler: to VivoCube, to KnobKey, én DotKey og én SenseCube. Fem var online, én KnobKey offline. Previewet gengiver den rapporterede status og viser et aflæsningstidspunkt. Placering er skematisk, ikke en konstateret fysisk rækkefølge. Cube-skærmene er illustrationer, ikke live-video.
+In the original version, Connect and Refresh triggered status reads. Failed
+requests displayed an error rather than presenting saved configuration as live
+hardware. The previously approved diagnostic credential was read through ADB and
+used only in memory. It was excluded from the package and logs, and the server
+certificate was matched exactly before authentication.
 
-Status læses ved Forbind og Opdater. Hvis statusforespørgslen fejler, vises en fejl i stedet for at udgive gemte konfigurationer for at være forbundne moduler. Den tidligere godkendte diagnosticeringsklients credential læses via ADB og bruges kun i hukommelsen; det pakkes ikke med appen eller gemmes i loggen. Certifikatet matches præcist før autentifikation.
+### Build the installer
 
-## Byg installationsprogrammet
+Create `.venv-build`, install `requirements-build.txt` and place the Inno Setup 6
+compiler in `build-tools/InnoSetup`. Run `Build-Installer.ps1`. Builds include code,
+static assets, the public certificate and ADB. Private `data/` and user profiles
+are excluded.
 
-Opret `.venv-build`, installer `requirements-build.txt`, og placer Inno Setup 6-kompileren i `build-tools/InnoSetup`. Kør `Build-Installer.ps1`. Bygningen inkluderer kun kode, statiske assets, certifikat og ADB — aldrig `data/` eller brugerens profiler.
+Original packaging validation covered eight backend tests, browser flows with six
+runtime modules, responsive layouts, error responses, packaged WebView startup,
+live device reads, normal shutdown, installation and the Start menu shortcut.
+`--smoke-test --live-test` tests the packaged app against the current device and
+writes PASS/FAIL to its user data directory. See newer release notes above for
+subsequent functionality and validation.
 
-Valideret: otte backend-tests, browserflow med seks runtime-moduler, responsive layouts, fejlsvar, native pakket WebView-opstart, live enhedslæsning, normal lukning, installation og Start-menu-genvej. `--smoke-test --live-test` tester den pakkede app mod den aktuelle enhed og skriver PASS/FAIL i brugerens datamappe.
+Updates use the same AppId. To roll back, reinstall an earlier version while
+retaining the data directory. The original read-only release did not modify
+Core firmware or profiles.
 
-Opdatering: kør en nyere installer med samme AppId. Tilbageførsel: afinstaller programmet og geninstaller tidligere version; behold datamappen. Ingen ændringer er foretaget i CoreBARs firmware eller profiler.
+### Local development
 
-## Lokal udvikling
+From this directory, run `python -m pip install -r requirements.txt`, followed by
+`python server.py`. Open http://127.0.0.1:8741 and select **Connect**. Alternatively,
+use `Start-Studio.ps1`. Development requires Python, ADB at
+`../tools/platform-tools/adb.exe` and WiFi ADB enabled on Core. Enter the current
+local address in Studio. The tested CB01 allowed reading its profile file over
+ADB; other firmware may restrict access.
 
-Vores egen lokale brugerflade til UltraBar X. Læsning af den rigtige enhed, profiloverblik, modul-actions, widgets, skærmbillede og automatisk backup. Ingen simulerede enheder eller demo-profiler.
+### Original read-only feature scope
 
-## Start
+- Read LineOS profiles and configured modules. The saved configuration alone was
+  not a live inventory of physically connected modules.
+- Read saved inputs and actions, with unknown fields available in the saved-data view.
+- Refresh manually and display the timestamp of the last successful read.
+- Fetch a screenshot on request, without remote control or continuous streaming.
+- Save the original profile XML in `data/backups/<sha256>.xml`, once per distinct
+  file content. Backups were downloadable; automatic restore was not implemented.
+- Run on loopback with session-token and Host validation. Browser assets loaded locally.
+- Keep private backups local; `data/` is excluded from Git.
 
-Fra denne mappe: `python -m pip install -r requirements.txt`, derefter `python server.py`.
-Åbn http://127.0.0.1:8741 og tryk **Forbind**. Alternativt start serveren med `Start-Studio.ps1`.
-
-Kræver Python, den eksisterende `../tools/platform-tools/adb.exe` og WiFi ADB på CoreBAR. Den aktuelle adresse er 10.10.0.181:5555 og kan ændres i appen. Den testede CB01 tillader læsning af appens profilfil via ADB; andre firmwareversioner kan nægte denne adgang.
-
-## Funktioner og grænser
-
-- Læser profiler fra LineOS på enheden og viser konfigurerede moduler. Listen er **ikke** en livefortegnelse over alle fysisk tilsluttede moduler.
-- Inputs og actions læses fra den gemte konfiguration. Ukendte felter kan ses under **Vis gemte data**.
-- Opdatering er manuel; tidsstemplet angiver seneste vellykkede læsning.
-- Henter et skærmbillede efter klik. Ingen fjernbetjening eller kontinuerlig streaming.
-- Gemmer den originale profil-XML i `data/backups/<sha256>.xml`, med én fil pr. forskelligt indhold. Backup kan downloades. Automatisk gendannelse er ikke implementeret.
-- Ingen ændringer af profiler, firmware, widgets eller actions på enheden i denne version. Redigering/deploy og PC-action execution er ikke implementeret.
-- Kører kun på loopback. API kræver sessionstoken og korrekt Host. Ingen eksterne biblioteker indlæses i browseren.
-- Backups indeholder privat konfiguration og skal holdes lokale. `data/` er ignoreret af Git.
-
-## Næste trin
-
-1. Lokal editor med kladder og validering for én understøttet action-type ad gangen.
-2. CoreBridge-parring og verificeret deploy med ændringskontrol, backup og readback.
-3. Eksplicit tømning af fjernede actions for at undgå den verificerede LineOS-fejl med gamle scenes i hukommelsen.
-4. PC-actions, widgeteditor og automatisk genforbindelse.
-
-En vellykket protokolkvittering beviser ikke, at en action er genindlæst i runtime. Deploy skal testes både med readback og fysisk input.
+The original roadmap covered draft editing, validation, verified deployment with
+backups and readback, clearing removed actions, PC actions, widgets and reconnect.
+These historical limitations describe the initial release; newer releases are
+covered above. A protocol acknowledgement alone does not prove that a runtime
+reloaded an action: deployment requires readback and physical input testing.

@@ -3,15 +3,15 @@ $ErrorActionPreference = 'Continue'
 Set-Location -LiteralPath $PSScriptRoot
 $studioPython = Join-Path $PSScriptRoot '.venv-build/Scripts/python.exe'
 $studioCompiler = Join-Path $PSScriptRoot 'build-tools/InnoSetup/ISCC.exe'
-if (-not (Test-Path -LiteralPath $studioPython)) { throw 'Opret .venv-build og installer requirements-build.txt først.' }
-if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'Inno Setup-kompileren mangler i build-tools/InnoSetup.' }
+if (-not (Test-Path -LiteralPath $studioPython)) { throw 'Create .venv-build and install requirements-build.txt first.' }
+if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'The Inno Setup compiler is missing from build-tools/InnoSetup.' }
 & $studioPython -m unittest test_server test_hardware test_discovery test_previews test_editor test_native_widgets test_updates test_store test_screen_sync
-if ($LASTEXITCODE -ne 0) { throw 'Tests fejlede.' }
+if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
 & $studioPython ../native-widgets/build.py
 if ($LASTEXITCODE -ne 0) { throw 'Native widget build failed.' }
 & $studioPython -m PyInstaller --noconfirm 'UltraBar Studio.spec'
-if ($LASTEXITCODE -ne 0) { throw 'App-build fejlede.' }
+if ($LASTEXITCODE -ne 0) { throw 'App build failed.' }
 & $studioCompiler installer.iss
-if ($LASTEXITCODE -ne 0) { throw 'Installer-build fejlede.' }
+if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
 Get-FileHash 'release/UltraBarStudio-Setup-0.28.0.exe' -Algorithm SHA256
 
