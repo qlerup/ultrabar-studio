@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.29 Windows
+# UltraBar Studio — 0.30 Windows
+
+## 0.30 update
+
+Store package cards now identify the uploader with their GitHub account. Publisher declarations are checked against the package source owner, and new installations retain the attribution if a package is later delisted. Existing catalog entries can derive attribution from their GitHub source URL. Store submissions now require a registered owner repository and verified publisher rather than a first-party exemption.
 
 ## 0.29 update
 

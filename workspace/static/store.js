@@ -22,6 +22,7 @@
       const card=el('article','store-card'),saved=record(p),active=job?.state==='running';
       const heading=el('div','store-card-heading'),icon=el('div','store-card-icon',p.name.slice(0,1).toUpperCase()),title=el('div','store-card-title');
       title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
+      title.append(el('p','muted store-publisher',p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));

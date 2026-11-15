@@ -82,6 +82,11 @@ def validate_entry(entry):
     for field, maximum in [('name',100),('description',1000),('license',200)]:
         if not isinstance(p.get(field),str) or not 1 <= len(p[field]) <= maximum: raise StoreError('Incomplete package information.')
     valid_version(p.get('version'))
+    source=urlsplit(p.get('source',''))
+    owner=source.path.strip('/').split('/')[0] if source.scheme=='https' and source.netloc=='github.com' else ''
+    if 'publisher' in p and (not isinstance(p['publisher'],str) or not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}',p['publisher']) or p['publisher'].lower()!=owner.lower()):
+        raise StoreError('Package uploader must match the source repository owner.')
+    if 'publisher' not in p and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9-]{0,38}',owner):p['publisher']=owner
     if 'icon' in p:validate_icon_metadata(p['icon'])
     if p.get('type') not in ('corebar-app','studio-plugin','corebar-widget'): raise StoreError('Unknown package type.')
     compatibility=p.get('compatibility',{})
@@ -258,6 +263,7 @@ class Store:
                 with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
+                if p.get('publisher'):record['publisher']=p['publisher']
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')

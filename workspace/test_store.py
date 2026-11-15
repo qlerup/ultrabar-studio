@@ -30,6 +30,13 @@ class StoreTests(unittest.TestCase):
         self.assertEqual(self.service.records(),before)
     def test_catalog_change_requires_review_again(self):
         p,raw=fixture();self.assertEqual(self.install(p,raw,version='9.0.0')['state'],'error');self.assertEqual(self.service.records(),{})
+    def test_uploader_matches_source_owner_and_survives_install(self):
+        p,raw=fixture()
+        self.assertEqual(store.validate_entry(p)['publisher'],'qlerup')
+        p['publisher']='someone-else'
+        with self.assertRaisesRegex(store.StoreError,'uploader'):store.validate_entry(p)
+        p['publisher']='qlerup';self.install(p,raw)
+        self.assertEqual(next(iter(self.service.records().values()))['publisher'],'qlerup')
     def test_future_host_api_and_no_downgrade(self):
         p,raw=fixture();p['compatibility']['hostApi']=2;self.assertEqual(self.install(p,raw)['state'],'error')
         p['compatibility']['hostApi']=1;p['version']='2.0.0';self.install(p,raw)

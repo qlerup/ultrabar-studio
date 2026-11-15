@@ -8,7 +8,7 @@ from test_store import fixture,icon_fixture
 
 class StoreBrowserTests(unittest.TestCase):
  def test_catalog_approval_install_remove_and_offline(self):
-  p,raw=fixture();approved=[];icon,icon_raw=icon_fixture();p["icon"]=icon
+  p,raw=fixture();approved=[];icon,icon_raw=icon_fixture();p["icon"]=icon;p['publisher']='qlerup'
   def download(url,limit,destination=None):
    if destination is None:return icon_raw
    destination.write(raw);return len(raw)
@@ -27,6 +27,7 @@ class StoreBrowserTests(unittest.TestCase):
       expect(page.locator('#store-packages')).to_contain_text('No approved packages yet')
       approved.append(p);page.locator('#store-refresh').click()
       expect(page.locator('.store-card')).to_contain_text('Test presets')
+      expect(page.locator('.store-publisher')).to_have_text('Uploaded by @qlerup')
       expect(page.locator('.store-card-icon img')).to_be_visible()
       page.wait_for_function("document.querySelector('.store-card-icon img')?.naturalWidth===256")
       page.locator('.store-card').get_by_role('button',name='Install',exact=True).click()

@@ -4,7 +4,7 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = '0.29.0'
+VERSION = '0.30.0'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
 
