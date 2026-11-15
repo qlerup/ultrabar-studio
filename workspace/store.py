@@ -411,10 +411,16 @@ class Store:
             if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')
             p=dependencies.get(package_id)
             if p is None:
-                # Existing Core apps and drafts from earlier Studio versions.
+                # Old profiles can contain app placeholders even after an APK was
+                # removed. Preserve those as before; only staged Store apps and
+                # explicit background requests are installation dependencies.
+                if package_id not in background:continue
                 target=self.server.connection['target']
                 if package_id==screen_sync.PACKAGE_ID and package_id in background:raise StoreError('Install Vivo Screen Sync into the library before using it in the background.')
-                if self.server.adb('-s',target,'shell','pm','path',package_id).startswith('package:'):
+                # pm path exits 1 for an absent package, which adb() correctly
+                # treats as a failed command. Listing has a successful empty result.
+                installed=self.server.adb('-s',target,'shell','pm','list','packages',package_id)
+                if 'package:'+package_id in installed.splitlines():
                     if package_id in background:existing_background.append(package_id)
                     continue
                 raise StoreError('Add the missing Core app to the Studio library before deploying: '+package_id)

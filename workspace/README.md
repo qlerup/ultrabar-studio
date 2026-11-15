@@ -2,6 +2,8 @@
 
 ## 0.39 update
 
+Fixed a deployment regression for older profiles containing app placeholders whose Android APK is no longer installed. Those visible placeholders are preserved and no longer block Deploy. Explicit background apps still require setup; a missing package now gives an actionable library message instead of incorrectly reporting a WiFi ADB failure. APKs staged in Store retain their normal signature and device checks.
+
 Removed the separate CoreBAR screen section from Device overview. The CoreBAR preview remains in the hardware overview alongside the other devices, with capture status below that overview. Refresh previews still updates the artwork; clicking CoreBAR refreshes its screen preview directly. Profiles, widgets and backups are unchanged.
 
 ## 0.38 update

@@ -109,6 +109,23 @@ class DeferredAppTests(unittest.TestCase):
             with self.assertRaises((editor.EditError,store.StoreError)):
                 editor.validate_background([app])
 
+    def test_legacy_visible_app_placeholder_does_not_block_deployment(self):
+        with patch.object(server,'adb') as adb,patch.object(self.service,'install_on_core') as install:
+            self.service.deploy_dependencies(self.rows(),'core',lambda _:None)
+            adb.assert_not_called();install.assert_not_called()
+
+    def test_missing_background_app_has_actionable_error_not_connection_error(self):
+        app=dict(id='dk.example.missing',name='Example',settings={})
+        with patch.object(server,'adb',return_value='') as adb:
+            with self.assertRaisesRegex(store.StoreError,'Studio library'):
+                self.service.deploy_dependencies(profiles(),'core',lambda _:None,[app])
+            self.assertIn('packages',adb.call_args.args)
+        app['id']=screen_sync.PACKAGE_ID
+        with patch.object(server,'adb') as adb:
+            with self.assertRaisesRegex(store.StoreError,'Install Vivo Screen Sync'):
+                self.service.deploy_dependencies(profiles(),'core',lambda _:None,[app])
+            adb.assert_not_called()
+
     def test_tampered_package_stops_before_device_access(self):
         self.stage()
         (server.DATA_DIR/'store/app-packages'/(self.package['artifact']['sha256']+'.apk')).write_bytes(b'changed')
