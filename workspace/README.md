@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.40 Windows
+# UltraBar Studio — 0.41 Windows
+
+## 0.41 update
+
+Studio automatically checks for updates at startup. A newer release highlights the top-bar button with its version number and opens the update dialog once. The notice waits until other open dialogs close, and the button stays highlighted after dismissal. Offline checks do not interrupt startup; manual checking remains available. Download and installation still require user action.
+
+The built-in Clock now appears only once in the widget library, even when profiles already contain a Clock. Existing cards and separately installed Store clocks are preserved.
+
+On wide screens, Widget library and Widget settings match the height of the central CoreBAR panel. Smaller screens retain their responsive layout.
 
 ## 0.40 update
 
