@@ -270,6 +270,11 @@ def matches(expected, actual):
 
 def register_editor(server):
     import vivo
+    @server.app.get('/api/editor/vivo-picture/<digest>')
+    def vivo_picture(digest):
+        try:raw=widget_images.read_picture(server,digest)
+        except (OSError,ValueError) as exc:raise EditError('This Vivo picture is unavailable. Upload it again.') from exc
+        return Response(vivo.picture_png(raw),mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
     core_icons = CoreIcons()
     app = server.app
 

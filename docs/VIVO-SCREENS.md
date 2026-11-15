@@ -24,3 +24,7 @@ review before retrying. The saved-image preview is not a live camera of the Cube
 Backups and image cache are local Studio data under %LOCALAPPDATA%/UltraBar Studio.
 Keep Studio running for website/PC program actions. These changes do not require
 an update to the separate Vivo Screen Sync APK.
+
+Studio automatically rounds the corners of uploaded pictures and action icons.
+The preview uses the same renderer as the normal/pressed device artwork. Original
+uploads are retained; Deploy again to apply rounded corners to existing pictures.

@@ -504,11 +504,11 @@
     const box=$('vivo-screen-settings');box.replaceChildren();box.hidden=module?.productId!=='VIVO_CUBE';if(box.hidden)return;
     const serial=module.serialNo,record=draft.vivo_screens?.[serial],preview=el('div','vivo-picture-preview'),copy=el('div','vivo-picture-controls');
     if(record?.clear)preview.textContent='Blank screen';
-    else if(record?.image)showShortcutPicture('/api/pc/images/'+record.image,preview);
+    else if(record?.image)showShortcutPicture('/api/editor/vivo-picture/'+record.image,preview);
     else if(cubeImages[serial]?.url){const img=el('img');img.src=cubeImages[serial].url;img.alt='Current Vivo screen';preview.append(img);}
     else preview.textContent='Choose a picture';
     copy.append(el('h3','','Vivo screen picture'),el('p','muted','One full-screen button. This image is shared across profiles and all press types on this Cube. Upload a picture, or use the action’s icon. Changes apply on Deploy.'));
-    const label=el('label','property-field','Upload screen picture'),upload=el('input');upload.id='vivo-picture-upload';upload.type='file';upload.accept='image/png,image/jpeg,image/webp';label.append(upload);copy.append(label,el('p','muted','PNG, JPG or WebP, up to 2 MB. Displayed on the Vivo screen, not just in Studio.'));
+    const label=el('label','property-field','Upload screen picture'),upload=el('input');upload.id='vivo-picture-upload';upload.type='file';upload.accept='image/png,image/jpeg,image/webp';label.append(upload);copy.append(label,el('p','muted','PNG, JPG or WebP, up to 2 MB. Studio automatically rounds the picture corners on the Vivo screen.'));
     async function updatePicture(getPicture){
       if(working||actionSaving)return;const context=[draft.device_id,current().id,serial].join('|');actionSaving=true;busy=true;updateControls();
       try{const image=await getPicture();if(context!==[draft?.device_id,current()?.id,moduleSerial].join('|'))throw new Error('The selected device changed. Choose its picture again.');

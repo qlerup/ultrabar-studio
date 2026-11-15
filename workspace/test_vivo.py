@@ -1,4 +1,4 @@
-import copy,io,json,tempfile,unittest
+import copy,io,json,tarfile,tempfile,unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock,patch
@@ -14,6 +14,16 @@ class VivoTests(unittest.TestCase):
         png=io.BytesIO();Image.new('RGBA',(256,128),'red').save(png,format='PNG')
         raw=vivo.build_package(png.getvalue());image=Image.open(io.BytesIO(previews.package_image(raw)))
         self.assertEqual(image.size,(192,192));self.assertEqual(image.getpixel((96,96)),(255,0,0,255));self.assertEqual(image.getpixel((0,0)),(0,0,0,255))
+        self.assertEqual(image.getpixel((0,48)),(0,0,0,255))  # Fitted picture corner, not just screen corner.
+        self.assertEqual(image.getpixel((96,48)),(255,0,0,255))
+        square=io.BytesIO();Image.new('RGBA',(192,192),'white').save(square,format='PNG')
+        package=vivo.build_package(square.getvalue());normal=Image.open(io.BytesIO(previews.package_image(package)))
+        self.assertEqual(normal.getpixel((0,0)),(0,0,0,255));self.assertEqual(normal.getpixel((96,96)),(255,255,255,255))
+        with tarfile.open(fileobj=io.BytesIO(package),mode='r:gz') as archive:
+            pressed=Image.open(io.BytesIO(previews.decode_image(archive.extractfile('com_res101/pressed.bin').read())))
+        self.assertEqual(pressed.getpixel((0,0)),(0,0,0,255));self.assertLess(pressed.getpixel((96,96))[0],255)
+        preview=Image.open(io.BytesIO(vivo.picture_png(square.getvalue())))
+        self.assertEqual(preview.getpixel((0,0)),(0,0,0));self.assertEqual(preview.getpixel((96,96)),(255,255,255))
         black=Image.open(io.BytesIO(previews.package_image(vivo.build_package(None))))
         self.assertEqual(black.convert('RGB').getextrema(),((0,0),(0,0),(0,0)))
     def test_clear_screen_requires_clearing_actions_and_rejects_other_buttons(self):

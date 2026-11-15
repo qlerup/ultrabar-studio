@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.46.0 Windows
+# UltraBar Studio — 0.46.1 Windows
+
+## 0.46.1 update
+
+Vivo screen pictures and action icons now get smoothly rounded corners in the
+actual exported artwork, including the pressed state. Wide/tall pictures are
+rounded at their own fitted edges. The Studio picture preview uses the same
+renderer. Original uploads are preserved; existing selected pictures receive the
+rounding on their next Deploy without being uploaded again.
 
 ## 0.46 update
 

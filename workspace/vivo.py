@@ -2,7 +2,7 @@
 import copy,gzip,hashlib,io,json,re,struct,tarfile,time,uuid
 from urllib.parse import urlencode
 from urllib.request import Request,ProxyHandler,build_opener
-from PIL import Image,ImageOps,ImageEnhance
+from PIL import Image,ImageOps,ImageEnhance,ImageDraw,ImageChops
 import bridge,widget_images
 from library_icons import NoRedirect
 from editor import EditError,clean
@@ -35,12 +35,25 @@ def image_bytes(image):
         pixels.extend((value>>8,value&255,255))
     return struct.pack('<II',5|(192<<10)|(192<<21),len(pixels))+pixels
 
-def build_package(raw,button=101):
+def picture_canvas(raw):
     canvas=Image.new('RGB',(192,192),'black')
     if raw:
         with Image.open(io.BytesIO(raw)) as source:
             image=ImageOps.contain(source.convert('RGBA'),(192,192),Image.Resampling.LANCZOS)
-            canvas.paste(image,((192-image.width)//2,(192-image.height)//2),image)
+            # Round the fitted image itself, including letterboxed pictures.
+            # Supersampling keeps the exported RGB565 edge smooth on the Cube.
+            scale=4;mask=Image.new('L',(image.width*scale,image.height*scale),0)
+            ImageDraw.Draw(mask).rounded_rectangle((0,0,mask.width-1,mask.height-1),radius=min(image.size)*scale/8,fill=255)
+            mask=mask.resize(image.size,Image.Resampling.LANCZOS)
+            alpha=ImageChops.multiply(image.getchannel('A'),mask)
+            canvas.paste(image,((192-image.width)//2,(192-image.height)//2),alpha)
+    return canvas
+
+def picture_png(raw):
+    output=io.BytesIO();picture_canvas(raw).save(output,format='PNG');return output.getvalue()
+
+def build_package(raw,button=101):
+    canvas=picture_canvas(raw)
     files={'config.json':json.dumps(configuration(button),separators=(',',':')).encode(),f'com_res{button}/default.bin':image_bytes(canvas),f'com_res{button}/pressed.bin':image_bytes(ImageEnhance.Brightness(canvas).enhance(.7))}
     result=io.BytesIO()
     with tarfile.open(fileobj=result,mode='w',format=tarfile.USTAR_FORMAT) as archive:
