@@ -1,6 +1,6 @@
 # UltraBar Studio
 
-[![Downloads](https://raw.githubusercontent.com/qlerup/ultrabar-studio/stats/downloads.svg)](https://github.com/qlerup/ultrabar-studio/releases)
+[![Downloads](https://raw.githubusercontent.com/qlerup/ultrabar-studio/stats/downloads.svg?v=2)](https://github.com/qlerup/ultrabar-studio/releases)
 
 A community-built Windows companion for UltraBar X / CoreBAR. Independent of the official UltraBarX software.
 
