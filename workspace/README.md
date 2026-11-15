@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.42.1 Windows
+# UltraBar Studio — 0.42.2 Windows
+
+## 0.42.2 update
+
+App placement is controlled by dragging into Background apps or onto the Core bar.
+The redundant Move onto bar and Run in background settings buttons are removed.
+The empty-background hint now describes dragging from the library or the bar.
+Browser acceptance covers dragging between both areas, saved background settings
+and Undo restoring the prior background placement and settings.
 
 ## 0.42.1 update
 

@@ -193,7 +193,7 @@
     }else{
       const wrap=el('label','property-field','Launch after Deploy'),input=el('input');input.type='checkbox';input.id='background-launch';input.checked=app.settings.launch!==false;input.onchange=()=>change(()=>app.settings.launch=input.checked);wrap.append(input);panel.append(wrap,el('p','muted','Installed without a card on Core. Background behavior depends on the app; apps with their own background service can keep running.'));
     }
-    panel.append(button('Move onto bar',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;current().homeData.push({id:app.id,type:'APPS',name:app.name,iconScale:100});widgetIndex=current().homeData.length-1;})),button('Remove background app',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;}),'danger-quiet'),el('p','muted','Changes apply on Deploy. Removing an app here stops its background operation on the next Deploy; the Android app remains installed.'));
+    panel.append(button('Remove background app',()=>change(()=>{draft.background_apps.splice(backgroundIndex,1);backgroundIndex=-1;}),'danger-quiet'),el('p','muted','Changes apply on Deploy. Removing an app here stops its background operation on the next Deploy; the Android app remains installed.'));
   }
   function moveWidget(from,to){backgroundIndex=-1;if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
   function renderNativePreview(w,card){
@@ -262,7 +262,6 @@
     if(backgroundIndex>=0){renderBackgroundProperties($('widget-properties'));return;}
     const panel=$('widget-properties');panel.replaceChildren(el('h3','','Widget settings'));const w=current().homeData[widgetIndex];if(!w){panel.append(el('p','muted','Select a card to edit it.'));return;}
     const spec=nativeSpec(w);
-    if(w.type==='APPS')panel.append(button('Run in background',()=>addBackground(w)));
     panel.append(el('span','badge',spec?'Studio widget':w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
