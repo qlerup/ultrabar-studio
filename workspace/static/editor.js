@@ -68,6 +68,7 @@
         const t=w.kind==='clock'&&!w._widgetPackage?{type:'TIME',name:w.name,iconScale:100,_new:true}:nativeTemplate(w.kind,w.name);
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
+        if(w.kind==='bambu')for(const key of ['primary','secondary','expandedSlots','showJob','showTemperatures','showLayers','showRemaining','showControls','liquidMotion'])if(w[key]!==undefined)nativeSpec(t)[key]=w[key];
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
@@ -264,7 +265,12 @@
     card.replaceChildren(el('strong','native-title',w.name||'Studio'));
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
-    if(spec.kind==='clock'){
+    if(spec.kind==='bambu'){
+      const primary={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°'};
+      const secondary={remaining:'0h 47m remaining',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°',none:''};
+      card.classList.add('bambu-preview');
+      card.append(el('span','native-source','BAMBU LAB · SAMPLE PREVIEW'),el('span','native-value',primary[spec.primary||'progress']),el('span','native-detail',secondary[spec.secondary||'remaining']),bar(64),el('span','native-detail','Tap on Core to unfold · '+(spec.expandedSlots||3)+' slots'));
+    }else if(spec.kind==='clock'){
       const now=new Date(),format={hour:'2-digit',minute:'2-digit',hour12:spec.hourFormat==='12'};if(spec.showSeconds!==false)format.second='2-digit';
       card.append(el('span','native-source','CORE CLOCK'),el('span','native-clock-time',now.toLocaleTimeString([],format)));
       if(spec.showDate!==false)card.append(el('span','native-detail',now.toLocaleDateString([],{weekday:'short',day:'numeric',month:'short',year:'numeric'})));
@@ -415,6 +421,22 @@
         const wrap=el('label','property-field','Time format'),select=el('select');select.id='widget-hour-format';option(select,'24','24 hours');option(select,'12','12 hours');select.value=spec.hourFormat||'24';select.onchange=()=>change(()=>spec.hourFormat=select.value);wrap.append(select);panel.append(wrap);
         for(const [key,label] of [['showSeconds','Show seconds'],['showDate','Show date']]){const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='widget-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);}
       }
+      if(spec.kind==='bambu'){
+        for(const [key,label,choices] of [
+          ['primary','Main reading',[['progress','Print progress'],['state','Printer status'],['remaining','Time remaining'],['temperature','Nozzle temperature']]],
+          ['secondary','Secondary reading',[['remaining','Time remaining'],['state','Printer status'],['job','Job name'],['layers','Layer count'],['temperature','Nozzle temperature'],['none','None']]],
+          ['expandedSlots','Size when unfolded',[[2,'2 slots'],[3,'3 slots'],[4,'4 slots'],[5,'5 slots']]]
+        ]){
+          const wrap=el('label','property-field',label),select=el('select');select.id='bambu-'+key;
+          for(const [value,title] of choices)option(select,String(value),title);
+          select.value=String(spec[key]??({primary:'progress',secondary:'remaining',expandedSlots:3}[key]));
+          select.onchange=()=>change(()=>spec[key]=key==='expandedSlots'?Number(select.value):select.value);wrap.append(select);panel.append(wrap);
+        }
+        for(const [key,label] of [['showJob','Job name'],['showTemperatures','Temperatures'],['showLayers','Layer count'],['showRemaining','Time remaining'],['showControls','Printer controls'],['liquidMotion','Liquid unfold animation']]){
+          const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='bambu-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);
+        }
+        panel.append(el('p','muted','Display preferences apply to this widget. Printer access codes stay in the Bambu Panel app on Core. Controls also require that app’s explicit enable switch. Unfolding temporarily covers adjacent slots; your saved layout stays in place.'));
+      }
       if(spec.kindOptions?.length){
         const wrap=el('label','property-field','Show'),select=el('select');select.id='widget-kind';
         const labels={cpu:'CPU usage',memory:'RAM usage',gpu:'GPU usage'};
@@ -428,7 +450,7 @@
         select.onchange=()=>change(()=>{spec.drive=select.value;delete spec.drives;});wrap.append(select);panel.append(wrap);
         if(spec.drive==='all')panel.append(el('p','muted','Shows two drives at a time. With more than two drives, the card switches to the next pair every 6 seconds.'));
       }
-      panel.append(el('p','muted',spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
+      panel.append(el('p','muted',spec.kind==='bambu'?'Install and set up the Bambu Panel companion on Core first. Preview shows sample data. Deploy to enable the native liquid widget. Keep Studio connected to restore native cards after Core restarts.':spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
     if(shortcut)renderPcWidgetSettings(w,panel);
     if(w.type==='APPS')renderAppSettings(w.id,panel);

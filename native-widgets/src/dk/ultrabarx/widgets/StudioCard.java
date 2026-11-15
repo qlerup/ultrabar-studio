@@ -10,6 +10,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.MotionEvent;
 import android.widget.FrameLayout;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -29,6 +30,7 @@ public final class StudioCard extends View {
     private static boolean started = false;
     private final Paint paint = new Paint(3);
     private String widgetId, title;
+    private JSONObject bambuSpec;
     private final ArrayList<View> originals = new ArrayList<>();
     private final ArrayList<Integer> visibility = new ArrayList<>();
 
@@ -93,6 +95,9 @@ public final class StudioCard extends View {
         c.save();c.scale(scale,scale);float width=getWidth()/scale;
         int white=Color.rgb(239,246,242),muted=Color.rgb(155,177,165),accent=Color.rgb(148,217,187);
         JSONObject specs=state.optJSONObject("widgets"),spec=specs==null?null:specs.optJSONObject(widgetId);
+        bambuSpec=spec!=null&&"bambu".equals(spec.optString("kind"))?spec:null;
+        if(bambuSpec!=null){setClickable(true);BambuTile.draw(this,c,width,spec,title);c.restore();return;}
+        setClickable(false);
         int background=Color.rgb(25,35,37);
         if(spec!=null)try{background=Color.parseColor(spec.optString("background","#192325"));}catch(Exception ignored){}
         if(spec!=null)try{white=Color.parseColor(spec.optString("textColor","#eef6f2"));}catch(Exception ignored){}
@@ -146,4 +151,9 @@ public final class StudioCard extends View {
         }
         c.restore();
     }
+    @Override public boolean onTouchEvent(MotionEvent event){
+        if(bambuSpec==null)return super.onTouchEvent(event);
+        if(event.getAction()==MotionEvent.ACTION_UP){performClick();return true;}return true;
+    }
+    @Override public boolean performClick(){super.performClick();if(bambuSpec!=null)BambuTile.expand(this,bambuSpec);return true;}
 }

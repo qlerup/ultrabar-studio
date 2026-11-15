@@ -1,4 +1,22 @@
-# UltraBar Studio — 0.45.0 Windows
+# UltraBar Studio — 0.46.0 Windows
+
+## 0.46 update (under review)
+
+Adds the Bambu Liquid native widget and a fixed companion IPC contract. Each
+placed card can choose its primary/secondary reading, expanded size (2–5 slots),
+detail fields, controls visibility and liquid/reduced motion. Tapping grows a
+temporary native layer from the actual card position; closing restores the
+existing layout without changing profile positions. The animation runs on Core.
+
+Install/deploy Bambu Panel on Core first and enter printer credentials there.
+The native card receives sanitised state only; controls remain gated by the app's
+explicit enable switch, fresh status and printer capabilities. Unsupported or
+offline readings stay unavailable. Studio must reconnect to restore native cards
+after a Core/LineOS restart, as with the existing native runtime.
+
+New package support requires reviewed Studio 0.46 and Store contract changes;
+current released Studio versions do not understand the new Bambu kind. Renderer
+preview screenshots use sample data and are separate from real-printer testing.
 
 ## 0.45 update
 

@@ -155,6 +155,7 @@ def plugin_templates(raw):
     return result
 
 def widget_package(raw):
+    from bambu_contract import FIELDS as BAMBU_FIELDS,validate as validate_bambu
     try:data=json.loads(raw)
     except (ValueError,UnicodeError) as exc:raise StoreError('Invalid widget package JSON.') from exc
     if not isinstance(data,dict) or set(data)!={'widgetApi','runtime','widgets'} or type(data['widgetApi']) is not int or data['widgetApi']!=1 or data['runtime']!='studio-native-v1':
@@ -163,12 +164,18 @@ def widget_package(raw):
     if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
     result=[];ids=set()
     for w in widgets:
-        if not isinstance(w,dict) or set(w)-{'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}:raise StoreError('Unsupported widget field. Executable code is not supported.')
+        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
         key=w.get('id')
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
         base={k:v for k,v in w.items() if k in ('name','kind','background','textColor','accent')}
-        plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
+        if w.get('kind')=='bambu':
+            if not isinstance(w.get('name'),str) or not 1<=len(w['name'])<=100:raise StoreError('Invalid printer widget name.')
+            for color in ('background','textColor','accent'):
+                if color in w and not re.fullmatch(r'#[a-fA-F0-9]{6}',str(w[color])):raise StoreError('Invalid widget color.')
+        else:plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
+        try:validate_bambu(w)
+        except ValueError as exc:raise StoreError(str(exc)) from exc
         if w.get('hourFormat','24') not in ('12','24') or any(type(w[k]) is not bool for k in ('showSeconds','showDate') if k in w):raise StoreError('Invalid clock settings.')
         if w['kind']!='clock' and any(k in w for k in ('hourFormat','showSeconds','showDate')):raise StoreError('Clock settings require a clock widget.')
         if 'kindOptions' in w:
@@ -177,6 +184,11 @@ def widget_package(raw):
                 raise StoreError('Choose 2-3 distinct CPU, RAM or GPU kinds including the default kind.')
         result.append(dict(w,_widgetPackage=True))
     return result
+
+
+def require_widget_version(widgets,manifest):
+    if any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,46,0):
+        raise StoreError('Bambu liquid widgets must declare Studio 0.46.0 or newer.')
 
 
 def v2_signers(path):
@@ -394,6 +406,7 @@ class Store:
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
+                    require_widget_version(record['widgets'],p)
                 elif deferred:
                     inspect_apk(server,path,p)
                     record.update(deferred=True,device_id=None,android=copy.deepcopy(p['android']),compatibility=copy.deepcopy(p['compatibility']),permissions=list(p['permissions']))
