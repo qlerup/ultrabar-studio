@@ -1,4 +1,16 @@
-# UltraBar Studio — 0.43 Windows
+# UltraBar Studio — 0.43.1 Windows
+
+## 0.43.1 update
+
+Calculator, Alarmclock, Space Dodger, AuroraSniper, White Noise, StellarRing and
+ScreensaverFlip now appear in the UltraBarX library section alongside built-in
+widgets. Classification uses their known package IDs; Store package provenance
+still takes priority, and unrelated apps remain in Other apps & widgets on Core.
+
+Clicking a widget-library item no longer adds it to the draft. Drag and drop is
+required to place it on the Core bar or in Background apps. Library guidance and
+tooltips now describe these destinations. Browser checks verify clicks do not
+add widgets/apps, leave a clean draft clean, and both drag destinations still work.
 
 ## 0.43 update
 

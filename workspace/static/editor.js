@@ -142,9 +142,10 @@
     node.draggable=true;node.addEventListener('dragstart',event=>{if(working){event.preventDefault();return;}drag=payload;event.dataTransfer.setData('text/plain','ultrabar-studio');event.dataTransfer.effectAllowed='copyMove';node.classList.add('dragging');});node.addEventListener('dragend',()=>{drag=null;node.classList.remove('dragging');document.querySelectorAll('.drop-target').forEach(n=>n.classList.remove('drop-target'));});}
   function dropzone(node,handler){node.addEventListener('dragover',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.add('drop-target');});node.addEventListener('dragleave',()=>node.classList.remove('drop-target'));node.addEventListener('drop',event=>{if(!drag||working)return;event.preventDefault();event.stopPropagation();node.classList.remove('drop-target');handler(drag);drag=null;});}
   const libraryExpanded={ultrabar:true,studio:true,store:true,installed:false};
+  const builtInCoreApps=new Set(['com.ultrabar.calculator','com.ultrabar.alarmclock','com.aiks.leisuregame','com.aiks.aurorasniper','com.ultrabar.whitenoise','com.stellarring.screensaver','com.flip.screensaver']);
   function libraryGroup(w){
     if(w._storePackage||nativeSpec(w)?.packageId)return 'store';
-    if(w.type==='APPS')return 'installed';
+    if(w.type==='APPS')return builtInCoreApps.has(w.id)?'ultrabar':'installed';
     if(nativeSpec(w)||w.param?.payload?.action==='studioAction')return 'studio';
     return ['CPU','MEMORY','STORAGE','TIME'].includes(w.type)?'ultrabar':'installed';
   }
@@ -171,7 +172,7 @@
     container.replaceChildren();
     const query=$('library-search').value.trim().toLowerCase();
     const widgets=library().filter(w=>(w.name||types[w.type]||w.type).toLowerCase().includes(query));
-    const groups=[['ultrabar','UltraBarX','Built-in Core widgets.'],['studio','Studio','Widgets and PC actions provided by Studio.'],['store','App Store','Widgets and presets installed from the Store.'],['installed','Other apps & widgets on Core','Already on Core. Their original source is not recorded.']];
+    const groups=[['ultrabar','UltraBarX','Built-in Core apps and widgets.'],['studio','Studio','Widgets and PC actions provided by Studio.'],['store','App Store','Widgets and presets installed from the Store.'],['installed','Other apps & widgets on Core','Already on Core. Their original source is not recorded.']];
     for(const [key,title,help] of groups){
       const items=widgets.filter(w=>libraryGroup(w)===key);
       if(query&&!items.length)continue;
@@ -179,7 +180,7 @@
       group.open=query?true:libraryExpanded[key];if(query)group.dataset.searching='true';
       const summary=el('summary','library-group-heading');summary.append(el('span','',title),el('span','library-count',String(items.length)));
       const content=el('div','library-group-content');content.append(el('p','muted library-group-help',help));
-      for(const w of items){const b=el('button','library-item');b.type='button';const icon=el('span','library-icon',(w.name||types[w.type]||w.type||'?').slice(0,1).toUpperCase());b.append(icon,el('span','',w.name||types[w.type]||w.type));b.setAttribute('aria-label',w.name||types[w.type]||w.type);b.title='Add '+(w.name||w.type);b.onclick=()=>addWidget(w);draggable(b,{kind:'widget-new',widget:w});content.append(b);showLibraryIcon(w,icon);}
+      for(const w of items){const b=el('button','library-item');b.type='button';const icon=el('span','library-icon',(w.name||types[w.type]||w.type||'?').slice(0,1).toUpperCase());b.append(icon,el('span','',w.name||types[w.type]||w.type));b.setAttribute('aria-label',w.name||types[w.type]||w.type);b.title='Drag '+(w.name||w.type)+' onto the Core bar'+(w.type==='APPS'?' or into Background apps.':'.');draggable(b,{kind:'widget-new',widget:w});content.append(b);showLibraryIcon(w,icon);}
       if(!items.length)content.append(el('p','muted','No items available.'));
       group.append(summary,content);container.append(group);
     }

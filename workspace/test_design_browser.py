@@ -35,7 +35,8 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[dict(id='studio.clock',icon=dict(sha256='a'*64)),dict(id='studio.drive.widget',icon=dict(sha256='b'*64)),dict(id='studio.system.widget',icon=dict(sha256='c'*64))],widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True),dict(id='drive-usage',name='Drive usage',kind='disk',_widgetPackage=True,_storePackage='studio.drive.widget',_storeVersion='1.0.0'),dict(id='system-monitor',name='System Monitor',kind='cpu',kindOptions=['cpu','memory','gpu'],_widgetPackage=True,_storePackage='studio.system.widget',_storeVersion='1.0.0')])))
       page.route('**/api/editor/icons/**',lambda r:r.fulfill(content_type='image/png',body=screen_image))
       page.route('**/api/store/icons/*',lambda r:r.fulfill(status=502,json=dict(error='Offline icon')) if r.request.url.endswith('c'*64) else r.fulfill(content_type='image/png',body=screen_image))
-      page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[])))
+      builtins=[('com.ultrabar.calculator','Calculator'),('com.ultrabar.alarmclock','Alarmclock'),('com.aiks.leisuregame','Space Dodger'),('com.aiks.aurorasniper','AuroraSniper'),('com.ultrabar.whitenoise','White Noise'),('com.stellarring.screensaver','StellarRing'),('com.flip.screensaver','ScreensaverFlip')]
+      page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[dict(id=ident,name=name,type='APPS') for ident,name in builtins]+[dict(id='com.example.thirdparty',name='Third-party app',type='APPS')])))
       page.route('**/api/pc',lambda r:r.fulfill(json=dict(actions=[],metrics=dict(disks=[dict(name='C:\\',percent=25,used_gb=25,total_gb=100)]),status='Test',native_status='Test')))
       page.route('**/api/pc/**',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
@@ -123,6 +124,10 @@ class DesignTests(unittest.TestCase):
       stock=page.locator('details[data-group="ultrabar"]')
       studio=page.locator('details[data-group="store"]')
       expect(stock.get_by_role('button',name='Clock',exact=True)).to_have_count(1)
+      for ident,name in builtins:
+       expect(stock.get_by_role('button',name=name,exact=True)).to_have_count(1)
+       expect(page.locator('details[data-group="installed"]').get_by_role('button',name=name,exact=True,include_hidden=True)).to_have_count(0)
+      expect(page.locator('details[data-group="installed"]').get_by_role('button',name='Third-party app',exact=True,include_hidden=True)).to_have_count(1)
       expect(stock.get_by_role('button',name='Clock',exact=True)).to_be_visible()
       expect(stock.get_by_role('button',name='Clock',exact=True).locator('.library-icon img')).to_have_count(1)
       expect(studio.get_by_role('button',name='Store Clock',exact=True).locator('.library-icon img')).to_have_count(1)
@@ -147,7 +152,14 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('details[data-group="store"]')).not_to_have_attribute('open','')
       page.locator('details[data-group="store"] summary').click()
       count=page.locator('#core-canvas .canvas-widget').count()
+      before_background=page.locator('#background-apps button').count()
+      for name in ['Clock','Calculator']:
+       stock.get_by_role('button',name=name,exact=True).click()
+       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count)
       page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).click()
+      expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count)
+      expect(page.locator('#background-apps button')).to_have_count(before_background)
+      page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).drag_to(page.locator('#core-screen'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+1)
       expect(page.locator('#widget-kind')).to_have_value('cpu')
       page.locator('#widget-kind').select_option('memory')
@@ -168,10 +180,10 @@ class DesignTests(unittest.TestCase):
       page.wait_for_timeout(450)
       gpu=page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True)
       for _ in range(3):
-       gpu.click()
+       gpu.drag_to(page.locator('#core-screen'))
        expect(gpu).to_have_count(1)
       page.wait_for_timeout(450)  # End the post-drag click suppression window.
-      page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True).click()
+      page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True).drag_to(page.locator('#core-screen'))
       expect(page.locator('#widget-drive')).to_have_value('all')
       page.locator('#widget-drive').select_option('C:\\')
       expect(page.locator('#widget-drive')).to_have_value('C:\\')
