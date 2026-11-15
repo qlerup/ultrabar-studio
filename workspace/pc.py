@@ -12,8 +12,9 @@ from urllib.parse import urlsplit
 import uuid
 import webbrowser
 
-from flask import jsonify, request
+from flask import jsonify, request, Response
 import bridge
+import widget_images
 from editor import atomic_json, EditError
 
 
@@ -235,6 +236,41 @@ def register_pc(server):
             atomic_json(server.DATA_DIR / 'pc-actions.json', actions)
             companion.start(server.connection['target'], snapshot['device_id'])
         return jsonify(action=action, actions=[a for a in actions if a.get('device_id') == snapshot['device_id']])
+
+    @server.app.get('/api/pc/widget-icons/<kind>')
+    def shortcut_default_icon(kind):
+        try:raw=widget_images.default_png(kind)
+        except ValueError as exc:raise EditError(str(exc)) from exc
+        return Response(raw,mimetype='image/png',headers={'X-Content-Type-Options':'nosniff'})
+
+    @server.app.get('/api/pc/images/<digest>')
+    def shortcut_picture(digest):
+        try:raw=widget_images.read_picture(server,digest)
+        except (OSError,ValueError) as exc:raise EditError('This widget picture is unavailable. Upload it again.') from exc
+        return Response(raw,mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
+
+    @server.app.post('/api/pc/images')
+    def upload_shortcut_picture():
+        upload=request.files.get('image')
+        if upload is None:raise EditError('Choose a PNG, JPG or WebP picture up to 2 MB.')
+        try:image=widget_images.store_picture(server,upload.read(widget_images.MAX_UPLOAD+1))
+        except (OSError,ValueError) as exc:raise EditError('Choose a valid static PNG, JPG or WebP picture up to 2 MB.') from exc
+        return jsonify(image=image)
+
+    @server.app.post('/api/pc/default-image')
+    def default_shortcut_picture():
+        data=request.get_json(silent=True) or {}
+        try:image=widget_images.store_picture(server,widget_images.default_png(data.get('kind')),source='default')
+        except ValueError as exc:raise EditError(str(exc)) from exc
+        return jsonify(image=image)
+
+    @server.app.post('/api/pc/program-icon')
+    def shortcut_program_icon():
+        data=request.get_json(silent=True) or {}
+        action=validate_action(dict(name='Program icon',kind='program',target=data.get('target')))
+        raw=widget_images.program_png(action['target'])
+        image=widget_images.store_picture(server,raw or widget_images.default_png('program'),source='program' if raw else 'default')
+        return jsonify(image=image)
 
     @server.app.post('/api/pc/browse')
     def browse_program():

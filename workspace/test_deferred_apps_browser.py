@@ -33,7 +33,7 @@ class DeferredAppBrowserTests(unittest.TestCase):
                         page.route('**/api/preferences', lambda r:r.fulfill(json=dict(target='', setup_seen=True)))
                         page.route('**/api/store/stats*', lambda r:r.fulfill(json=dict(packages={})))
                         page.route('**/api/discover', lambda r:r.fulfill(json=dict(devices=[])))
-                        page.route('**/api/pc/**', lambda r:r.fulfill(json={}))
+                        page.route('**/api/pc/connect', lambda r:r.fulfill(json={}))
                         page.route('**/api/pc', lambda r:r.fulfill(json=dict(actions=[], metrics={})))
                         page.route('**/api/hardware', lambda r:r.fulfill(json=dict(target=snapshot['target'], hardware=snapshot['hardware'])))
                         page.route('**/api/screen*', lambda r:r.fulfill(status=502, json=dict(error='Offline preview')))

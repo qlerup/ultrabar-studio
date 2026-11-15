@@ -71,6 +71,16 @@ class EditorTests(unittest.TestCase):
         rows=profiles();rows[0]['module'][0]['config'][0]['singleClick']['actions']=[]
         self.assertEqual(self.save(rows).status_code,200)
 
+    def test_unfinished_shortcut_can_be_saved_but_not_deployed(self):
+        rows=profiles();rows[0]['homeData'].append(dict(id='studio_test',type='PC_CONTROL',name='Open website',_pcPending=True,param=dict(payload=dict(action='studioAction',params=dict(id='',kind='url')))))
+        response=self.save(rows);self.assertEqual(response.status_code,200);self.draft=response.json['draft']
+        with patch.object(server,'read_snapshot') as read,patch.object(editor.bridge,'request') as bridge:
+            response=self.post('/api/editor/deploy')
+            self.assertEqual(response.status_code,400);self.assertIn('Apply settings',response.json['error'])
+            read.assert_not_called();bridge.assert_not_called();self.wake_mock.assert_not_called()
+        rows[0]['homeData'][-1]['_pcPending']='invalid'
+        self.assertEqual(self.save(rows).status_code,400)
+
     def test_changed_core_aborts_before_write(self):
         latest=deepcopy(self.snapshot);latest['profiles'][0]['name']='Changed elsewhere'
         with patch.object(server,'read_snapshot',return_value=latest),patch.object(editor.bridge,'request') as bridge:

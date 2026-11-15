@@ -12,6 +12,7 @@ from functools import wraps
 from flask import jsonify, request, Response
 import bridge
 from library_icons import CoreIcons
+import widget_images
 
 
 class EditError(ValueError):
@@ -133,6 +134,14 @@ def validate(profiles, base):
                 raise EditError('Widget colors must be hexadecimal colors.')
             if type(w.get('iconScale', 100)) is not int or not 0 <= w.get('iconScale', 100) <= 200:
                 raise EditError('Icon size must be between 0 and 200 percent.')
+            if '_pcPending' in w:
+                param=w.get('param');payload=param.get('payload') if isinstance(param,dict) else {}
+                payload=payload if isinstance(payload,dict) else {}
+                params=payload.get('params') if isinstance(payload.get('params'),dict) else {}
+                if w['_pcPending'] is not True or w['type']!='PC_CONTROL' or payload.get('action')!='studioAction' or params.get('kind') not in ('url','program'):
+                    raise EditError('Invalid unfinished Studio shortcut.')
+            try:widget_images.picture_hash(w.get('icon'))
+            except ValueError as exc:raise EditError(str(exc)) from exc
         serials = set()
         for m in modules:
             if not isinstance(m, dict) or not isinstance(m.get('serialNo'), str) or not re.fullmatch(r'[0-9a-fA-F]{16}', m['serialNo']):
@@ -215,6 +224,12 @@ def to_wire(profiles):
         supported = {'id', 'name', 'icon', 'bgColor', 'iconScale', 'default', 'showName', 'homeData', 'module', 'albumId', 'player', '@type'}
         if set(p)-supported:
             raise EditError('This profile contains additional settings the deploy protocol cannot preserve.')
+        for w in p['homeData']:
+            param=w.get('param');payload=param.get('payload') if isinstance(param,dict) else {}
+            payload=payload if isinstance(payload,dict) else {}
+            params=payload.get('params') if isinstance(payload.get('params'),dict) else {}
+            if w.get('_pcPending') or (payload.get('action')=='studioAction' and not params.get('id')):
+                raise EditError('Finish the website or PC app settings and choose Apply settings before Deploy.')
         row = clean({k: v for k, v in p.items() if k not in ('homeData', 'albumId', 'player')})
         row['widget'] = clean(p['homeData'])
         result.append(row)
@@ -370,6 +385,8 @@ def register_editor(server):
             atomic_json(rollback_path, rollback)
             stage('Waking Core and waiting for the screen…')
             wake_for_deploy(server, server.connection['target'])
+            stage('Preparing widget pictures on Core...')
+            widget_images.deploy_pictures(server,draft['profiles'],server.connection['target'])
             server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))
             server.store.stop_removed_background(rollback['background_apps'],draft.get('background_apps',[]),draft['profiles'])
             stage('Preparing the widget runtime on Core…')

@@ -38,7 +38,7 @@ class DesignTests(unittest.TestCase):
       builtins=[('com.ultrabar.calculator','Calculator'),('com.ultrabar.alarmclock','Alarmclock'),('com.aiks.leisuregame','Space Dodger'),('com.aiks.aurorasniper','AuroraSniper'),('com.ultrabar.whitenoise','White Noise'),('com.stellarring.screensaver','StellarRing'),('com.flip.screensaver','ScreensaverFlip')]
       page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[dict(id=ident,name=name,type='APPS') for ident,name in builtins]+[dict(id='com.example.thirdparty',name='Third-party app',type='APPS')])))
       page.route('**/api/pc',lambda r:r.fulfill(json=dict(actions=[],metrics=dict(disks=[dict(name='C:\\',percent=25,used_gb=25,total_gb=100)]),status='Test',native_status='Test')))
-      page.route('**/api/pc/**',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
+      page.route('**/api/pc/connect',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
       page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#manual-connection summary').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
       expect(page.locator('#workspace')).to_be_visible();expect(page.locator('#connection-dialog')).not_to_be_visible()

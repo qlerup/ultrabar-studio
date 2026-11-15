@@ -18,7 +18,8 @@ The badge counts downloads of Studio Windows installer files across published re
 - See connected modules, status and saved screen previews.
 - Arrange your desk layout around a centered CoreBAR.
 - Edit profiles, widgets and button actions, then deploy to Core.
-- Add PC shortcuts and live CPU, RAM, GPU and disk widgets where supported.
+- Drag separate website and PC app widgets onto Core; upload a picture or use the program icon automatically.
+- Add live CPU, RAM, GPU and disk widgets where supported.
 - Browse collapsible libraries for **UltraBarX**, **Studio & App Store** and **Installed apps**.
 - Save local drafts and backups, and download verified Studio updates in the app. The installer replaces program files and keeps saved data.
 

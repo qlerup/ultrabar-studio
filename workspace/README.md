@@ -1,4 +1,22 @@
-# UltraBar Studio — 0.43.1 Windows
+# UltraBar Studio — 0.44.0 Windows
+
+## 0.44 update
+
+Studio now includes separate **Open website** and **Launch PC app** widgets in
+its library. Drag either onto Core, enter the URL or browse for an executable,
+and choose Apply settings. Existing shortcuts can be selected and edited in the
+same settings panel. The combined Website or PC program button has been removed.
+
+Each shortcut has its own purple library icon and a visible preview card. Upload
+a PNG, JPG or WebP picture (up to 2 MB), or use the program's automatically
+extracted Windows icon. Pictures are normalized, saved with local Studio data,
+and transferred to Core with byte-for-byte verification before the layout is sent.
+If a program icon is unavailable, Studio shows its default app picture.
+
+Unfinished shortcuts can be saved as drafts; Deploy asks you to finish their
+settings first. Shortcuts open on the PC and require Studio to remain running.
+Browser regression checks cover drag-only placement, URL validation, picker
+cancellation, uploaded pictures, automatic program icons, editing, Undo and reload.
 
 ## 0.43.1 update
 

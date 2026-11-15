@@ -1,11 +1,13 @@
 'use strict';
 (() => {
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
-  let editorGeneration=0, pcDestination='widget', pcMetrics={};
+  let editorGeneration=0, pcMetrics={};
   let storePresets=[];
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
+  const pcWidgetForms=new Map();
+  const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
@@ -72,10 +74,11 @@
     }catch(error){message('Could not load installed store presets. '+error.message,true);}
   }
   window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});
-  function stock(){return [{type:'TIME',name:'Clock',iconScale:100,_new:true}];}
+  function studioPcTemplate(kind){return {type:'PC_CONTROL',name:kind==='url'?'Open website':'Launch PC app',bgColor:'#242235',icon:'resId://pc_control_def_icon',iconScale:100,_new:true,_pcPending:true,param:{output:10,payload:{action:'studioAction',params:{id:'',kind}}}};}
+  function stock(){return [{type:'TIME',name:'Clock',iconScale:100,_new:true},studioPcTemplate('url'),studioPcTemplate('program')];}
   function library(){
-    const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>!nativeSpec(w));const seen=new Set();
-    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w.type==='APPS'?'app:'+w.id:w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w.type==='TIME'?'TIME':w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
+    const existing=draft.profiles.flatMap(p=>p.homeData||[]).filter(w=>!nativeSpec(w)&&w.param?.payload?.action!=='studioAction');const seen=new Set();
+    return [...stock(),...storePresets,...apps,...existing].filter(w=>{const spec=nativeSpec(w);const key=w.type==='APPS'?'app:'+w.id:w._storeKey||(spec?.packageId&&spec?.widgetKey?spec.packageId+':'+spec.widgetKey:null)||(w._pcPending&&w._new?'studio-pc:'+w.param.payload.params.kind:w.type==='TIME'?'TIME':w._new?(nativeSpec(w)?nativeSpec(w).kind+':'+(nativeSpec(w).drive||''):w.type):JSON.stringify([w.type,w.id]));if(w.param?.payload?.action==='studioMetric'||seen.has(key))return false;seen.add(key);return true;});
   }
   // Pointer-based dragging avoids native HTML5/WebView drag restrictions and
   // makes the entire scaled Core viewport a target, with a visible insert line.
@@ -152,7 +155,8 @@
   async function showLibraryIcon(w,box){
     const packageId=w._storePackage||nativeSpec(w)?.packageId;
     const digest=storeIconByPackage.get(packageId)||storeIconByApp.get(w.id);
-    const path=digest?'/api/store/icons/'+digest:w.type==='TIME'?'/api/editor/icons/clock':w.type==='APPS'?'/api/editor/icons/app/'+encodeURIComponent(w.id):null;
+    const shortcut=pcWidgetSpec(w);
+    const path=digest?'/api/store/icons/'+digest:shortcut?'/api/pc/widget-icons/'+shortcut.kind:w.type==='TIME'?'/api/editor/icons/clock':w.type==='APPS'?'/api/editor/icons/app/'+encodeURIComponent(w.id):null;
     if(!path)return;
     const key=path.startsWith('/api/store/')?path:snapshot.device_id+':'+snapshot.target+':'+path;
     if(Date.now()-(libraryIconFailures.get(key)||0)<30000)return;
@@ -237,8 +241,90 @@
       card.append(el('span','native-source',spec.kind.toUpperCase()),el('span','native-value',number(value)+(value==null?'':'%')),el('span','native-detail',detail),bar(value));
     }
   }
+  function pcWidgetSpec(w){
+    if(w.type!=='PC_CONTROL'||w.param?.payload?.action!=='studioAction')return null;
+    const action=pcActions.find(a=>a.id===w.param.payload.params?.id);
+    const kind=w.param.payload.params?.kind||action?.kind;
+    return ['url','program'].includes(kind)?{kind,action}:null;
+  }
+  function widgetPictureHash(icon){return typeof icon==='string'&&icon.startsWith(picturePrefix)&&/^[a-f0-9]{64}\.png$/.test(icon.slice(picturePrefix.length))?icon.slice(picturePrefix.length,-4):null;}
+  function pcWidgetForm(w){
+    const spec=pcWidgetSpec(w);let state=pcWidgetForms.get(w.id);
+    if(!state){state={target:spec.action?.target||'',imageHash:widgetPictureHash(w.icon),imageSource:w.param.payload.params?.imageSource||null,touched:false,actionId:spec.action?.id||null,error:'',busy:false};pcWidgetForms.set(w.id,state);}
+    if(spec.action&&!state.touched&&state.actionId!==spec.action.id){state.target=spec.action.target;state.actionId=spec.action.id;}
+    return state;
+  }
+  async function showShortcutPicture(path,box){
+    try{
+      if(!libraryIconCache.has(path))libraryIconCache.set(path,api(path).then(r=>r.blob()).then(b=>URL.createObjectURL(b)).catch(error=>{libraryIconCache.delete(path);throw error;}));
+      const url=await libraryIconCache.get(path);if(!box.isConnected)return;
+      const img=el('img');img.src=url;img.alt='';img.draggable=false;box.replaceChildren(img);
+    }catch(_){/* Keep the shortcut initial if its picture is unavailable. */}
+  }
+  function renderPcShortcutPreview(w,card){
+    const spec=pcWidgetSpec(w),state=pcWidgetForm(w);
+    card.classList.add('pc-shortcut-preview');
+    const picture=el('span','pc-shortcut-image'+(state.imageSource==='custom'?' custom-picture':''),spec.kind==='url'?'W':'A');
+    picture.style.setProperty('--shortcut-scale',(w.iconScale??100)/100);
+    showShortcutPicture(state.imageHash?'/api/pc/images/'+state.imageHash:'/api/pc/widget-icons/'+spec.kind,picture);
+    const target=state.target||spec.action?.target||'';
+    const detail=target?(spec.kind==='url'?target.replace(/^https?:\/\//,''):target.split(/[\\/]/).pop()):(spec.kind==='url'?'Set a website URL':'Choose a PC program');
+    card.replaceChildren(el('span','pc-shortcut-kind',spec.kind==='url'?'WEBSITE':'PC APP'),picture,el('strong','stock-title',w.name),el('small','pc-shortcut-detail',detail));
+  }
+  async function shortcutImage(state,kind){
+    if(state.imageSource==='custom'&&state.imageHash)return {sha256:state.imageHash,icon:picturePrefix+state.imageHash+'.png',source:'custom'};
+    const path=kind==='program'?'/api/pc/program-icon':'/api/pc/default-image';
+    const body=kind==='program'?{target:state.target.trim()}:{kind};
+    const data=await(await api(path,{method:'POST',body:JSON.stringify(body)})).json();
+    state.imageHash=data.image.sha256;state.imageSource=data.image.source;return data.image;
+  }
+  function renderPcWidgetSettings(w,panel){
+    const spec=pcWidgetSpec(w),state=pcWidgetForm(w),form=el('form','pc-widget-form');form.id='pc-widget-form';
+    form.append(el('h4','',spec.kind==='url'?'Website settings':'PC app settings'));
+    const label=el('label','property-field',spec.kind==='url'?'Website URL':'Program on this PC'),target=el('input');target.id='pc-widget-target';target.type=spec.kind==='url'?'url':'text';target.required=true;target.maxLength=2048;target.value=state.target;target.placeholder=spec.kind==='url'?'https://example.com':'Choose an .exe program';
+    target.oninput=()=>{state.target=target.value;state.touched=true;};label.append(target);form.append(label);
+    if(spec.kind==='program')form.append(button('Browse programs',async()=>{
+      if(state.busy)return;state.busy=true;state.error='';
+      try{const data=await(await api('/api/pc/browse',{method:'POST',body:'{}'})).json();if(data.path){state.target=data.path;state.touched=true;if(state.imageSource!=='custom'){await shortcutImage(state,'program');}}}
+      catch(error){state.error=error.message;}finally{state.busy=false;if(current()?.homeData[widgetIndex]?.id===w.id){renderCanvas();renderProperties();}}
+    }));
+    const preview=el('div','pc-picture-preview',spec.kind==='url'?'W':'A');showShortcutPicture(state.imageHash?'/api/pc/images/'+state.imageHash:'/api/pc/widget-icons/'+spec.kind,preview);form.append(preview);
+    const uploadLabel=el('label','property-field','Widget picture'),upload=el('input');upload.id='pc-widget-picture';upload.type='file';upload.accept='image/png,image/jpeg,image/webp';upload.disabled=state.busy;
+    upload.onchange=async()=>{
+      const file=upload.files[0];if(!file||state.busy)return;
+      if(file.size>2*1024*1024){state.error='Choose a PNG, JPG or WebP picture up to 2 MB.';renderProperties();return;}
+      state.busy=true;state.error='';
+      try{const body=new FormData();body.append('image',file);const data=await(await api('/api/pc/images',{method:'POST',body})).json();state.imageHash=data.image.sha256;state.imageSource='custom';state.touched=true;}
+      catch(error){state.error=error.message;}finally{state.busy=false;if(current()?.homeData[widgetIndex]?.id===w.id){renderCanvas();renderProperties();}}
+    };
+    uploadLabel.append(upload);form.append(uploadLabel,el('p','muted','PNG, JPG or WebP, up to 2 MB. Apply settings to keep your changes.'));
+    form.append(button(spec.kind==='program'?'Use program icon':'Use default picture',async()=>{
+      if(state.busy)return;state.busy=true;state.error='';state.imageSource=null;state.imageHash=null;
+      try{await shortcutImage(state,spec.kind);}catch(error){state.error=error.message;}
+      finally{state.busy=false;if(current()?.homeData[widgetIndex]?.id===w.id){renderCanvas();renderProperties();}}
+    }));
+    const source=state.imageSource==='custom'?'Your uploaded picture':state.imageSource==='program'?'Automatic program icon':state.imageSource==='default'&&spec.kind==='program'?'Default picture (program icon unavailable)':spec.kind==='program'?'The program icon is selected automatically.':'Studio website picture';
+    form.append(el('p','muted pc-picture-source',source));
+    const error=el('p','error',state.error);error.id='pc-widget-error';error.setAttribute('role','alert');form.append(error);
+    const submit=el('button','primary',state.busy?'Loading picture...':'Apply settings');submit.id='pc-widget-apply';submit.type='submit';submit.disabled=state.busy||actionSaving;form.append(submit,el('p','muted','Opens on your PC. Keep Studio running. Changes activate after Deploy.'));
+    form.onsubmit=async event=>{
+      event.preventDefault();if(state.busy||actionSaving||working)return;
+      state.error='';state.target=target.value;const context=[draft.device_id,current().id,w.id].join('|');actionSaving=true;busy=true;updateControls();submit.disabled=true;
+      try{
+        const image=await shortcutImage(state,spec.kind);
+        const data=await(await api('/api/pc/actions',{method:'POST',body:JSON.stringify({name:w.name||'PC shortcut',kind:spec.kind,target:state.target.trim(),device_id:draft.device_id})})).json();
+        if(context!==[draft?.device_id,current()?.id,current()?.homeData[widgetIndex]?.id].join('|'))throw new Error('The selected widget changed. Select it and apply the settings again.');
+        pcActions=data.actions;pcWidgetForms.delete(w.id);
+        change(()=>{w.param={output:10,payload:{action:'studioAction',params:{id:data.action.id,kind:spec.kind,imageSource:image.source}}};w.icon=image.icon;delete w._pcPending;});
+        message('Widget settings applied to your draft. Save, then Deploy to Core when ready.');
+      }catch(error){state.error=error.message;}
+      finally{actionSaving=false;busy=false;updateControls();if(current()?.homeData[widgetIndex]?.id===w.id)renderProperties();}
+    };
+    panel.append(form);
+  }
   function renderStockPreview(w,card){
     card.classList.add('stock-preview');
+    if(pcWidgetSpec(w)){renderPcShortcutPreview(w,card);return;}
     const title=el('strong','stock-title',w.name||types[w.type]||w.type);
     if(['CPU','MEMORY','STORAGE'].includes(w.type)){
       const disks=pcMetrics.disks||[],total=disks.reduce((s,d)=>s+d.total_gb,0);
@@ -281,8 +367,8 @@
   function renderProperties(){
     if(backgroundIndex>=0){renderBackgroundProperties($('widget-properties'));return;}
     const panel=$('widget-properties');panel.replaceChildren(el('h3','','Widget settings'));const w=current().homeData[widgetIndex];if(!w){panel.append(el('p','muted','Select a card to edit it.'));return;}
-    const spec=nativeSpec(w);
-    panel.append(el('span','badge',spec?'Studio widget':w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
+    const spec=nativeSpec(w),shortcut=pcWidgetSpec(w);
+    panel.append(el('span','badge',spec?'Studio widget':shortcut?(shortcut.kind==='url'?'Website':'PC app'):w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
@@ -305,9 +391,10 @@
       }
       panel.append(el('p','muted',spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
+    if(shortcut)renderPcWidgetSettings(w,panel);
     const moves=el('div','property-moves');moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));panel.append(moves);
     panel.append(button('Remove from Core',()=>change(()=>{current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
-    if(w.type==='PC_CONTROL'&&!nativeSpec(w))panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
+    if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));
   }
   function modules(){const map=new Map((snapshot.hardware?.devices||[]).filter(d=>['DOT_KEY','VIVO_CUBE','KNOB_KEY','SENSE_CUBE'].includes(d.type)).map(d=>[d.serial,{serialNo:d.serial,productId:d.type}]));for(const m of current().module)map.set(m.serialNo,m);return [...map.values()];}
@@ -486,27 +573,21 @@
   async function refreshPc(){
     try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
       const metrics=$('pc-metrics');metrics.replaceChildren();for(const [label,value] of [['CPU',data.metrics?.cpu],['RAM',data.metrics?.memory],['GPU',data.metrics?.gpu?.usage]]){const card=el('div','metric-card');card.append(el('span','muted',label),el('strong','',value==null?'Unavailable':Math.round(value)+'%'));metrics.append(card);}for(const disk of data.metrics?.disks||[]){const card=el('div','metric-card');card.append(el('span','muted',disk.name),el('strong','',Math.round(disk.percent)+'%'),el('small','muted',disk.used_gb+' / '+disk.total_gb+' GB'));metrics.append(card);}
-      $('pc-actions-list').replaceChildren(el('h3','','Saved PC actions'));for(const a of pcActions){const row=el('div','pc-action-row');row.append(el('strong','',a.name),el('span','muted',a.target),button('Add to Core',()=>{showMode('layout');addPcWidget(a);}));$('pc-actions-list').append(row);}if(draft){renderActionLibrary();if(!drag){renderLibrary();renderCanvas();}}
+      $('pc-actions-list').replaceChildren(el('h3','','Saved PC actions'));for(const a of pcActions){const row=el('div','pc-action-row');row.append(el('strong','',a.name),el('span','muted',a.target),button('Add to Core',()=>{showMode('layout');addPcWidget(a);}));$('pc-actions-list').append(row);}if(draft){renderActionLibrary();if(!drag){renderLibrary();renderCanvas();renderProperties();}}
     }catch(error){$('pc-status').textContent=error.message;}
   }
   function addPcWidget(a){addWidget({id:'studio_pc_'+a.id,type:'PC_CONTROL',name:a.name,icon:'resId://pc_control_def_icon',iconScale:75,param:pcParam(a)});}
-  function showPcDialog(destination){pcDestination=destination;$('pc-action-form').reset();$('pc-action-error').textContent='';$('pc-action-kind').dispatchEvent(new Event('change'));$('pc-action-dialog').showModal();}
-  $('pc-action-form').onsubmit=async event=>{event.preventDefault();const submit=event.submitter;submit.disabled=true;try{const data=await (await api('/api/pc/actions',{method:'POST',body:JSON.stringify({name:$('pc-action-name').value,kind:$('pc-action-kind').value,target:$('pc-action-target').value,device_id:draft.device_id})})).json();pcActions=data.actions;$('pc-action-dialog').close();if(pcDestination==='widget')addPcWidget(data.action);else addAction(pcAction(data.action));}catch(error){$('pc-action-error').textContent=error.message;}finally{submit.disabled=false;}};
-  $('pc-action-kind').onchange=()=>{const web=$('pc-action-kind').value==='url';$('pc-action-target-label').textContent=web?'Website URL':'Full path to program';$('pc-action-target').placeholder=web?'https://example.com':'C:\\Program Files\\App\\App.exe';$('pc-action-browse').hidden=web;};
-  $('pc-action-browse').onclick=async()=>{try{const data=await (await api('/api/pc/browse',{method:'POST',body:'{}'})).json();if(data.path)$('pc-action-target').value=data.path;}catch(error){$('pc-action-error').textContent=error.message;}};
-  $('pc-action-cancel').onclick=()=>$('pc-action-dialog').close();
-  $('new-pc-widget').onclick=()=>showPcDialog('widget');
   $('pc-connect').onclick=async()=>{try{await api('/api/pc/connect',{method:'POST',body:'{}'});await refreshPc();}catch(error){message(error.message,true);}};
   $('nav-editor').onclick=openEditor;$('nav-overview').onclick=overview;
   for(const m of ['layout','actions','pc'])$('mode-'+m).onclick=()=>showMode(m);
   $('library-search').oninput=renderLibrary;
-  $('edit-profile').onchange=()=>{if(actionSaving)return;profileIndex=Number($('edit-profile').value);widgetIndex=0;moduleSerial='';inputKey='';resetActionComposer();renderEditor();};
+  $('edit-profile').onchange=()=>{if(actionSaving)return;profileIndex=Number($('edit-profile').value);widgetIndex=0;moduleSerial='';inputKey='';pcWidgetForms.clear();resetActionComposer();renderEditor();};
   $('edit-profile-name').onchange=()=>change(()=>current().name=$('edit-profile-name').value);
   $('edit-show-names').onchange=()=>change(()=>current().showName=$('edit-show-names').checked);
-  $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;resetActionComposer();renderEditor();};
+  $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;pcWidgetForms.clear();resetActionComposer();renderEditor();};
   $('action-undo').onclick=()=>$('widget-undo').click();
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
-  $('draft-deploy').onclick=()=>{if(!draft||working)return;const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
+  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
   $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
   $('deploy-progress-close').onclick=()=>$('deploy-progress').close();
