@@ -1,10 +1,14 @@
-# UltraBar Studio — 0.34 Windows
+# UltraBar Studio — 0.35 Windows
 
 ## Independence, testing and responsibility
 
 Studio is independently developed and is not made in collaboration with, affiliated with or endorsed by the UltraBarX / CoreBAR team. It is under active development. Use it and any third-party packages at your own risk. The software is provided as is, without warranty; to the extent permitted by law, the authors and contributors are not liable for resulting loss or damage. Non-excludable legal rights remain unaffected. See [LICENSE](../LICENSE) and the [project README](../.github/README.md).
 
 The Windows installer is currently unsigned and may trigger an unrecognized-app or unknown-publisher SmartScreen warning. A reputation warning alone is not a malware detection or a guarantee of safety. Use official GitHub Releases and their checksums; see the project README for details.
+
+## 0.35 update
+
+Removed the forced-maximized window policy and its native move/resize interception. Studio starts maximized but now has normal Windows move, resize, maximize, restore and minimize controls. Tray reopening preserves the previous normal size or maximized state instead of forcing maximization. Closing still hides Studio in the notification area; Exit still shuts down completely.
 
 ## 0.34 update
 

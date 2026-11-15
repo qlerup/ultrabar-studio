@@ -38,9 +38,7 @@ def main():
         webview.settings['ALLOW_DOWNLOADS'] = True
         webview.settings['ALLOW_FILE_URLS'] = False
         window = webview.create_window('UltraBar Studio', f'http://127.0.0.1:{port}',
-                                      width=1440, height=960, min_size=(640, 520), maximized=True, resizable=False, background_color='#101116')
-        from window_policy import lock_maximized
-        window.events.before_show += lambda: lock_maximized(window)
+                                      width=1440, height=960, min_size=(640, 520), maximized=True, resizable=True, background_color='#101116')
         from tray import StudioTray
         tray=StudioTray(window,server.ROOT/'assets/studio.ico')
         window.events.before_show += tray.install

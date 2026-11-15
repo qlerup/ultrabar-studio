@@ -24,9 +24,13 @@ class StudioTray:
     def install(self):
         from System import Action
         from System.Drawing import Icon
-        from System.Windows.Forms import NotifyIcon,ContextMenuStrip,ToolStripMenuItem
+        from System.Windows.Forms import NotifyIcon,ContextMenuStrip,ToolStripMenuItem,FormWindowState
         def setup():
             self.form=self.window.native
+            self.last_window_state=self.form.WindowState
+            def remember_state(sender,event):
+                if self.form.WindowState!=FormWindowState.Minimized:self.last_window_state=self.form.WindowState
+            self.form.Resize+=remember_state
             self.icon=Icon(str(self.icon_path));self.menu=ContextMenuStrip()
             self.open_item=ToolStripMenuItem('Open Studio');self.exit_item=ToolStripMenuItem('Exit')
             self.open_item.Click+=lambda sender,event:self.show()
@@ -69,7 +73,11 @@ class StudioTray:
         from System.Windows.Forms import FormWindowState
         def open_window():
             if self.exiting or self.form.IsDisposed:return
-            self.form.Show();self.form.WindowState=FormWindowState.Maximized;self.form.Activate();self.form.BringToFront()
+            restore=self.form.WindowState==FormWindowState.Minimized
+            target=self.last_window_state
+            self.form.Show()
+            if restore:self.form.WindowState=target
+            self.form.Activate();self.form.BringToFront()
         if self.form.InvokeRequired:self.form.Invoke(Action(open_window))
         else:open_window()
     def exit(self):
