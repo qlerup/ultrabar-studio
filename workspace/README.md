@@ -1,4 +1,14 @@
-# UltraBar Studio — 0.46.1 Windows
+# UltraBar Studio — 0.46.2 Windows
+
+## 0.46.2 update
+
+Vivo artwork Deploy pauses an already-running Vivo Screen Sync service while
+sending screen packages. Its startup/property commands could otherwise interrupt
+the Cube's configuration update and produce a five-second confirmation timeout.
+Sync resumes with its saved mode and wake delay, including after a failed upload.
+A previously stopped service stays stopped. Firmware acknowledgement and exact
+cached-package verification remain required; failed writes are never silently
+accepted or automatically repeated.
 
 ## 0.46.1 update
 

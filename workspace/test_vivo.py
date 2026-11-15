@@ -62,6 +62,32 @@ class VivoTests(unittest.TestCase):
         self.assertEqual(server.adb.call_args.args,('-s','target','forward','--remove','tcp:50000'))
         opener.open.return_value=io.BytesIO(b'{"state":-1}')
         with patch.object(vivo,'build_opener',return_value=opener),self.assertRaises(EditError):vivo.upload(server,'target',SERIAL,raw)
+    def test_deploy_serializes_artwork_with_sync_and_restores_after_failure(self):
+        for fail in (False,True):
+            with self.subTest(failed_upload=fail),tempfile.TemporaryDirectory() as tmp:
+                running=True;events=[]
+                config=dict(canGateway=dict(endpoints=[dict(serialNumber=SERIAL,productId='VIVO_CUBE',extraConfig=dict(dataConfig=vivo.configuration(101)))]))
+                def adb(*args,**kwargs):
+                    nonlocal running
+                    if 'dumpsys' in args:return 'ServiceRecord{fixture u0 '+vivo.screen_sync.PACKAGE_ID+'/.SyncService}'
+                    if 'force-stop' in args:running=False;events.append('pause');return ''
+                    if 'start-foreground-service' in args:
+                        self.assertNotIn('-a',args)  # Preserve the user's saved mode.
+                        running=True;events.append('resume');return 'Starting service'
+                    if 'exec-out' in args:return json.dumps(dict(configuration=config)).encode()
+                    return '0'
+                def upload(*args):
+                    self.assertFalse(running,'Background property commands must not overlap artwork')
+                    events.append('upload')
+                    if fail:raise EditError('firmware timeout')
+                server=SimpleNamespace(DATA_DIR=Path(tmp),PREFERENCES='/prefs',adb=adb,parse_profiles=lambda raw:json.loads(raw))
+                data=profiles();data[0]['module'][0]['config'][0]['singleClick']['actions']=[]
+                screens={SERIAL:dict(image=None,clear=True,button=101,source='blank')}
+                with patch.object(vivo,'upload',side_effect=upload):
+                    if fail:
+                        with self.assertRaisesRegex(EditError,'firmware timeout'):vivo.deploy(server,data,screens,'target')
+                    else:vivo.deploy(server,data,screens,'target')
+                self.assertTrue(running);self.assertEqual(events,['pause','upload','resume'])
     def test_latest_artwork_cache_case_is_used(self):
         raw=vivo.build_package(None);paths=[]
         def adb(*args,**kwargs):

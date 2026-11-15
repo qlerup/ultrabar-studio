@@ -3,7 +3,7 @@ import copy,gzip,hashlib,io,json,re,struct,tarfile,time,uuid
 from urllib.parse import urlencode
 from urllib.request import Request,ProxyHandler,build_opener
 from PIL import Image,ImageOps,ImageEnhance,ImageDraw,ImageChops
-import bridge,widget_images
+import bridge,widget_images,screen_sync
 from library_icons import NoRedirect
 from editor import EditError,clean
 
@@ -135,6 +135,7 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
                 if set(screens)<=online:break
                 if attempt==11:raise EditError('VivoCube did not reconnect after registering its button. Retry Deploy when it is online.')
                 time.sleep(.3)
-    for serial,raw in packages.items():
-        stage('Sending screen image to VivoCube '+serial[-6:]+'…')
-        upload(server,target,serial,raw)
+    with screen_sync.pause_for_artwork(server,target):
+        for serial,raw in packages.items():
+            stage('Sending screen image to VivoCube '+serial[-6:]+'…')
+            upload(server,target,serial,raw)

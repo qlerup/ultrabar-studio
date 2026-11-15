@@ -2,6 +2,7 @@
 import json
 import re
 import xml.etree.ElementTree as ET
+from contextlib import contextmanager
 
 PACKAGE_ID = 'dk.ultrabarx.screensync'
 SIGNER = '6b663d4525f5a8f192df55e4548582e96c52188809cc76123e2e7dbd44ebff1f'
@@ -46,10 +47,30 @@ def validate_settings(settings):
         raise StoreError('Choose Follow Core or Always on, and a wake delay from 0 to 3000 ms in steps of 250.')
 
 
-def start_sync(server,target,enabled):
+def start_sync(server,target,enabled=None):
     from store import StoreError
-    result=server.adb('-s',target,'shell','am','start-foreground-service','-n',PACKAGE_ID+'/.SyncService','-a','enable' if enabled else 'disable')
+    args=['-s',target,'shell','am','start-foreground-service','-n',PACKAGE_ID+'/.SyncService']
+    if enabled is not None:args.extend(('-a','enable' if enabled else 'disable'))
+    result=server.adb(*args)
     if re.search(r'error|exception',result,re.I):raise StoreError('Screen Sync could not start in the background. Check Core and retry Deploy.')
+
+
+@contextmanager
+def pause_for_artwork(server,target):
+    # The Cube's config download must not overlap Screen Sync's property commands.
+    # In particular, installing/configuring Sync starts an immediate sync pass.
+    services=server.adb('-s',target,'shell','dumpsys','activity','services',PACKAGE_ID)
+    running=bool(re.search(r'ServiceRecord\{[^}\r\n]*\b'+re.escape(PACKAGE_ID)+r'/\.SyncService\}',services))
+    if not running:
+        yield
+        return
+    server.adb('-s',target,'shell','am','force-stop',PACKAGE_ID)
+    try:
+        yield
+    finally:
+        # No enable/disable action: restore the persisted mode and wake delay.
+        # Also restore after a rejected/ambiguous artwork transfer.
+        start_sync(server,target)
 
 
 def write_private_file(server, target, path, uid, raw):
