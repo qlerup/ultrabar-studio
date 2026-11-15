@@ -2,6 +2,12 @@
 (()=>{
   let packages=[],installed=[],job=null,pending=null,loading=false,opened=false;
   const iconCache=new Map();
+  const statsCache=new Map(),visibleStats=new Set(),statsPackages=new Map();let fetchingStats=false;
+  const statsKey=p=>p.id+'|'+p.artifact?.url+'|'+p.links?.repository;
+  const needsStats=p=>{const value=statsCache.get(statsKey(p));return !value||value.loading||Date.now()-value.checked>60000;};
+  function paintStats(){for(const box of document.querySelectorAll('.store-badges')){const p=statsPackages.get(box.dataset.id);if(!p)continue;const value=statsCache.get(statsKey(p));for(const [kind,label] of [['downloads','Downloads'],['issues','Open issues']]){const badge=box.querySelector('[data-stat="'+kind+'"]');const number=value?.[kind];badge.textContent=label+' '+(Number.isInteger(number)?number.toLocaleString():'—');badge.title=kind==='downloads'?'GitHub downloads of the currently published package file; includes repeat and automated downloads.':'Open GitHub issues in this app’s repository; pull requests are excluded.';if(!value||value.loading)badge.title+=' Loading counts…';else if(value.stale)badge.title+=' GitHub is currently unavailable; showing the last known count when available.';}}}
+  async function loadStats(){if(fetchingStats||!opened||document.hidden)return;const ids=[...visibleStats].filter(id=>statsPackages.has(id)&&needsStats(statsPackages.get(id))).slice(0,12);if(!ids.length)return;fetchingStats=true;try{const data=await(await api('/api/store/stats?ids='+encodeURIComponent(ids.join(',')))).json();for(const [id,value] of Object.entries(data.packages||{})){statsCache.set(id+'|'+value.artifact+'|'+value.repository,{...value,checked:Date.now()});}paintStats();}catch(_){/* Counts must never block installing or browsing packages. */}finally{fetchingStats=false;}}
+  const statsObserver=new IntersectionObserver(entries=>{for(const entry of entries){if(entry.isIntersecting)visibleStats.add(entry.target.dataset.id);else visibleStats.delete(entry.target.dataset.id);}loadStats();},{rootMargin:'100px'});
   async function showIcon(p,box){
     if(!p.icon?.sha256)return;
     const hash=p.icon.sha256;
@@ -14,7 +20,7 @@
   function record(p){return installed.find(i=>i.id===p.id&&(p.type!=='corebar-app'||i.device_id===snapshot?.device_id));}
   function render(){
     $('store-device').textContent=snapshot?`Selected CoreBAR: ${snapshot.model} / ${snapshot.target}`:'No CoreBAR connected. Studio plugins can still be installed on this PC.';
-    const box=$('store-packages');box.replaceChildren();
+    const box=$('store-packages');statsObserver.disconnect();visibleStats.clear();statsPackages.clear();box.replaceChildren();
     const query=$('store-search').value.trim().toLowerCase(),filter=$('store-filter').value;
     const all=packages.slice();for(const p of installed){if(!all.some(x=>x.id===p.id)&&(p.type!=='corebar-app'||p.device_id===snapshot?.device_id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
@@ -25,6 +31,7 @@
       title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
       title.append(el('p','muted store-publisher',p.origin==='local'?'LOCAL DEVELOPMENT / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / Installed: '+saved.version:''}`));
+      let badges=null;if(p.links?.repository&&p.artifact?.url){badges=el('div','store-badges');badges.dataset.id=p.id;badges.setAttribute('aria-live','polite');for(const kind of ['downloads','issues']){const badge=el('span','store-stat');badge.dataset.stat=kind;badges.append(badge);}statsPackages.set(p.id,p);card.append(badges);}
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
       const tools=el('div','editor-buttons');
@@ -40,9 +47,10 @@
       }
       card.append(tools);
       if(p.links?.repository){const links=el('nav','store-links');links.setAttribute('aria-label',p.name+' on GitHub');for(const [kind,label] of [['repository','Repository'],['issues','Issues'],['pulls','Pull requests']]){if(!p.links[kind])continue;const a=el('a','',label);a.href=p.links[kind];a.target='_blank';a.rel='noopener noreferrer';a.onclick=async e=>{e.preventDefault();try{await api('/api/store/open-link',{method:'POST',body:JSON.stringify({id:p.id,kind})});}catch(error){status(error.message,true);}};links.append(a);}card.append(links);}
-      box.append(card);showIcon(p,icon);
+      box.append(card);showIcon(p,icon);if(badges)statsObserver.observe(badges);
     }
     if(!visible.length)box.append(el('p','store-empty',packages.length?'No matching packages.':'No approved packages yet. New submissions appear here after the owner merges them into the store catalog.'));
+    paintStats();
   }
   async function local(){const d=await(await api('/api/store/installed')).json();installed=d.installed||[];job=d.job;render();}
   async function refresh(){
@@ -71,4 +79,5 @@
     try{const d=await(await api('/api/store/job')).json();job=d.job;status(job?.message||'',job?.state==='error');if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));render();}}catch(e){status(e.message,true);}
   },1000);
   setInterval(()=>{if(opened&&!document.hidden&&job?.state!=='running')refresh();},60000);
+  setInterval(loadStats,3000);
 })();

@@ -4,6 +4,7 @@ from unittest.mock import patch
 from werkzeug.serving import make_server
 from playwright.sync_api import sync_playwright,expect
 import server,store
+import package_stats
 from test_store import fixture,icon_fixture
 
 class StoreBrowserTests(unittest.TestCase):
@@ -12,7 +13,7 @@ class StoreBrowserTests(unittest.TestCase):
   def download(url,limit,destination=None):
    if destination is None:return icon_raw
    destination.write(raw);return len(raw)
-  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download),patch.object(store.webbrowser,'open',return_value=True) as browser_open:
+  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download),patch.object(store.webbrowser,'open',return_value=True) as browser_open,patch.object(server.store,'stats',package_stats.PackageStats()),patch.object(package_stats,'github_json',side_effect=lambda path:dict(assets=[dict(name='test.json',download_count=42)]) if path.startswith('repos/') else dict(total_count=3,incomplete_results=False)):
    server.store.job=None
    http=make_server('127.0.0.1',0,server.app,threaded=True);host=f'127.0.0.1:{http.server_port}'
    with patch.dict(server.app.config,ALLOWED_HOSTS={host}):
@@ -28,6 +29,8 @@ class StoreBrowserTests(unittest.TestCase):
       approved.append(p);page.locator('#store-refresh').click()
       expect(page.locator('.store-card')).to_contain_text('Test presets')
       expect(page.locator('.store-publisher')).to_have_text('Uploaded by @qlerup')
+      expect(page.locator('[data-stat="downloads"]')).to_have_text('Downloads 42',timeout=15000)
+      expect(page.locator('[data-stat="issues"]')).to_have_text('Open issues 3')
       expect(page.locator('.brand-mark img')).to_be_visible()
       for name,suffix in [('Repository',''),('Issues','/issues'),('Pull requests','/pulls')]:
        link=page.locator('.store-links').get_by_role('link',name=name,exact=True)

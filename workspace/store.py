@@ -223,6 +223,8 @@ def inspect_apk(server,path,entry):
 class Store:
     def __init__(self,server):
         self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None;self.github_links={}
+        from package_stats import PackageStats
+        self.stats=PackageStats()
     def records(self):
         try:
             data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text())
@@ -235,6 +237,7 @@ class Store:
         atomic_json(self.server.DATA_DIR/'store/installed.json',data)
     def key(self,p,device): return p['id']+(':'+device if p['type']=='corebar-app' else ':pc')
     def remember_icons(self,packages):
+        self.stats.remember(packages)
         with self.lock:
             for p in packages:
                 links=package_links(p)
@@ -385,6 +388,11 @@ def register_store(server):
         except (OSError,webbrowser.Error):opened=False
         if not opened:raise StoreError('Could not open the system browser.')
         return jsonify(ok=True)
+    @server.app.get('/api/store/stats')
+    def stats():
+        ids=request.args.get('ids','').split(',')
+        if len(ids)>12 or any(not ID.fullmatch(key) for key in ids):raise StoreError('Choose up to 12 loaded packages.')
+        return jsonify(packages=store.stats.request(ids))
     @server.app.get('/api/store/icons/<digest>')
     def icon(digest):
         from flask import Response

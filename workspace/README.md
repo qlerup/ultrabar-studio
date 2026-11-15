@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.33 Windows
+# UltraBar Studio — 0.34 Windows
+
+## 0.34 update
+
+Closing the Studio window keeps it running in the Windows notification area. Double-click the tray icon or choose Open Studio to reopen maximized. Exit fully stops Studio; update installation also exits fully before launching Setup. Opening the shortcut while Studio is already running restores the existing window. PC actions and native widget metrics continue in background threads. Normal minimize remains available.
+
+Store cards show cached GitHub Downloads and Open issues badges. Downloads count fetches of the currently published package artifact, including repeat and automated downloads; they are not unique users/installations or lifetime totals across every release. Issue counts exclude pull requests. Counts load asynchronously for visible cards, normally refresh on a 15-minute cache, and respect rate-limit cooldown. Unavailable counts display a dash or last known value rather than a false zero. No GitHub login or user telemetry is required.
 
 ## 0.33 update
 

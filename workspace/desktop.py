@@ -1,4 +1,4 @@
-"""Standalone Windows entry point; backend lives and exits with the window."""
+"""Windows entry point; backend stays alive while Studio is in the tray."""
 import ctypes
 import logging
 import os
@@ -23,7 +23,8 @@ def main():
     if not handle:
         raise ctypes.WinError(ctypes.get_last_error())
     if ctypes.get_last_error() == 183:
-        ctypes.windll.user32.MessageBoxW(None, 'UltraBar Studio is already running. Find its window on the taskbar.', 'UltraBar Studio', 64)
+        from tray import show_running_studio
+        if not show_running_studio():ctypes.windll.user32.MessageBoxW(None, 'UltraBar Studio is already running. Open it from the icon in the notification area near the clock.', 'UltraBar Studio', 64)
         kernel.CloseHandle(handle)
         return
     http = None
@@ -40,9 +41,12 @@ def main():
                                       width=1440, height=960, min_size=(640, 520), maximized=True, resizable=False, background_color='#101116')
         from window_policy import lock_maximized
         window.events.before_show += lambda: lock_maximized(window)
+        from tray import StudioTray
+        tray=StudioTray(window,server.ROOT/'assets/studio.ico')
+        window.events.before_show += tray.install
         def queue_update(path):
             pending_update.append(Path(path))
-            timer = threading.Timer(0.5, window.destroy)
+            timer = threading.Timer(0.5, tray.exit)
             timer.daemon = True
             timer.start()
         server.update_launcher = queue_update
@@ -76,7 +80,7 @@ def main():
                         result = result and window.evaluate_js("document.querySelectorAll('.hardware-unit').length === 7 && document.querySelectorAll('.module-card').length > 0")
                     (server.DATA_DIR / 'desktop-smoke.txt').write_text('PASS' if result else 'FAIL')
                 finally:
-                    window.destroy()
+                    tray.exit()
             window.events.loaded += lambda: threading.Thread(target=smoke, daemon=True).start()
         webview.start(gui='edgechromium', private_mode=False,
                       storage_path=str(server.DATA_DIR / 'webview'), icon=str(server.ROOT / 'assets' / 'studio.ico'))

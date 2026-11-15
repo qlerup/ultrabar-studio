@@ -5,13 +5,15 @@ $studioPython = Join-Path $PSScriptRoot '.venv-build/Scripts/python.exe'
 $studioCompiler = Join-Path $PSScriptRoot 'build-tools/InnoSetup/ISCC.exe'
 if (-not (Test-Path -LiteralPath $studioPython)) { throw 'Create .venv-build and install requirements-build.txt first.' }
 if (-not (Test-Path -LiteralPath $studioCompiler)) { throw 'The Inno Setup compiler is missing from build-tools/InnoSetup.' }
-& $studioPython -m unittest test_server test_hardware test_discovery test_previews test_editor test_native_widgets test_updates test_store test_screen_sync test_local_packages
+& $studioPython -m unittest test_server test_hardware test_discovery test_previews test_editor test_native_widgets test_updates test_store test_screen_sync test_local_packages test_package_stats
 if ($LASTEXITCODE -ne 0) { throw 'Tests failed.' }
+& $studioPython verify_tray.py
+if ($LASTEXITCODE -ne 0) { throw 'Native tray checks failed.' }
 & $studioPython ../native-widgets/build.py
 if ($LASTEXITCODE -ne 0) { throw 'Native widget build failed.' }
 & $studioPython -m PyInstaller --noconfirm 'UltraBar Studio.spec'
 if ($LASTEXITCODE -ne 0) { throw 'App build failed.' }
 & $studioCompiler installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
-Get-FileHash 'release/UltraBarStudio-Setup-0.33.0.exe' -Algorithm SHA256
+Get-FileHash 'release/UltraBarStudio-Setup-0.34.0.exe' -Algorithm SHA256
 

@@ -103,3 +103,7 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 
 /* Studio identity and per-package contributor links. */
 .brand-mark{background:transparent;box-shadow:none}.brand-mark img{display:block;width:100%;height:100%;object-fit:contain}.store-links{display:flex;flex-wrap:wrap;gap:8px 16px;border-top:1px solid var(--line);padding-top:12px;margin-top:4px;font-size:12px}.store-links a{color:var(--mint);text-underline-offset:3px}.store-links a:focus-visible{outline:2px solid var(--mint);outline-offset:4px}
+
+.store-badges{display:flex;flex-wrap:wrap;gap:7px}.store-stat{font-size:11px;line-height:1.5;padding:3px 7px;border:1px solid var(--line);border-radius:2px;color:var(--muted);background:var(--bg);font-variant-numeric:tabular-nums}
+
+.sidebar-bottom p.tray-hint{font-size:11px;line-height:1.5;color:var(--muted);margin-top:18px}
