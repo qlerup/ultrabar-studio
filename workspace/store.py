@@ -18,6 +18,7 @@ from flask import jsonify, request
 import updates
 import screen_sync
 import app_settings_contract
+import uuid
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
 ASSET_PREFIX = 'https://github.com/qlerup/ultrabar-store/releases/download/'
@@ -273,13 +274,52 @@ class Store:
             return templates
     def status(self):
         with self.lock:return copy.deepcopy(self.job)
+    @staticmethod
+    def fingerprint(record):return record['version']+'|'+record['artifact']['sha256']
+    def deployed_path(self,device):return self.server.DATA_DIR/'store/deployed'/(hashlib.sha256(device.encode()).hexdigest()+'.json')
+    def pending_deploy(self,device=None):
+        deployed={}
+        if device:
+            try:deployed=json.loads(self.deployed_path(device).read_text(encoding='utf-8'))
+            except FileNotFoundError:pass
+            except (OSError,ValueError) as exc:raise StoreError('Could not read package activation status. Saved records were preserved.') from exc
+            if not isinstance(deployed,dict):raise StoreError('Invalid package activation status.')
+        with self.lock:return {p['id']:dict(name=p['name'],version=p['version']) for p in self.records().values() if p.get('requiresDeploy') and deployed.get(p['id'])!=self.fingerprint(p)}
+    def deployment_plan(self,profiles,background):
+        apps={w['id'] for p in profiles for w in p['homeData'] if w['type']=='APPS'}|{a['id'] for a in background}
+        widgets=set()
+        for profile in profiles:
+            for widget in profile['homeData']:
+                param=widget.get('param');payload=param.get('payload') if isinstance(param,dict) else None
+                params=payload.get('params') if isinstance(payload,dict) else None
+                if isinstance(params,dict) and isinstance(params.get('packageId'),str):widgets.add(params['packageId'])
+        with self.lock:return {p['id']:self.fingerprint(p) for p in self.records().values() if p['id'] in widgets or p.get('android',{}).get('packageId') in apps}
+    def mark_deployed(self,device,plan):
+        if not plan:return
+        from editor import atomic_json
+        path=self.deployed_path(device)
+        with self.lock:
+            try:deployed=json.loads(path.read_text(encoding='utf-8'))
+            except FileNotFoundError:deployed={}
+            except (OSError,ValueError) as exc:raise StoreError('Could not save package activation status. Core may already have updated; your draft and backup are preserved.') from exc
+            if not isinstance(deployed,dict):raise StoreError('Invalid package activation status. Core may already have updated.')
+            current={p['id']:self.fingerprint(p) for p in self.records().values()}
+            deployed.update({key:value for key,value in plan.items() if current.get(key)==value})
+            atomic_json(path,deployed)
+    @staticmethod
+    def update_widget_versions(profiles,plan):
+        for profile in profiles:
+            for widget in profile['homeData']:
+                param=widget.get('param');payload=param.get('payload') if isinstance(param,dict) else None
+                params=payload.get('params') if isinstance(payload,dict) else None
+                if isinstance(params,dict) and isinstance(params.get('packageId'),str) and params['packageId'] in plan and payload.get('action')=='studioNative':params['packageVersion']=plan[params['packageId']].split('|',1)[0]
     def update_job(self,**values):
         with self.lock:self.job.update(values)
     def start(self,body):
         if not isinstance(body,dict) or not ID.fullmatch(str(body.get('id',''))):raise StoreError('Choose a package from the store.')
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Another installation is already running.')
-            self.job=dict(state='running',message='Checking approved package...',id=body['id'])
+            self.job=dict(state='running',message='Checking approved package...',id=body['id'],request_id=uuid.uuid4().hex)
         threading.Thread(target=self.install,args=(dict(body),),daemon=True,name='StudioStoreInstall').start()
         return self.status()
     def preview_local(self,body=None):
@@ -363,7 +403,7 @@ class Store:
                     raise StoreError('Local preview expired. Select the folder again.')
                 self.local_pending=None
                 _,_,p,raw=pending
-            self.job=dict(state='running',message='Verifying local development package...',id=p['id'])
+            self.job=dict(state='running',message='Verifying local development package...',id=p['id'],request_id=uuid.uuid4().hex)
         threading.Thread(target=self.install,args=(dict(body),(p,raw)),daemon=True,name='StudioLocalInstall').start()
         return self.status()
     def install(self,body,local=None):
@@ -377,6 +417,7 @@ class Store:
             if screen_sync.applies(p):screen_sync.validate_identity(p)
             with self.lock:
                 old=self.records().get(self.key(p,device))
+            self.update_job(name=p['name'],version=p['version'],is_update=bool(old and valid_version(p['version'])>valid_version(old['version'])))
             if old and valid_version(old['version'])>valid_version(p['version']):raise StoreError('Package downgrades are not supported.')
             self.update_job(message='Downloading and verifying package...')
             with tempfile.TemporaryDirectory(prefix='ultrabar-store-') as folder:
@@ -384,8 +425,9 @@ class Store:
                 if local:path.write_bytes(local[1]);size=len(local[1])
                 else:
                     with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
+                self.update_job(message='Checking package integrity and contents…')
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
-                record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None)
+                record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None,requiresDeploy=True)
                 if p.get('publisher'):record['publisher']=p['publisher']
                 if p.get('source'):record['source']=p['source']
                 if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
@@ -407,6 +449,7 @@ class Store:
                         dependencies[p['android']['packageId']]=p
                         atomic_json(cached.parent/'library.json', dependencies)
                 with self.lock:
+                    self.update_job(message='Saving package to your PC library…')
                     records=self.records();records[self.key(p,device)]=record;self.save(records)
             self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if deferred or p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
         except Exception as exc:
@@ -527,12 +570,12 @@ def register_store(server):
     def get_store():
         with store.lock:installed=list(store.records().values())
         packages=catalog()+list(store.manual_packages().values());store.remember_icons(installed+packages)
-        return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],manual=list(store.manual_packages().values()),job=store.status())
+        return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],manual=list(store.manual_packages().values()),job=store.status(),pending_deploy=store.pending_deploy((server.connection.get('snapshot') or {}).get('device_id')))
     @server.app.get('/api/store/installed')
     def installed():
         with store.lock:
             installed=list(store.records().values());manual=list(store.manual_packages().values());store.remember_icons(installed+manual)
-            return jsonify(installed=[dict(p,links=package_links(p)) for p in installed],widgets=store.templates(),manual=manual,job=store.status())
+            return jsonify(installed=[dict(p,links=package_links(p)) for p in installed],widgets=store.templates(),manual=manual,job=store.status(),pending_deploy=store.pending_deploy((server.connection.get('snapshot') or {}).get('device_id')))
     @server.app.post('/api/store/open-link')
     def open_link():
         body=request.get_json(silent=True) or {}

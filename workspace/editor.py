@@ -62,10 +62,15 @@ def draft_path(server, device_id):
 def fresh_draft(snapshot):
     return dict(device_id=snapshot['device_id'], base_hash=digest(snapshot['profiles']),
                 base_profiles=deepcopy(snapshot['profiles']), profiles=deepcopy(snapshot['profiles']),
-                revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat(), background_apps=[],app_settings={})
+                revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat(), background_apps=[],app_settings={},vivo_screens={})
 
 
 def settings_path(server,device):return draft_path(server,device).with_suffix('.settings.json')
+def vivo_path(server,device):return draft_path(server,device).with_suffix('.vivo.json')
+def saved_vivo(server,device):
+    try:return json.loads(vivo_path(server,device).read_text(encoding='utf-8'))
+    except FileNotFoundError:return {}
+    except (OSError,ValueError) as exc:raise EditError('Could not read saved Vivo screens. Existing data was preserved.') from exc
 
 
 def saved_app_settings(server,device):
@@ -109,10 +114,12 @@ def load_draft(server, snapshot):
         draft=json.loads(path.read_text(encoding='utf-8'))
         if 'background_apps' not in draft:draft['background_apps']=saved_background(server,snapshot['device_id'])
         if 'app_settings' not in draft:draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
+        if 'vivo_screens' not in draft:draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
         return draft
     draft = fresh_draft(snapshot)
     draft['background_apps']=saved_background(server,snapshot['device_id'])
     draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
+    draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
     atomic_json(path, draft)
     return draft
 
@@ -262,6 +269,7 @@ def matches(expected, actual):
 
 
 def register_editor(server):
+    import vivo
     core_icons = CoreIcons()
     app = server.app
 
@@ -331,7 +339,8 @@ def register_editor(server):
             background=body.get('background_apps',draft.get('background_apps',[]))
             validate_background(background)
             settings=app_settings.validate_all(server,body.get('app_settings',draft.get('app_settings',{})))
-            draft.update(profiles=profiles, background_apps=background,app_settings=settings, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
+            screens=body.get('vivo_screens',draft.get('vivo_screens',{}));vivo.validate(screens,profiles)
+            draft.update(profiles=profiles, background_apps=background,app_settings=settings,vivo_screens=screens, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
             atomic_json(draft_path(server, snapshot['device_id']), draft)
             return jsonify(draft=draft)
 
@@ -350,6 +359,7 @@ def register_editor(server):
             draft = fresh_draft(latest)
             draft['background_apps']=saved_background(server,latest['device_id'])
             draft['app_settings']=saved_app_settings(server,latest['device_id'])
+            draft['vivo_screens']=saved_vivo(server,latest['device_id'])
             atomic_json(draft_path(server, latest['device_id']), draft)
             return jsonify(draft=draft, snapshot=latest)
 
@@ -389,6 +399,9 @@ def register_editor(server):
             validate(draft['profiles'], draft['base_profiles'])
             validate_background(draft.get('background_apps',[]))
             app_settings.validate_all(server,draft.get('app_settings',{}))
+            vivo.validate(draft.get('vivo_screens',{}),draft['profiles'])
+            package_plan=server.store.deployment_plan(draft['profiles'],draft.get('background_apps',[]))
+            server.store.update_widget_versions(draft['profiles'],package_plan)
             payload = to_wire(draft['profiles'])
             stage('Reading Core settings and creating a backup…')
             latest = server.read_snapshot(server.connection['target'])  # Also saves original XML before any write.
@@ -397,6 +410,7 @@ def register_editor(server):
             rollback = dict(device_id=latest['device_id'], profiles=latest['profiles'], backup=latest['backup'])
             rollback['background_apps']=saved_background(server,latest['device_id'])
             rollback['app_settings']=saved_app_settings(server,latest['device_id'])
+            rollback['vivo_screens']=saved_vivo(server,latest['device_id'])
             rollback_path = draft_path(server, latest['device_id']).with_suffix('.rollback.json')
             atomic_json(rollback_path, rollback)
             stage('Waking Core and waiting for the screen…')
@@ -408,6 +422,7 @@ def register_editor(server):
             stage('Applying app settings and waiting for confirmation...')
             requested={w['id'] for p in draft['profiles'] for w in p['homeData'] if w['type']=='APPS'}|{a['id'] for a in draft.get('background_apps',[])}
             app_settings.deploy(server,{k:v for k,v in draft.get('app_settings',{}).items() if k in requested})
+            vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft))
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'])
             # A timeout is ambiguous: always read back, and never blindly resend a write.
@@ -435,11 +450,13 @@ def register_editor(server):
                                backup=latest['backup'], acknowledged=acknowledged), 502
             atomic_json(background_path(server,latest['device_id']),draft.get('background_apps',[]))
             atomic_json(settings_path(server,latest['device_id']),draft.get('app_settings',{}))
+            atomic_json(vivo_path(server,latest['device_id']),draft.get('vivo_screens',{}))
             snapshot = dict(latest, profiles=verified, read_at=datetime.now(timezone.utc).isoformat())
             server.connection['snapshot'] = snapshot
             new_draft = fresh_draft(snapshot)
             new_draft['background_apps']=deepcopy(draft.get('background_apps',[]))
             new_draft['app_settings']=deepcopy(draft.get('app_settings',{}))
+            new_draft['vivo_screens']=deepcopy(draft.get('vivo_screens',{}))
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
@@ -456,6 +473,8 @@ def register_editor(server):
             if server.native_widgets.specs:
                 server.native_widgets.ready.wait(8)
             native_note = '' if not server.native_widgets.specs or server.native_widgets.ready.is_set() else ' Studio widgets are waiting for Core home; keep Studio connected.'
+            server.store.mark_deployed(latest['device_id'],package_plan)
+            if not activated:native_note+=' Core home still needs a restart before updated widgets are visible.'
             return jsonify(draft=new_draft, snapshot=snapshot, backup=latest['backup'], acknowledged=acknowledged,
                            activated=activated, message='Settings saved and verified. '+
                            ('Core home restarted to load the new layout. Test changed module inputs on your hardware.' if activated else
@@ -480,6 +499,7 @@ def register_editor(server):
             restored['profiles'] = retain_cleared_slots(previous['profiles'], latest['profiles'])
             restored['background_apps']=previous.get('background_apps',[])
             restored['app_settings']=previous.get('app_settings',{})
+            restored['vivo_screens']=previous.get('vivo_screens',{})
             validate_background(restored['background_apps'])
             validate(restored['profiles'], restored['base_profiles'])
             atomic_json(draft_path(server, snapshot['device_id']), restored)

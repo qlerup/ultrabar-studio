@@ -1,4 +1,28 @@
-# UltraBar Studio — 0.45.0 Windows
+# UltraBar Studio — 0.46.0 Windows
+
+## 0.46 update
+
+Package updates show a progress dialog, then offer **Deploy now** or **Later**.
+The update changes the PC library first. Core activation and new device settings
+may require Deploy. Deploy now opens the normal draft review and confirmation;
+it does not silently deploy unrelated edits. Waiting packages keep a per-Core
+Deploy reminder on their Store card, including after restart. Only packages used
+in the verified deployment are marked current; a newer concurrently installed
+version remains pending. Existing placed widget settings are preserved.
+
+VivoCube module actions now have a **Vivo screen picture** panel: upload PNG/JPG/
+WebP (up to 2 MB), use an action icon, or clear the screen and its actions. Program
+actions use their executable icon where available. Uploads and clear operations
+stay in the draft until Deploy, and Undo/save/backup retain them.
+
+Deploy compiles an actual single-button Vivo screen package, registers the same
+button ID on Core and uploads the artwork with firmware acknowledgement and
+cached-byte verification. Missing registration could previously leave an assigned
+website/program action inert. Existing Cube network settings and other modules
+are preserved. Original profiles and old artwork are backed up. Screen images
+are shared across profiles; multi-button composition is not supported by this
+one-button editor. Clearing a screen clears that Cube's button actions across
+profiles after confirmation.
 
 ## 0.45 update
 
