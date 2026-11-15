@@ -1,5 +1,11 @@
 # UltraBar Studio — 0.34 Windows
 
+## Independence, testing and responsibility
+
+Studio is independently developed and is not made in collaboration with, affiliated with or endorsed by the UltraBarX / CoreBAR team. It is under active development. Use it and any third-party packages at your own risk. The software is provided as is, without warranty; to the extent permitted by law, the authors and contributors are not liable for resulting loss or damage. Non-excludable legal rights remain unaffected. See [LICENSE](../LICENSE) and the [project README](../.github/README.md).
+
+The Windows installer is currently unsigned and may trigger an unrecognized-app or unknown-publisher SmartScreen warning. A reputation warning alone is not a malware detection or a guarantee of safety. Use official GitHub Releases and their checksums; see the project README for details.
+
 ## 0.34 update
 
 Closing the Studio window keeps it running in the Windows notification area. Double-click the tray icon or choose Open Studio to reopen maximized. Exit fully stops Studio; update installation also exits fully before launching Setup. Opening the shortcut while Studio is already running restores the existing window. PC actions and native widget metrics continue in background threads. Normal minimize remains available.
