@@ -50,7 +50,10 @@ def check_latest():
     downloadable = isinstance(digest,str) and bool(re.fullmatch(r'sha256:[a-f0-9]{64}',digest)) and type(size) is int and 0<size<=256*1024*1024
     # Construct URLs locally, never execute URLs or paths supplied by clients.
     url = f'{RELEASES_URL}/tag/{latest}'
+    notes = release.get('body')
+    notes = notes.strip() if isinstance(notes, str) else ''
     return dict(current_version=VERSION, latest_version=version, update_available=newer,
+                release_notes=notes,
                 installer_available=installer, release_url=url, download_available=bool(installer and downloadable),
                 download_url=f'{RELEASES_URL}/download/{latest}/{expected}', sha256=digest[7:] if downloadable else None, size=size if downloadable else 0)
 

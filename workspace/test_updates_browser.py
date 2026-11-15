@@ -14,7 +14,8 @@ class UpdateUITests(unittest.TestCase):
     with sync_playwright() as pw:
      browser=pw.chromium.launch(channel='msedge');page=browser.new_page()
      page.route('**/api/preferences',lambda r:r.fulfill(json=dict(setup_seen=True,target='')))
-     page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=True,download_available=True,latest_version='99.0.0',current_version='0.19.0')))
+     notes='New features\n\n- Remember CoreBAR\n- Start with Windows\n<script>window.notesExecuted=true</script>'
+     page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=True,download_available=True,latest_version='99.0.0',current_version='0.19.0',release_notes=notes)))
      job={'state':'idle'};launches=[]
      page.route('**/api/updates/status',lambda r:r.fulfill(json=job))
      def download(r):
@@ -23,6 +24,12 @@ class UpdateUITests(unittest.TestCase):
      page.route('**/api/updates/install',lambda r:(launches.append(True),r.fulfill(json=dict(state='launched',message='Installer opened.'))))
      page.goto('http://'+host)
      page.locator('#updates-open').click();expect(page.locator('#updates-download')).to_be_visible()
+     expect(page.locator('#updates-notes-body')).to_have_text(notes)
+     self.assertFalse(page.evaluate('!!window.notesExecuted'))
+     self.assertEqual(page.locator('#updates-notes-body script').count(),0)
+     page.set_viewport_size({'width':390,'height':844})
+     self.assertTrue(page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
+     page.set_viewport_size({'width':1280,'height':800})
      page.locator('#updates-download').click();expect(page.locator('#updates-status')).to_contain_text('50%')
      expect(page.locator('#updates-install')).not_to_be_visible();self.assertFalse(launches)
      job.update(state='ready',message='Download verified.')
@@ -35,5 +42,15 @@ class UpdateUITests(unittest.TestCase):
      page.once('dialog',lambda d:d.accept());page.locator('#updates-install').click()
      self.assertTrue(page.evaluate('window.savedForUpdate'))
      expect(page.locator('#updates-status')).to_have_text('Installer opened.');self.assertEqual(len(launches),1)
+     page.keyboard.press('Escape');page.locator('#updates-open').click()
+     expect(page.locator('#updates-notes-body')).to_have_text(notes)
+     job.update(state='idle')
+     page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,download_available=True,latest_version='99.0.0',current_version='99.0.0',release_notes='Already installed release notes.')))
+     page.locator('#updates-check').click()
+     expect(page.locator('#updates-status')).to_contain_text('up to date')
+     expect(page.locator('#updates-notes-body')).to_have_text('Already installed release notes.')
+     page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,latest_version='99.0.0',current_version='99.0.0')))
+     page.locator('#updates-check').click()
+     expect(page.locator('#updates-notes-body')).to_contain_text('No release notes')
      browser.close()
    finally:http.shutdown()

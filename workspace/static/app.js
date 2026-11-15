@@ -376,10 +376,16 @@ function showUpdateJob(job){
 async function checkUpdates(){
   $('updates-check').disabled=true;$('updates-download').hidden=true;$('updates-install').hidden=true;
   $('updates-status').textContent='Checking GitHub for updates...';
+  $('updates-notes').hidden=true;
   try{
     const job=await(await api('/api/updates/status')).json();
-    if(['downloading','ready','launched'].includes(job.state)){showUpdateJob(job);return;}
+    const active=['downloading','ready','launched'].includes(job.state);
+    if(active)showUpdateJob(job);
     const data=await(await api('/api/updates')).json();
+    $('updates-notes-title').textContent=`Release notes / ${data.latest_version}`;
+    $('updates-notes-body').textContent=data.release_notes||'No release notes were provided for this release.';
+    $('updates-notes').hidden=false;
+    if(active)return;
     $('updates-status').textContent=data.update_available?`Version ${data.latest_version} is available. You have ${data.current_version}.`+(data.download_available?'':' A verified installer is not available yet.'):`You are up to date. Installed version: ${data.current_version}.`;
     $('updates-download').hidden=!data.update_available||!data.download_available;
     $('updates-download').disabled=false;

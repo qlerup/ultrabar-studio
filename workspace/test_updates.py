@@ -31,6 +31,12 @@ class UpdateTests(unittest.TestCase):
         with patch.object(updates,'urlopen',return_value=io.BytesIO(b'not json')):
             with self.assertRaises(updates.UpdateError):updates.check_latest()
 
+    def test_release_notes_come_from_latest_release(self):
+        notes = 'New features\n\n- Remembers CoreBAR.\n- Start with Windows.'
+        self.assertEqual(self.check('v0.100.0', body=notes)['release_notes'], notes)
+        for value in [None, {}, 123, '']:
+            self.assertEqual(self.check('v0.100.0', body=value)['release_notes'], '')
+
     def test_network_failures(self):
         for error in [URLError('offline'),TimeoutError(),HTTPError('url',404,'missing',{},None),HTTPError('url',403,'limited',{},None)]:
             with patch.object(updates,'urlopen',side_effect=error):

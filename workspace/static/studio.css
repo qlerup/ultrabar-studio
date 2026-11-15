@@ -43,6 +43,10 @@ button.primary{box-shadow:none}
 #updates-dialog{width:min(560px,calc(100vw - 32px));padding:26px;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:2px}
 #updates-status{margin:24px 0 12px;font-size:16px}
 #updates-dialog .editor-buttons{margin-top:24px}
+#updates-dialog{max-height:calc(100dvh - 32px);overflow:auto}
+#updates-notes{margin:22px 0;padding-top:16px;border-top:1px solid var(--line)}
+#updates-notes h3{font-size:14px;margin:0 0 12px}
+#updates-notes-body{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13px;line-height:1.7;color:var(--muted);max-height:40vh;overflow:auto}
 .connection-toolbar{flex-wrap:wrap;justify-content:flex-end}
 @media(max-width:650px){#updates-open{font-size:10px;padding:6px 9px}}
 
