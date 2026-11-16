@@ -1,6 +1,6 @@
-# Bambu Liquid native integration
+# Bambu native integration
 
-Requires Studio 0.46, root-enabled CB01 / LineOS 1.0.9 and the reviewed Bambu Panel
+Requires Studio 0.46, root-enabled CB01 / LineOS 1.0.9 and the reviewed Bambu
 companion APK (`dk.ultrabar.bambu`). Earlier LineOS 1.0.8 has not been tested with
 this renderer, even though the existing native host supports it.
 
@@ -15,8 +15,12 @@ second with at most one request in flight. Its cache expires visibly, and printe
 state freshness and action authorization remain enforced in the companion. The
 companion alone stores encrypted printer credentials. Missing companion blocks
 Deploy with setup instructions; missing state renders as unavailable. The
-companion is installed by the existing reviewed APK path, not arbitrary code
-loaded into the system launcher.
+companion is installed by the existing reviewed APK path. After verifying the
+APK, Studio reads assets/ultrabar-widgets.json and shows one Bambu library item.
+Placing it stages the app once in Background apps; Deploy installs the matching
+APK automatically. App, descriptor and renderer source share the repository
+https://github.com/qlerup/ultrabar-bambu. Contributor bytecode is not loaded into
+the system launcher.
 
 Tap opens a native temporary presentation anchored to the actual source card.
 Width includes 2/3/4/5 measured card widths plus the actual intervening gaps. The
