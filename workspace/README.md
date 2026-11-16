@@ -8,6 +8,11 @@ Core widgets no longer starts another Vivo resource transfer or restarts Screen
 Sync for unchanged pictures. New, unconfirmed or externally modified artwork
 still requires upload acknowledgement and matching cached bytes.
 
+Update checks use the public release-asset feed instead of GitHub's anonymous
+REST API quota. Successful checks are cached for five minutes and failures for
+one minute; concurrent checks share a request. Legacy releases without the feed
+retain API support. Offline browser fixtures do not contact the real update feed.
+
 ## 0.47 update
 
 Adds the Bambu native widget and a fixed companion IPC contract. Each
@@ -529,3 +534,12 @@ backups and readback, clearing removed actions, PC actions, widgets and reconnec
 These historical limitations describe the initial release; newer releases are
 covered above. A protocol acknowledgement alone does not prove that a runtime
 reloaded an action: deployment requires readback and physical input testing.
+
+## Publishing update metadata
+
+After building the installer, run `python make_update_feed.py` (included in
+Build-Installer.ps1). Upload `studio-update.json`, `SHA256SUMS.txt` and the
+installer to the same stable GitHub release. The feed contains the exact
+installer size/SHA-256 and release version; it is served through
+`releases/latest/download/studio-update.json`. Never change an existing
+installer asset in place.

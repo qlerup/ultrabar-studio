@@ -21,6 +21,7 @@ class StoreBrowserTests(unittest.TestCase):
     try:
      with sync_playwright() as pw:
       browser=pw.chromium.launch(channel='msedge');page=browser.new_page(viewport=dict(width=1440,height=960));errors=[]
+      page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,current_version=server.updates.VERSION,latest_version=server.updates.VERSION)))
       page.on('pageerror',lambda e:errors.append(str(e)))
       page.route('**/api/preferences',lambda r:r.fulfill(json=dict(setup_seen=True,target='')))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))

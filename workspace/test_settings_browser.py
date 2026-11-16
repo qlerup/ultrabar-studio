@@ -20,6 +20,7 @@ class SettingsBrowserTests(unittest.TestCase):
                     with sync_playwright() as pw:
                         browser = pw.chromium.launch(channel='msedge')
                         page = browser.new_page(viewport={'width': 1440, 'height': 960})
+                        page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,current_version=server.updates.VERSION,latest_version=server.updates.VERSION)))
                         errors = []
                         page.on('pageerror', lambda e: errors.append(str(e)))
                         target = '192.168.1.20:5555'

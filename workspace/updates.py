@@ -7,6 +7,7 @@ from urllib.request import Request, urlopen
 VERSION = '0.47.1'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
+RELEASE_FEED_URL = RELEASES_URL + '/latest/download/studio-update.json'
 
 class UpdateError(Exception):
     pass
@@ -17,12 +18,19 @@ def version_tuple(value):
     return tuple(map(int, value.removeprefix('v').split('.')))
 
 def check_latest():
-    request = Request(f'https://api.github.com/repos/{REPOSITORY}/releases/latest', headers={
+    headers={
         'Accept': 'application/vnd.github+json', 'User-Agent': f'UltraBar-Studio/{VERSION}',
-        'X-GitHub-Api-Version': '2026-03-10'})
+        'X-GitHub-Api-Version': '2026-03-10'}
     try:
-        with urlopen(request, timeout=10) as response:
-            raw = response.read(1024 * 1024 + 1)
+        # Release assets use GitHub's download CDN, not the shared anonymous
+        # REST API quota. Older releases without a feed retain API support.
+        try:
+            response=urlopen(Request(RELEASE_FEED_URL,headers=headers),timeout=10)
+        except HTTPError as exc:
+            if exc.code!=404:raise
+            response=urlopen(Request(f'https://api.github.com/repos/{REPOSITORY}/releases/latest',headers=headers),timeout=10)
+        with response:
+            raw=response.read(1024 * 1024 + 1)
         if len(raw) > 1024 * 1024:
             raise UpdateError('The release response is too large. Try again later.')
         release = json.loads(raw)
@@ -65,6 +73,25 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
+
+class ReleaseChecker:
+    """Coalesce concurrent checks; back off after a failed network request."""
+    def __init__(self):
+        self.lock=threading.Lock()
+        self.expires=0
+        self.result=None
+        self.error=None
+
+    def check(self):
+        with self.lock:
+            if time.monotonic()>=self.expires:
+                self.result=None
+                self.error=None
+                try:self.result=check_latest()
+                except UpdateError as exc:self.error=str(exc)
+                self.expires=time.monotonic()+(60 if self.error else 300)
+            if self.error:raise UpdateError(self.error)
+            return dict(self.result)
 
 class ReleaseRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):

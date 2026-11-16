@@ -42,11 +42,41 @@ class UpdateTests(unittest.TestCase):
             with patch.object(updates,'urlopen',side_effect=error):
                 with self.assertRaises(updates.UpdateError):updates.check_latest()
 
+    def test_release_asset_feed_avoids_rest_api_and_preserves_verified_metadata(self):
+        release=dict(tag_name='v99.0.0',draft=False,prerelease=False,
+                     assets=[dict(name='UltraBarStudio-Setup-99.0.0.exe',state='uploaded',size=123,digest='sha256:'+'a'*64)])
+        with patch.object(updates,'urlopen',return_value=io.BytesIO(json.dumps(release).encode())) as fetch:
+            result=updates.check_latest()
+        self.assertTrue(result['download_available'])
+        self.assertEqual(result['sha256'],'a'*64)
+        self.assertEqual(fetch.call_count,1)
+        self.assertEqual(fetch.call_args.args[0].full_url,updates.RELEASE_FEED_URL)
+
+    def test_legacy_release_without_feed_uses_api_only_after_404(self):
+        release=dict(tag_name='v99.0.0',draft=False,prerelease=False,assets=[])
+        with patch.object(updates,'urlopen',side_effect=[HTTPError('url',404,'missing',{},None),io.BytesIO(json.dumps(release).encode())]) as fetch:
+            self.assertTrue(updates.check_latest()['update_available'])
+        self.assertEqual(fetch.call_count,2)
+        self.assertTrue(fetch.call_args.args[0].full_url.startswith('https://api.github.com/'))
+
+    def test_cached_checks_coalesce_then_expire_and_back_off_on_failure(self):
+        checker=updates.ReleaseChecker()
+        with patch.object(updates.time,'monotonic',return_value=0) as clock,patch.object(updates,'check_latest',return_value=dict(latest_version='99.0.0')) as fetch:
+            self.assertEqual(checker.check()['latest_version'],'99.0.0')
+            checker.check()['latest_version']='tampered'
+            self.assertEqual(checker.check()['latest_version'],'99.0.0');self.assertEqual(fetch.call_count,1)
+            clock.return_value=301;fetch.side_effect=updates.UpdateError('Rate limited')
+            for _ in range(3):
+                with self.assertRaisesRegex(updates.UpdateError,'Rate limited'):checker.check()
+            self.assertEqual(fetch.call_count,2)
+            clock.return_value=362;fetch.side_effect=None
+            self.assertEqual(checker.check()['latest_version'],'99.0.0');self.assertEqual(fetch.call_count,3)
+
     def test_protected_api_and_browser_destination(self):
         client=server.app.test_client()
         headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
         self.assertEqual(client.get('/api/updates',headers={'Host':'127.0.0.1:8741'}).status_code,403)
-        with patch.object(updates,'check_latest',side_effect=updates.UpdateError('Offline')):
+        with patch.object(server,'release_checker',updates.ReleaseChecker()),patch.object(updates,'check_latest',side_effect=updates.UpdateError('Offline')):
             self.assertEqual(client.get('/api/updates',headers=headers).status_code,502)
         with patch.object(server.webbrowser,'open',return_value=True) as browser:
             self.assertEqual(client.post('/api/updates/open',json={'url':'https://evil.example'},headers=headers).status_code,200)

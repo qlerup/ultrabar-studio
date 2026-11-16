@@ -17,5 +17,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Native widget build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'App build failed.' }
 & $studioCompiler installer.iss
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
+& $studioPython make_update_feed.py
+if ($LASTEXITCODE -ne 0) { throw 'Update feed build failed.' }
 Get-FileHash 'release/UltraBarStudio-Setup-0.47.1.exe' -Algorithm SHA256
 
