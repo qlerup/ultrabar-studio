@@ -402,6 +402,8 @@ def register_editor(server):
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
             validate(draft['profiles'], draft['base_profiles'])
+            from native_widgets import specifications
+            server.bambu.validate(specifications(draft['profiles']))
             validate_background(draft.get('background_apps',[]))
             app_settings.validate_all(server,draft.get('app_settings',{}))
             vivo.validate(draft.get('vivo_screens',{}),draft['profiles'])

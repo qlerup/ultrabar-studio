@@ -100,6 +100,9 @@ class PrinterTests(unittest.TestCase):
         reloaded.configure({});self.assertEqual(reloaded.sample(),{})
 
     def test_reject_invalid_addresses_codes_and_duplicate_profiles(self):
+        with self.assertRaises(EditError):self.manager.validate({'widget':dict(kind='bambu')})
+        with self.assertRaises(EditError):self.manager.validate({'widget':dict(kind='bambu',printerId='a'*32)})
+        self.manager.validate({'widget':dict(kind='cpu')})
         for host in ('127.0.0.1','8.8.8.8','169.254.1.1','192.168.1.0','192.168.1.255','192.168.001.20','printer.local','10.0.0.1;id',None):
             with self.subTest(host=host),self.assertRaises(EditError):bambu.private_host(host)
         for change in (dict(code='x'),dict(pin=''),dict(controls='yes'),dict(serial='../'),dict(id='a'*32),dict(script='exec')):

@@ -428,6 +428,14 @@ class Printers:
             return [dict(id=p['id'], name=p['name'], host=p['host'], serial=p['serial'], controls=p['controls'],
                          status=self.links[p['id']].snapshot() if p['id'] in self.links else dict(connection='Not connected', fresh=False)) for p in self.read()]
 
+    def validate(self, specs):
+        printers = [s for s in specs.values() if s.get('kind') == 'bambu']
+        if printers:
+            with self.lock:
+                available = {p['id'] for p in self.read()}
+                if any(s.get('printerId') not in available for s in printers):
+                    raise EditError('Choose a saved printer for each Bambu widget in Studio before deploying.')
+
     def configure(self, specs):
         with self.lock:
             wanted = {s.get('printerId') for s in specs.values() if s.get('kind') == 'bambu' and s.get('printerId')}

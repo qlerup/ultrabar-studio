@@ -128,10 +128,7 @@ class NativeWidgets:
             raise EditError('This native widget build supports ARM32 CoreBAR only.')
         package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
         check_lineos(package)
-        if any(s['kind']=='bambu' for s in specs.values()):
-            available = {p['id'] for p in self.server.bambu.read()}
-            if any(s['kind']=='bambu' and s.get('printerId') not in available for s in specs.values()):
-                raise EditError('Choose a saved printer for each Bambu widget in Studio before deploying.')
+        self.server.bambu.validate(specs)
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
             raise EditError('Native runtime integrity check failed. Reinstall Studio.')
