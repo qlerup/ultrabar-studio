@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.48.2 Windows
+# UltraBar Studio — 0.48.3 Windows
+
+## 0.48.3 update
+
+The Store now reads download and issue counts from one published data file instead
+of calling GitHub's API from each PC. The catalog and package installs/updates
+continue to use direct, checksum-verified downloads. Missing counts do not block
+installation or updating. Counts remain tied to the published package version
+even when an older version is installed in the library.
 
 ## 0.48.2 update
 

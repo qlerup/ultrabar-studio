@@ -13,7 +13,7 @@ class StoreBrowserTests(unittest.TestCase):
   def download(url,limit,destination=None):
    if destination is None:return icon_raw
    destination.write(raw);return len(raw)
-  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download),patch.object(store.webbrowser,'open',return_value=True) as browser_open,patch.object(server.store,'stats',package_stats.PackageStats()),patch.object(package_stats,'github_json',side_effect=lambda path:dict(assets=[dict(name='test.json',download_count=42)]) if path.startswith('repos/') else dict(total_count=3,incomplete_results=False)):
+  with tempfile.TemporaryDirectory() as tmp,patch.object(server,'DATA_DIR',Path(tmp)),patch.object(store,'catalog',side_effect=lambda:list(approved)),patch.object(store,'fetch',side_effect=download),patch.object(store.webbrowser,'open',return_value=True) as browser_open,patch.object(server.store,'stats',package_stats.PackageStats()),patch.object(package_stats,'published_counts',side_effect=lambda:dict(schemaVersion=1,generatedAt=int(time.time()),packages={p['id']:dict(repository='https://github.com/qlerup/studio-system-monitor',artifact=p['artifact']['url'],downloads=42,issues=3,stale=False)})):
    server.store.job=None
    http=make_server('127.0.0.1',0,server.app,threaded=True);host=f'127.0.0.1:{http.server_port}'
    with patch.dict(server.app.config,ALLOWED_HOSTS={host}):

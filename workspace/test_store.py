@@ -9,6 +9,24 @@ def fixture():
     return p,payload
 
 class StoreTests(unittest.TestCase):
+    def test_catalog_and_update_use_static_downloads_even_when_counts_fail(self):
+        import io,package_stats
+        p,raw=fixture();old=copy.deepcopy(p);p['version']='1.0.1'
+        self.service.save({p['id']+':pc':old})
+        urls=[]
+        def open_download(req,**kwargs):
+            urls.append(req.full_url)
+            if req.full_url.startswith(store.CATALOG_URL):return io.BytesIO(json.dumps(dict(schemaVersion=1,packages=[p])).encode())
+            self.assertEqual(req.full_url,p['artifact']['url']);return io.BytesIO(raw)
+        with patch.object(store,'build_opener') as opener,patch.object(package_stats,'published_counts',side_effect=OSError('counts offline')),patch.object(server,'adb') as adb:
+            opener.return_value.open.side_effect=open_download
+            self.service.stats.remember([p]);self.service.stats.refresh(list(self.service.stats.packages.values()))
+            self.service.job=dict(state='running')
+            self.service.install(dict(id=p['id'],version=p['version'],sha256=p['artifact']['sha256']))
+            self.assertEqual(self.service.status()['state'],'complete');self.assertTrue(self.service.status()['is_update'])
+            self.assertEqual(len(urls),2)
+            self.assertTrue(urls[0].startswith(store.CATALOG_URL));self.assertEqual(urls[1],p['artifact']['url'])
+            self.assertFalse(any('api.github.com' in u for u in urls));adb.assert_not_called()
     def setUp(self):
         self.tmp=tempfile.TemporaryDirectory();self.addCleanup(self.tmp.cleanup)
         self.data=patch.object(server,'DATA_DIR',Path(self.tmp.name));self.data.start();self.addCleanup(self.data.stop)
