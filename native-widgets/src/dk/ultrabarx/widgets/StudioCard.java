@@ -70,9 +70,10 @@ public final class StudioCard extends View {
                     File file=new File("/data/local/tmp/ultrabar-studio-metrics.json");
                     if(file.length()>0 && file.length()<262144){
                         String text=new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8);
-                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;}
+                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
                     }
                 } catch(Exception ignored) { /* Last sample expires visibly below. */ }
+                BambuTile.update(state.optJSONObject("printers"),received);
                 main.post(() -> {for(int i=views.size()-1;i>=0;i--){StudioCard v=views.get(i).get();if(v==null)views.remove(i);else v.invalidate();}});
                 try{Thread.sleep(1000);}catch(InterruptedException e){return;}
             }
@@ -96,6 +97,7 @@ public final class StudioCard extends View {
         int white=Color.rgb(239,246,242),muted=Color.rgb(155,177,165),accent=Color.rgb(148,217,187);
         JSONObject specs=state.optJSONObject("widgets"),spec=specs==null?null:specs.optJSONObject(widgetId);
         bambuSpec=spec!=null&&"bambu".equals(spec.optString("kind"))?spec:null;
+        if(bambuSpec!=null)try{bambuSpec.put("_widgetId",widgetId);}catch(Exception ignored){}
         if(bambuSpec!=null){setClickable(true);BambuTile.draw(this,c,width,spec,title);c.restore();return;}
         setClickable(false);
         int background=Color.rgb(25,35,37);

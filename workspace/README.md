@@ -1,4 +1,13 @@
-# UltraBar Studio — 0.47.0 Windows
+# UltraBar Studio — 0.48.0 Windows
+
+## 0.48 update
+
+Set up Bambu printers in Studio with **Manage printers**. Studio owns the LAN
+connections, protects access codes with Windows DPAPI and sends sanitized readings
+to Core through the same channel as CPU and drive widgets. Each Bambu widget can
+select a different printer. Keep Studio running for live readings and controls;
+no printer setup or companion app is required on Core. See
+[Bambu connections](../docs/BAMBU-STUDIO-CONNECTIONS.md) for setup and migration.
 
 ## 0.47.1 update
 

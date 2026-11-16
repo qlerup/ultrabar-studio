@@ -18,47 +18,31 @@ import java.util.concurrent.Executors;
 
 /** Model-independent Core home tile. Credential ownership remains in the companion APK. */
 public final class BambuTile {
-    private static final Uri URI = Uri.parse("content://dk.ultrabar.bambu.status");
     private static final Handler main = new Handler(Looper.getMainLooper());
-    private static final java.util.concurrent.ExecutorService io = Executors.newSingleThreadExecutor(r -> { Thread t = new Thread(r, "BambuWidgetIPC"); t.setDaemon(true); return t; });
-    private static final ArrayList<WeakReference<View>> views = new ArrayList<>();
-    private static volatile JSONObject data = new JSONObject();
+    private static volatile JSONObject printers = new JSONObject();
     private static volatile long received;
-    private static boolean polling;
-    private static final java.util.concurrent.atomic.AtomicBoolean reading = new java.util.concurrent.atomic.AtomicBoolean();
     private static WaterLayer expanded;
+    private static final java.util.ArrayDeque<JSONObject> commands = new java.util.ArrayDeque<>();
     private static final int WHITE = 0xffeff6fa, MUTED = 0xff96aab5, MINT = 0xff86e4c3;
-    private static void track(View view) {
-        boolean found = false;
-        for (int i = views.size()-1; i >= 0; i--) { View v = views.get(i).get(); if (v == null) views.remove(i); else if (v == view) found = true; }
-        if (!found) views.add(new WeakReference<>(view));
-        if (polling) return; polling = true;
-        main.post(new Runnable() { public void run() {
-            View source = null;
-            for (int i = views.size()-1; i >= 0; i--) { View v = views.get(i).get(); if (v == null) views.remove(i); else if (v.isAttachedToWindow() && v.isShown()) source = v; }
-            if (source != null && reading.compareAndSet(false,true)) {
-                Context context = source.getContext();
-                io.execute(() -> {
-                    JSONObject next;
-                    try {
-                        Bundle reply = context.getContentResolver().call(URI, "snapshot", null, null);
-                        String json = reply == null ? "{}" : reply.getString("json", "{}");
-                        next = json.length() <= 32768 ? new JSONObject(json) : new JSONObject();
-                    } catch (Exception e) { next = new JSONObject(); }
-                    data = next; received = SystemClock.elapsedRealtime();
-                    reading.set(false);
-                    main.post(() -> {
-                        for (WeakReference<View> ref : views) { View v = ref.get(); if (v != null) v.invalidate(); }
-                        if (expanded != null) expanded.refresh();
-                    });
-                });
-            }
-            main.postDelayed(this, 1000);
-        }});
+    public static void update(JSONObject data, long timestamp) {
+        printers = data == null ? new JSONObject() : data; received = timestamp;
+        main.post(() -> { if (expanded != null) expanded.refresh(); });
     }
-    private static boolean fresh(JSONObject s) { return received > 0 && SystemClock.elapsedRealtime()-received < 4000 && s.optBoolean("fresh"); }
+    private static JSONObject snapshot(JSONObject spec) {
+        JSONObject value = printers.optJSONObject(spec.optString("printerId"));
+        return value == null ? new JSONObject() : value;
+    }
+    public static synchronized String drainActions() {
+        JSONArray result = new JSONArray();
+        while (!commands.isEmpty()) {
+            JSONObject command = commands.removeFirst();
+            if (Math.abs(System.currentTimeMillis()-command.optLong("createdAt")) < 3000) result.put(command);
+        }
+        return result.toString();
+    }
+    private static boolean fresh(JSONObject s) { return received > 0 && SystemClock.elapsedRealtime()-received < 7000 && s.optBoolean("fresh"); }
     private static String state(JSONObject s) {
-        if (!fresh(s)) return s.has("connection") ? "Offline" : "Set up printer";
+        if (!fresh(s)) return s.has("connection") ? "Offline" : "Choose printer in Studio";
         switch(s.optString("gcode_state")) {
             case "RUNNING": return "Printing"; case "PAUSE": return "Paused"; case "PREPARE": return "Preparing";
             case "FINISH": return "Complete"; case "FAILED": return "Stopped"; case "IDLE": return "Ready"; default: return "Connected";
@@ -95,7 +79,7 @@ public final class BambuTile {
         return source.getHeight()*.25f;
     }
     public static void draw(View source, Canvas canvas, float width, JSONObject spec, String title) {
-        track(source); Paint p = new Paint(3); JSONObject s = data;
+        Paint p = new Paint(3); JSONObject s = snapshot(spec);
         int background = Color.parseColor(spec.optString("background", "#14202b"));
         int accent = Color.parseColor(spec.optString("accent", "#86e4c3"));
         int text = Color.parseColor(spec.optString("textColor", "#eff6fa"));
@@ -117,13 +101,17 @@ public final class BambuTile {
         label(canvas,p,"Tap to unfold",23,218,11,MUTED,false,width-64);
         label(canvas,p,"↗",width-40,219,18,accent,false,24);
     }
-    private static void execute(Context context, String action) {
-        io.execute(() -> {
-            boolean accepted = false;
-            try { Bundle reply = context.getContentResolver().call(URI,action,null,null); accepted=reply!=null && reply.getBoolean("accepted"); } catch(Exception ignored) {}
-            final boolean ok = accepted;
-            main.post(() -> Toast.makeText(context,ok?"Request sent; waiting for printer":"Unavailable. Check printer status and enable controls in Bambu.",Toast.LENGTH_LONG).show());
-        });
+    private static synchronized void execute(Context context, JSONObject spec, String action) {
+        JSONObject state = snapshot(spec);
+        if (!fresh(state) || !spec.optBoolean("showControls",true) || !state.optBoolean("can_"+action) || commands.size() >= 16) {
+            Toast.makeText(context,"Unavailable. Check printer status and enable controls in Studio.",Toast.LENGTH_LONG).show(); return;
+        }
+        try {
+            commands.add(new JSONObject().put("id",java.util.UUID.randomUUID().toString().replace("-",""))
+                .put("widgetId",spec.optString("_widgetId")).put("printerId",spec.optString("printerId"))
+                .put("action",action).put("createdAt",System.currentTimeMillis()));
+            Toast.makeText(context,"Request sent to Studio; waiting for printer",Toast.LENGTH_LONG).show();
+        } catch(JSONException e) { Toast.makeText(context,"Printer request unavailable",Toast.LENGTH_LONG).show(); }
     }
     public static void expand(View source, JSONObject spec) {
         if (expanded != null) { expanded.close(); return; }
@@ -196,9 +184,9 @@ public final class BambuTile {
             nozzle=temperatureTile("NOZZLE",0xffffbc8c);bed=temperatureTile("BED",0xffe6d58f);chamber=temperatureTile("CHAMBER",0xffa4bdd1);
             middle.addView(temperatures,new LinearLayout.LayoutParams(0,-2,1));body.addView(middle,new LinearLayout.LayoutParams(-1,0,1));
             actions=new LinearLayout(getContext());
-            pause=btn("Ⅱ  Pause",accent,()->execute(getContext(),data.optString("gcode_state").equals("PAUSE")?"resume":"pause"));
-            stop=btn("■  Stop",0xffffa6ab,()->new AlertDialog.Builder(getContext()).setTitle("Stop this print?").setMessage("The current print will end and cannot be resumed.").setNegativeButton("Keep printing",null).setPositiveButton("Stop print",(d,w)->execute(getContext(),"stop")).show());
-            light=btn("◉  Light",foreground,()->execute(getContext(),data.optString("light").equals("on")?"light_off":"light_on"));
+            pause=btn("Ⅱ  Pause",accent,()->execute(getContext(),spec,snapshot(spec).optString("gcode_state").equals("PAUSE")?"resume":"pause"));
+            stop=btn("■  Stop",0xffffa6ab,()->new AlertDialog.Builder(getContext()).setTitle("Stop this print?").setMessage("The current print will end and cannot be resumed.").setNegativeButton("Keep printing",null).setPositiveButton("Stop print",(d,w)->execute(getContext(),spec,"stop")).show());
+            light=btn("◉  Light",foreground,()->execute(getContext(),spec,snapshot(spec).optString("light").equals("on")?"light_off":"light_on"));
             for(Button button:new Button[]{pause,stop,light}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,42,1);p.setMargins(0,0,6,0);actions.addView(button,p);}
             Button setup=btn("Setup ↗",muted,()->{try{Intent i=new Intent();i.setClassName("dk.ultrabar.bambu","dk.ultrabar.bambu.MainActivity");getContext().startActivity(i);close();}catch(Exception e){Toast.makeText(getContext(),"Install Bambu from Store first",Toast.LENGTH_LONG).show();}});
             actions.addView(setup,new LinearLayout.LayoutParams(96,42));body.addView(actions);refresh();
@@ -208,7 +196,7 @@ public final class BambuTile {
         private TextView temperatureTile(String title,int tint){LinearLayout tile=new LinearLayout(getContext());tile.setOrientation(1);tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(12,10,8,10);GradientDrawable bg=new GradientDrawable();bg.setColor(0x0bffffff);bg.setCornerRadius(18);bg.setStroke(1,0x10ffffff);tile.setBackground(bg);tile.addView(txt(title,9,tint,false));TextView reading=txt("—",to.width()<650?20:26,foreground,true);reading.setPadding(0,5,0,0);tile.addView(reading);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,88,1);p.setMargins(0,0,6,0);temperatures.addView(tile,p);return reading;}
         private Button btn(String s,int color,Runnable action){Button b=new Button(getContext());b.setText(s);b.setTextColor(color);b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,13);b.setAllCaps(false);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(8,0,8,0);GradientDrawable d=new GradientDrawable();d.setColor(0x18ffffff);d.setCornerRadius(14);d.setStroke(1,0x16ffffff);b.setBackground(d);b.setOnClickListener(v->action.run());return b;}
         void refresh(){
-            JSONObject s=data;name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
+            JSONObject s=snapshot(spec);name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
             value.setText(metric(s,"progress"));job.setVisibility(spec.optBoolean("showJob",true)?VISIBLE:GONE);job.setText(metric(s,"job"));
             progress.setProgress(fresh(s)?Math.max(0,Math.min(100,s.optInt("mc_percent"))):0);
             String summary=spec.optBoolean("showRemaining",true)?metric(s,"remaining")+" left":"";

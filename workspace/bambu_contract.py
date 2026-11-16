@@ -1,5 +1,5 @@
 """Supported, data-only Bambu widget options. No contributor code or credentials."""
-FIELDS = {'primary', 'secondary', 'expandedSlots', 'showJob', 'showTemperatures',
+FIELDS = {'printerId', 'primary', 'secondary', 'expandedSlots', 'showJob', 'showTemperatures',
           'showLayers', 'showRemaining', 'showControls', 'liquidMotion'}
 DEFAULTS = dict(primary='progress', secondary='remaining', expandedSlots=3,
                 showJob=True, showTemperatures=True, showLayers=True,
@@ -18,6 +18,9 @@ def validate(spec):
     slots = spec.get('expandedSlots', 3)
     if type(slots) is not int or not 2 <= slots <= 5:
         raise ValueError('Expanded printer size must be 2, 3, 4 or 5 slots.')
-    for key in FIELDS - {'primary', 'secondary', 'expandedSlots'}:
+    import re
+    if 'printerId' in spec and (not isinstance(spec['printerId'], str) or (spec['printerId'] and not re.fullmatch('[a-f0-9]{32}', spec['printerId']))):
+        raise ValueError('Choose a saved Studio printer.')
+    for key in FIELDS - {'printerId', 'primary', 'secondary', 'expandedSlots'}:
         if key in spec and type(spec[key]) is not bool:
             raise ValueError(key + ' must be true or false.')

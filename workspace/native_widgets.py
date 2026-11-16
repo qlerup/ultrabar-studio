@@ -5,6 +5,7 @@ Frida is pinned to the matching device runtime and listens on device loopback.
 """
 import hashlib
 import json
+import math
 import re
 import secrets
 import threading
@@ -85,6 +86,31 @@ class NativeWidgets:
         self.status = 'No Studio native widgets deployed'
         self.last_error = None
         self.token = None
+        self.printer_actions = {}
+
+    def printer_action(self, event):
+        # Transient events only: no file queue, retry or command replay on reconnect.
+        if not isinstance(event, dict) or set(event) != {'id', 'widgetId', 'printerId', 'action', 'createdAt'}:
+            return
+        key = event.get('id')
+        if not isinstance(key, str) or not re.fullmatch('[a-f0-9]{32}', key) or key in self.printer_actions:
+            return
+        spec = self.specs.get(event.get('widgetId')) if isinstance(event.get('widgetId'), str) else None
+        if not spec or spec.get('kind') != 'bambu' or not spec.get('showControls', True) or spec.get('printerId') != event.get('printerId'):
+            return
+        # Device wall clock is also used by the existing metrics freshness guard.
+        stamp = event.get('createdAt')
+        if type(stamp) not in (int, float) or not math.isfinite(stamp) or abs(time.time()*1000-stamp) > 5000 or event.get('action') not in ('pause','resume','stop','light_on','light_off'):
+            return
+        now = time.monotonic()
+        self.printer_actions = {k: t for k, t in self.printer_actions.items() if now-t < 10}
+        if len(self.printer_actions) >= 4096:
+            return
+        self.printer_actions[key] = now
+        with self.server.bambu.lock:
+            link = self.server.bambu.links.get(event['printerId'])
+            if link:
+                link.request(event['action'])
 
     def start_runtime(self, target):
         self.server.adb('-s', target, 'shell', 'pidof studio-runtime-16.7.19 >/dev/null || '+RUNTIME+
@@ -102,10 +128,7 @@ class NativeWidgets:
             raise EditError('This native widget build supports ARM32 CoreBAR only.')
         package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
         check_lineos(package)
-        if any(s['kind']=='bambu' for s in specs.values()):
-            companion=adb('-s',target,'shell','pm','path','dk.ultrabar.bambu')
-            if not companion.startswith('package:'):
-                raise EditError('Install Bambu Panel from Store and deploy its app to Core before deploying the Bambu widget. Set up printer credentials in the app.')
+        self.server.bambu.validate(specs)
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
             raise EditError('Native runtime integrity check failed. Reinstall Studio.')
@@ -130,6 +153,7 @@ class NativeWidgets:
                 if self.thread.is_alive():
                     raise EditError('Previous native widget connection is still closing.')
             self.specs = specs
+            self.server.bambu.configure(specs)
             if not specs:
                 self.stop.set()
                 self.status = 'No Studio native widgets deployed'
@@ -181,13 +205,15 @@ class NativeWidgets:
                                 self.status = 'Native widgets connected'
                                 self.last_error = None
                                 self.ready.set()
+                            elif msg.get('type') == 'send' and isinstance(msg.get('payload'), dict) and 'bambuAction' in msg['payload']:
+                                self.printer_action(msg['payload']['bambuAction'])
                             elif msg.get('type') == 'error' or msg.get('payload', {}).get('error'):
                                 self.last_error = str(msg)
                                 self.status = 'Native widget rendering error'
                         script.on('message', message)
                         script.load()
                         pid = new_pid
-                    state = dict(sequence=uuid.uuid4().hex, widgets=self.specs, metrics=self.server.companion.metrics.sample())
+                    state = dict(sequence=uuid.uuid4().hex, widgets=self.specs, metrics=self.server.companion.metrics.sample(), printers=self.server.bambu.sample())
                     adb('-s', target, 'shell',
                         "cat > /data/local/tmp/ultrabar-studio-metrics.tmp && chmod 644 /data/local/tmp/ultrabar-studio-metrics.tmp && mv /data/local/tmp/ultrabar-studio-metrics.tmp /data/local/tmp/ultrabar-studio-metrics.json",
                         input_data=json.dumps(state,allow_nan=False).encode())
