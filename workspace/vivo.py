@@ -79,7 +79,15 @@ def upload(server,target,serial,raw):
     except (OSError,ValueError) as exc:raise EditError('Vivo screen update could not be confirmed. Its screen may already have changed; your draft and backup are preserved. Reconnect and retry Deploy.') from exc
     finally:server.adb('-s',target,'forward','--remove','tcp:'+port)
 
-def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lambda:None):
+def cached_package_matches(server,target,serial,raw):
+    for name in (serial.lower(),serial):
+        path=ARTWORK_DIR+'/'+name+'.tgz'
+        size=server.adb('-s',target,'shell',f'if [ -f {path} ]; then stat -c %s {path}; else echo 0; fi')
+        if size==str(len(raw)) and server.adb('-s',target,'exec-out','cat',path,binary=True)==raw:return True
+    return False
+
+
+def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lambda:None,previous_screens=None):
     # Avoid device access for ordinary deployments with no Vivo actions/artwork.
     modules=[m for p in profiles for m in p['module'] if m.get('productId')=='VIVO_CUBE']
     if not modules and not screens:return
@@ -110,7 +118,13 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
         if serial not in endpoints:raise EditError('This VivoCube is not registered on Core. Reconnect it before Deploy.')
         try:raw=None if value['clear'] else widget_images.read_picture(server,value['image'])
         except (OSError,ValueError) as exc:raise EditError('Vivo picture is missing. Upload it again before Deploy.') from exc
-        packages[serial]=build_package(raw,value['button'])
+        package=build_package(raw,value['button'])
+        # A completed deployment already confirmed this artwork. Ordinary layout
+        # edits must not restart the Cube's resource loader, especially on wake.
+        # Also verify Core's registration and cached bytes: another client may
+        # have replaced either since our last completed deployment.
+        if previous_screens is not None and previous_screens.get(serial)==value and (endpoints[serial].get('extraConfig') or {}).get('dataConfig')==configuration(value['button']) and cached_package_matches(server,target,serial,package):continue
+        packages[serial]=package
         extra=endpoints[serial].get('extraConfig') or {};extra['dataConfig']=configuration(value['button']);endpoints[serial]['extraConfig']=extra
         # Back up existing archives before vendor upload replaces its cache file.
         for name in (serial,serial.lower()):
@@ -135,6 +149,7 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
                 if set(screens)<=online:break
                 if attempt==11:raise EditError('VivoCube did not reconnect after registering its button. Retry Deploy when it is online.')
                 time.sleep(.3)
+    if not packages:return
     with screen_sync.pause_for_artwork(server,target):
         for serial,raw in packages.items():
             stage('Sending screen image to VivoCube '+serial[-6:]+'…')
