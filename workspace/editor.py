@@ -427,7 +427,7 @@ def register_editor(server):
             stage('Applying app settings and waiting for confirmation...')
             requested={w['id'] for p in draft['profiles'] for w in p['homeData'] if w['type']=='APPS'}|{a['id'] for a in draft.get('background_apps',[])}
             app_settings.deploy(server,{k:v for k,v in draft.get('app_settings',{}).items() if k in requested})
-            vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft))
+            vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'])
             # A timeout is ambiguous: always read back, and never blindly resend a write.

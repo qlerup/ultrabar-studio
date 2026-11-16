@@ -1,6 +1,14 @@
 # UltraBar Studio — 0.47.0 Windows
 
-## 0.47 update (under review)
+## 0.47.1 update
+
+Deploy preserves Vivo artwork that was already confirmed by a completed deployment,
+provided the cached package and Core button registration still match. Editing
+Core widgets no longer starts another Vivo resource transfer or restarts Screen
+Sync for unchanged pictures. New, unconfirmed or externally modified artwork
+still requires upload acknowledgement and matching cached bytes.
+
+## 0.47 update
 
 Adds the Bambu native widget and a fixed companion IPC contract. Each
 placed card can choose its primary/secondary reading, expanded size (2–5 slots),

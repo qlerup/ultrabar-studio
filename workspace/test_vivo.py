@@ -95,3 +95,24 @@ class VivoTests(unittest.TestCase):
             paths.append(args[-1]);return raw
         result=previews.cube_previews([dict(serial=SERIAL,type='VIVO_CUBE')],'target',adb)
         self.assertIn('image',result[SERIAL]);self.assertTrue(paths[0].endswith(SERIAL.lower()+'.tgz'))
+
+    def test_only_previously_confirmed_unchanged_artwork_is_skipped(self):
+        for mode in ('unchanged','different-cache','different-picture','unconfirmed'):
+            with self.subTest(mode=mode),tempfile.TemporaryDirectory() as tmp:
+                value=dict(image=None,clear=True,button=101,source='blank')
+                screens={SERIAL:value};previous=copy.deepcopy(screens)
+                if mode=='different-picture':previous[SERIAL]['source']='custom'
+                if mode=='unconfirmed':previous={}
+                config=dict(canGateway=dict(endpoints=[dict(serialNumber=SERIAL,productId='VIVO_CUBE',extraConfig=dict(dataConfig=vivo.configuration(101)))]))
+                saved=json.dumps(dict(configuration=config)).encode();package=vivo.build_package(None)
+                cached=package if mode!='different-cache' else bytes([package[0]^1])+package[1:]
+                def adb(*args,**kwargs):
+                    if 'exec-out' in args:return saved if args[-1]=='/prefs' else cached
+                    if 'stat -c' in args[-1]:return str(len(cached))
+                    return ''
+                server=SimpleNamespace(DATA_DIR=Path(tmp),PREFERENCES='/prefs',adb=Mock(side_effect=adb),parse_profiles=lambda raw:json.loads(raw))
+                data=profiles();data[0]['module'][0]['config'][0]['singleClick']['actions']=[]
+                with patch.object(vivo,'upload') as upload,patch.object(vivo.screen_sync,'pause_for_artwork') as pause:
+                    vivo.deploy(server,data,screens,'target',previous_screens=previous)
+                    if mode=='unchanged':upload.assert_not_called();pause.assert_not_called()
+                    else:upload.assert_called_once();pause.assert_called_once()

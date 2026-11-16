@@ -28,3 +28,9 @@ an update to the separate Vivo Screen Sync APK.
 Studio automatically rounds the corners of uploaded pictures and action icons.
 The preview uses the same renderer as the normal/pressed device artwork. Original
 uploads are retained; Deploy again to apply rounded corners to existing pictures.
+
+Studio 0.47.1 skips an artwork upload only when it matches the last completed
+Studio deployment, the current Core cache bytes and the current button
+registration. An ordinary layout/widget Deploy therefore leaves unchanged Vivo
+artwork and Screen Sync running. Unconfirmed, missing or changed packages still
+use the full upload/acknowledgement path; a cached file alone is not success.
