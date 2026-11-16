@@ -228,7 +228,8 @@ def v2_signers(path):
 
 def inspect_apk(server,path,entry):
     try:
-        bundle_contract.inspect_apk(path,entry)
+        embedded=bundle_contract.inspect_apk(path,entry)
+        if embedded is not None:bundle_contract.validate(dict(entry,bundledWidgets=embedded),widget_package)
         if entry.get('settings'):app_settings_contract.inspect_apk(path,entry['settings'])
         r=subprocess.run([str(server.ROOT/'assets/android/aapt.exe'),'dump','badging',str(path)],capture_output=True,timeout=15,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         info=r.stdout.decode('utf-8',errors='replace')
@@ -245,6 +246,7 @@ def inspect_apk(server,path,entry):
         if 'application-debuggable' in info: raise StoreError('Debug APKs cannot be installed from the store.')
         if permissions!=set(entry['permissions']): raise StoreError('APK permissions do not match the approved catalog.')
         if v2_signers(path)!=[android['signerSha256']]: raise StoreError('APK signing identity does not match the approved catalog.')
+        return embedded
     except StoreError: raise
     except Exception as exc: raise StoreError('The APK could not be verified.') from exc
 
@@ -285,7 +287,7 @@ class Store:
     def templates(self):
         with self.lock:
             templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
-            templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app')
+            templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app' and not p.get('bundledWidgets'))
             return templates
     def status(self):
         with self.lock:return copy.deepcopy(self.job)
@@ -415,7 +417,10 @@ class Store:
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
                     require_widget_version(record['widgets'],p)
                 elif deferred:
-                    inspect_apk(server,path,p)
+                    embedded=inspect_apk(server,path,p)
+                    if isinstance(embedded,dict):
+                        p=dict(p,bundledWidgets=embedded)
+                        record.update(bundledWidgets=copy.deepcopy(embedded),widgets=bundle_contract.validate(p,widget_package))
                     record.update(deferred=True,device_id=None,android=copy.deepcopy(p['android']),compatibility=copy.deepcopy(p['compatibility']),permissions=list(p['permissions']))
                     cached=server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
                     cached.parent.mkdir(parents=True,exist_ok=True)

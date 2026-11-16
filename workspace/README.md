@@ -2,14 +2,14 @@
 
 ## 0.46 update (under review)
 
-Adds the Bambu Liquid native widget and a fixed companion IPC contract. Each
+Adds the Bambu native widget and a fixed companion IPC contract. Each
 placed card can choose its primary/secondary reading, expanded size (2–5 slots),
 detail fields, controls visibility and liquid/reduced motion. Tapping grows a
 native presentation from the actual card position, including real slot gaps and
 host corner radius. Neighboring cards move left and/or right; closing restores the
 existing layout without changing profile positions. The animation runs on Core.
 
-Install/deploy Bambu Panel on Core first and enter printer credentials there.
+Install/deploy Bambu on Core first and enter printer credentials there.
 The native card receives sanitised state only; controls remain gated by the app's
 explicit enable switch, fresh status and printer capabilities. Unsupported or
 offline readings stay unavailable. Studio must reconnect to restore native cards

@@ -122,7 +122,7 @@ public final class BambuTile {
             boolean accepted = false;
             try { Bundle reply = context.getContentResolver().call(URI,action,null,null); accepted=reply!=null && reply.getBoolean("accepted"); } catch(Exception ignored) {}
             final boolean ok = accepted;
-            main.post(() -> Toast.makeText(context,ok?"Request sent; waiting for printer":"Unavailable. Check printer status and enable controls in Bambu Panel.",Toast.LENGTH_LONG).show());
+            main.post(() -> Toast.makeText(context,ok?"Request sent; waiting for printer":"Unavailable. Check printer status and enable controls in Bambu.",Toast.LENGTH_LONG).show());
         });
     }
     public static void expand(View source, JSONObject spec) {
@@ -200,7 +200,7 @@ public final class BambuTile {
             stop=btn("■  Stop",0xffffa6ab,()->new AlertDialog.Builder(getContext()).setTitle("Stop this print?").setMessage("The current print will end and cannot be resumed.").setNegativeButton("Keep printing",null).setPositiveButton("Stop print",(d,w)->execute(getContext(),"stop")).show());
             light=btn("◉  Light",foreground,()->execute(getContext(),data.optString("light").equals("on")?"light_off":"light_on"));
             for(Button button:new Button[]{pause,stop,light}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,42,1);p.setMargins(0,0,6,0);actions.addView(button,p);}
-            Button setup=btn("Setup ↗",muted,()->{try{Intent i=new Intent();i.setClassName("dk.ultrabar.bambu","dk.ultrabar.bambu.MainActivity");getContext().startActivity(i);close();}catch(Exception e){Toast.makeText(getContext(),"Install Bambu Panel from Store first",Toast.LENGTH_LONG).show();}});
+            Button setup=btn("Setup ↗",muted,()->{try{Intent i=new Intent();i.setClassName("dk.ultrabar.bambu","dk.ultrabar.bambu.MainActivity");getContext().startActivity(i);close();}catch(Exception e){Toast.makeText(getContext(),"Install Bambu from Store first",Toast.LENGTH_LONG).show();}});
             actions.addView(setup,new LinearLayout.LayoutParams(96,42));body.addView(actions);refresh();
             setOnKeyListener((v,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)close();return true;}return false;});
         }

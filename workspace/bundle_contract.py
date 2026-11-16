@@ -13,8 +13,10 @@ def validate(manifest,parse):
     return templates
 
 def inspect_apk(path,manifest):
-    if 'bundledWidgets' not in manifest:return
     with zipfile.ZipFile(path) as archive:
-        matches=[i for i in archive.infolist() if i.filename=='assets/widget.json']
+        matches=[i for i in archive.infolist() if i.filename=='assets/ultrabar-widgets.json']
+        if not matches and 'bundledWidgets' not in manifest:return None
         if len(matches)!=1 or matches[0].file_size>65536:raise ValueError('APK requires one bounded assets/widget.json descriptor.')
-        if json.loads(archive.read(matches[0]))!=manifest['bundledWidgets']:raise ValueError('APK assets/widget.json differs from manifest.bundledWidgets.')
+        descriptor=json.loads(archive.read(matches[0]))
+        if 'bundledWidgets' in manifest and descriptor!=manifest['bundledWidgets']:raise ValueError('APK widget descriptor differs from its recorded bundle.')
+        return descriptor

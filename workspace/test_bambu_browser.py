@@ -8,15 +8,15 @@ from bambu_contract import DEFAULTS
 
 class BambuBrowserTests(unittest.TestCase):
     def test_independent_cards_save_reload_and_undo(self):
-        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu Liquid',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.panel',_storeVersion='1.0.0',_bundledApp=dict(id='dk.ultrabar.bambu',name='Bambu Panel'))
+        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.panel',_storeVersion='1.0.0',_bundledApp=dict(id='dk.ultrabar.bambu',name='Bambu'))
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
             page.locator('#mode-layout').click()
-            item=page.locator('#widget-library').get_by_role('button',name='Bambu Liquid',exact=True)
+            item=page.locator('#widget-library').get_by_role('button',name='Bambu',exact=True)
             expect(item).to_be_visible();item.drag_to(page.locator('#core-screen'))
             expect(page.locator('#background-apps button')).to_have_count(1)
-            expect(page.locator('#background-apps')).to_contain_text('Bambu Panel')
+            expect(page.locator('#background-apps')).to_contain_text('Bambu')
             page.locator('#bambu-primary').select_option('remaining')
             page.locator('#bambu-secondary').select_option('job')
             page.locator('#bambu-expandedSlots').select_option('5')

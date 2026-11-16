@@ -44,6 +44,8 @@ def read_folder(server,folder):
             raise StoreError('Local '+name+' differs from its declared checksum or size. Update manifest.json before testing.')
         p[name]=dict(url=ASSET_PREFIX+'local/'+digest+('.png' if name=='icon' else '.apk' if kind=='corebar-app' else '.json'),size=len(raw),sha256=digest)
     p=validate_entry(p);validate_icon_bytes(raw_icon,p['icon'])
-    if kind=='corebar-app':inspect_apk(server,root/types[kind],p)
+    if kind=='corebar-app':
+        embedded=inspect_apk(server,root/types[kind],p)
+        if isinstance(embedded,dict):p['bundledWidgets']=embedded
     p['origin']='local';p['original_id']=original_id
     return p,payload,raw_icon
