@@ -26,6 +26,7 @@ class DesignTests(unittest.TestCase):
     try:
      with sync_playwright() as pw:
       browser=pw.chromium.launch(channel='msedge');page=browser.new_page()
+      page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,current_version=server.updates.VERSION,latest_version=server.updates.VERSION)))
       errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
       page.route('**/api/preferences',lambda r:r.fulfill(json=dict(target=snapshot['target'],setup_seen=True)))
       page.route('**/api/connect',lambda r:r.fulfill(json=snapshot))

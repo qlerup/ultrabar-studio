@@ -348,7 +348,7 @@ function checkUpdates(startup=false){
 }
 async function runUpdateCheck(startup){
   $('updates-check').disabled=true;$('updates-download').hidden=true;$('updates-install').hidden=true;
-  $('updates-status').textContent='Checking GitHub for updates...';
+  $('updates-status').textContent='Checking for updates...';
   $('updates-notes').hidden=true;
   try{
     const job=await(await api('/api/updates/status')).json();

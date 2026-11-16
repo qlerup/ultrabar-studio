@@ -4,9 +4,10 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = '0.48.1'
+VERSION = '0.48.2'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
+RELEASE_FEED_URL = RELEASES_URL + '/latest/download/studio-update.json'
 
 class UpdateError(Exception):
     pass
@@ -17,20 +18,22 @@ def version_tuple(value):
     return tuple(map(int, value.removeprefix('v').split('.')))
 
 def check_latest():
-    request = Request(f'https://api.github.com/repos/{REPOSITORY}/releases/latest', headers={
-        'Accept': 'application/vnd.github+json', 'User-Agent': f'UltraBar-Studio/{VERSION}',
-        'X-GitHub-Api-Version': '2026-03-10'})
+    headers={
+        'Accept': 'application/json', 'User-Agent': f'UltraBar-Studio/{VERSION}'}
     try:
-        with urlopen(request, timeout=10) as response:
-            raw = response.read(1024 * 1024 + 1)
+        # Update metadata comes only from the published release asset.
+        # Never fall back to GitHub REST: clients share its anonymous quota.
+        response=urlopen(Request(RELEASE_FEED_URL,headers=headers),timeout=10)
+        with response:
+            raw=response.read(1024 * 1024 + 1)
         if len(raw) > 1024 * 1024:
             raise UpdateError('The release response is too large. Try again later.')
         release = json.loads(raw)
     except HTTPError as exc:
         if exc.code == 404:
-            raise UpdateError('No public release is available yet. Try again later.') from exc
+            raise UpdateError('The latest release has no update information. Download Studio from the Releases page.') from exc
         if exc.code in (403, 429):
-            raise UpdateError('GitHub is limiting update checks. Try again later.') from exc
+            raise UpdateError('The update download service is temporarily unavailable. Try again later.') from exc
         raise UpdateError('GitHub could not be reached. Try again later.') from exc
     except (URLError, OSError, ValueError) as exc:
         raise UpdateError('Could not check for updates. Check your internet connection and try again.') from exc
@@ -66,6 +69,25 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
 
+class ReleaseChecker:
+    """Coalesce concurrent checks; back off after a failed network request."""
+    def __init__(self):
+        self.lock=threading.Lock()
+        self.expires=0
+        self.result=None
+        self.error=None
+
+    def check(self):
+        with self.lock:
+            if time.monotonic()>=self.expires:
+                self.result=None
+                self.error=None
+                try:self.result=check_latest()
+                except UpdateError as exc:self.error=str(exc)
+                self.expires=time.monotonic()+(60 if self.error else 300)
+            if self.error:raise UpdateError(self.error)
+            return dict(self.result)
+
 class ReleaseRedirect(HTTPRedirectHandler):
     def redirect_request(self, req, fp, code, msg, headers, newurl):
         u=urlsplit(newurl)
@@ -74,7 +96,8 @@ class ReleaseRedirect(HTTPRedirectHandler):
         return super().redirect_request(req,fp,code,msg,headers,newurl)
 
 class Updater:
-    def __init__(self):
+    def __init__(self, checker=None):
+        self.checker=checker
         self.lock=threading.RLock()
         self.job={'state':'idle'}
         self.path=None
@@ -94,7 +117,7 @@ class Updater:
     def download(self,folder):
         partial=None
         try:
-            release=check_latest()
+            release=self.checker() if self.checker else check_latest()
             if not release['update_available'] or not release['download_available']:
                 raise UpdateError('No newer installer with a verified checksum is available.')
             folder.mkdir(parents=True,exist_ok=True)

@@ -42,11 +42,88 @@ class UpdateTests(unittest.TestCase):
             with patch.object(updates,'urlopen',side_effect=error):
                 with self.assertRaises(updates.UpdateError):updates.check_latest()
 
+    def test_release_asset_feed_avoids_rest_api_and_preserves_verified_metadata(self):
+        release=dict(tag_name='v99.0.0',draft=False,prerelease=False,
+                     assets=[dict(name='UltraBarStudio-Setup-99.0.0.exe',state='uploaded',size=123,digest='sha256:'+'a'*64)])
+        with patch.object(updates,'urlopen',return_value=io.BytesIO(json.dumps(release).encode())) as fetch:
+            result=updates.check_latest()
+        self.assertTrue(result['download_available'])
+        self.assertEqual(result['sha256'],'a'*64)
+        self.assertEqual(fetch.call_count,1)
+        self.assertEqual(fetch.call_args.args[0].full_url,updates.RELEASE_FEED_URL)
+
+    def test_missing_or_limited_feed_never_falls_back_to_rest_api(self):
+        for status in (404,403,429):
+            with patch.object(updates,'urlopen',side_effect=HTTPError('url',status,'unavailable',{},None)) as fetch:
+                with self.assertRaises(updates.UpdateError):updates.check_latest()
+            self.assertEqual(fetch.call_count,1)
+            self.assertEqual(fetch.call_args.args[0].full_url,updates.RELEASE_FEED_URL)
+
+    def test_concurrent_checks_share_one_request(self):
+        import concurrent.futures,threading
+        barrier=threading.Barrier(9);entered=threading.Event();release=threading.Event()
+        checker=updates.ReleaseChecker()
+        def fetch():
+            entered.set()
+            if not release.wait(3):raise AssertionError('Test request was not released')
+            return dict(latest_version='99.0.0')
+        def check():
+            barrier.wait(timeout=3);return checker.check()
+        with patch.object(updates,'check_latest',side_effect=fetch) as network,concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            pending=[pool.submit(check) for _ in range(8)]
+            barrier.wait(timeout=3)
+            try:self.assertTrue(entered.wait(3))
+            finally:release.set()
+            self.assertEqual([f.result(timeout=3)['latest_version'] for f in pending],['99.0.0']*8)
+            self.assertEqual(network.call_count,1)
+
+    def test_download_reuses_cached_check_and_verifies_installer(self):
+        import tempfile,hashlib
+        from pathlib import Path
+        raw=b'MZ-verified-installer'
+        info=dict(update_available=True,download_available=True,latest_version='99.0.0',download_url='https://github.com/qlerup/ultrabar-studio/releases/download/v99.0.0/UltraBarStudio-Setup-99.0.0.exe',size=len(raw),sha256=hashlib.sha256(raw).hexdigest())
+        checker=updates.ReleaseChecker()
+        with tempfile.TemporaryDirectory() as tmp,patch.object(updates,'check_latest',return_value=info) as metadata,patch.object(updates,'build_opener') as opener:
+            checker.check();checker.check()
+            opener.return_value.open.return_value=io.BytesIO(raw)
+            downloader=updates.Updater(checker.check);downloader.download(Path(tmp))
+            self.assertEqual(downloader.status()['state'],'ready')
+            self.assertEqual(metadata.call_count,1)
+            self.assertEqual(downloader.path.read_bytes(),raw)
+
+    def test_release_build_generates_matching_feed_and_checksum(self):
+        import tempfile,hashlib
+        from pathlib import Path
+        import make_update_feed
+        with tempfile.TemporaryDirectory() as tmp:
+            root=Path(tmp);(root/'release').mkdir()
+            installer=root/'release'/f'UltraBarStudio-Setup-{updates.VERSION}.exe';installer.write_bytes(b'MZ-release-test')
+            (root/'README.md').write_text('# Studio\n\n## Current update\n\nCurrent notes.\n\n## Previous update\nOld notes.',encoding='utf-8')
+            with patch.object(make_update_feed,'__file__',str(root/'make_update_feed.py')):make_update_feed.main()
+            feed=json.loads((root/'release/studio-update.json').read_text())
+            self.assertEqual(feed['tag_name'],'v'+updates.VERSION)
+            self.assertEqual(feed['assets'][0]['digest'],'sha256:'+hashlib.sha256(installer.read_bytes()).hexdigest())
+            self.assertEqual(feed['assets'][0]['size'],installer.stat().st_size)
+            self.assertIn('Current notes.',feed['body']);self.assertNotIn('Old notes.',feed['body'])
+
+    def test_cached_checks_coalesce_then_expire_and_back_off_on_failure(self):
+        checker=updates.ReleaseChecker()
+        with patch.object(updates.time,'monotonic',return_value=0) as clock,patch.object(updates,'check_latest',return_value=dict(latest_version='99.0.0')) as fetch:
+            self.assertEqual(checker.check()['latest_version'],'99.0.0')
+            checker.check()['latest_version']='tampered'
+            self.assertEqual(checker.check()['latest_version'],'99.0.0');self.assertEqual(fetch.call_count,1)
+            clock.return_value=301;fetch.side_effect=updates.UpdateError('Rate limited')
+            for _ in range(3):
+                with self.assertRaisesRegex(updates.UpdateError,'Rate limited'):checker.check()
+            self.assertEqual(fetch.call_count,2)
+            clock.return_value=362;fetch.side_effect=None
+            self.assertEqual(checker.check()['latest_version'],'99.0.0');self.assertEqual(fetch.call_count,3)
+
     def test_protected_api_and_browser_destination(self):
         client=server.app.test_client()
         headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
         self.assertEqual(client.get('/api/updates',headers={'Host':'127.0.0.1:8741'}).status_code,403)
-        with patch.object(updates,'check_latest',side_effect=updates.UpdateError('Offline')):
+        with patch.object(server,'release_checker',updates.ReleaseChecker()),patch.object(updates,'check_latest',side_effect=updates.UpdateError('Offline')):
             self.assertEqual(client.get('/api/updates',headers=headers).status_code,502)
         with patch.object(server.webbrowser,'open',return_value=True) as browser:
             self.assertEqual(client.post('/api/updates/open',json={'url':'https://evil.example'},headers=headers).status_code,200)

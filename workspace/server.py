@@ -169,15 +169,17 @@ def index():
     return html.replace('__SESSION_TOKEN__', SESSION_TOKEN).replace('__APP_VERSION__', updates.VERSION)
 
 
+release_checker = updates.ReleaseChecker()
+
 @app.get('/api/updates')
 def check_updates():
     try:
-        return jsonify(updates.check_latest())
+        return jsonify(release_checker.check())
     except updates.UpdateError as exc:
         return jsonify(error=str(exc)), 502
 
 
-updater = updates.Updater()
+updater = updates.Updater(release_checker.check)
 
 @app.get('/api/updates/status')
 def update_status():

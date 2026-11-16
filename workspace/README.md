@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.48.1 Windows
+# UltraBar Studio — 0.48.2 Windows
+
+## 0.48.2 update
+
+Update checks read the published release download feed instead of GitHub's REST
+API. There is no REST fallback. Checks share a five-minute cache and concurrent
+requests share one fetch; failures back off for one minute. Downloading an update
+reuses the same metadata check and still verifies the installer size and SHA-256.
+The release build generates the matching feed and checksum automatically.
 
 ## 0.48.1 update
 
