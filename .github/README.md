@@ -13,11 +13,11 @@ A community-built Windows companion for UltraBar X / CoreBAR. Independent of the
 
 [Latest release](https://github.com/qlerup/ultrabar-studio/releases/latest)
 
-The badge counts downloads of Studio Windows installer files across published releases. It excludes checksums and source archives, includes repeat downloads and updates, and is not a count of unique users or successful installations. It refreshes automatically after a release and approximately every six hours.
-
 - See connected modules, status and saved screen previews.
 - Arrange your desk layout around a centered CoreBAR.
 - Edit profiles, widgets and button actions, then deploy to Core.
+- Choose VivoCube screen pictures and action icons, with verified button registration on Core.
+- Review package-update progress and choose Deploy now or Later; pending activation stays visible.
 - Drag separate website and PC app widgets onto Core; upload a picture or use the program icon automatically.
 - Add live CPU, RAM, GPU and disk widgets where supported.
 - Browse collapsible libraries for **UltraBarX**, **Studio & App Store** and **Installed apps**.

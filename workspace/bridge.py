@@ -68,7 +68,7 @@ class Stream:
 
 
 def request(target, adb, root, action, data):
-    if action not in (1000, 1108):
+    if action not in (1000, 1108, 30300):
         raise ValueError('Unsupported Studio request')
     with Stream(target, adb, root) as stream:
         return stream.query(action, data)

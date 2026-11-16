@@ -1,6 +1,6 @@
-# UltraBar Studio — 0.46.0 Windows
+# UltraBar Studio — 0.47.0 Windows
 
-## 0.46 update (under review)
+## 0.47 update (under review)
 
 Adds the Bambu native widget and a fixed companion IPC contract. Each
 placed card can choose its primary/secondary reading, expanded size (2–5 slots),
@@ -15,9 +15,52 @@ explicit enable switch, fresh status and printer capabilities. Unsupported or
 offline readings stay unavailable. Studio must reconnect to restore native cards
 after a Core/LineOS restart, as with the existing native runtime.
 
-New package support requires reviewed Studio 0.46 and Store contract changes;
+New package support requires reviewed Studio 0.47 and Store contract changes;
 current released Studio versions do not understand the new Bambu kind. Renderer
 preview screenshots use sample data and are separate from real-printer testing.
+
+
+## 0.46.2 update
+
+Vivo artwork Deploy pauses an already-running Vivo Screen Sync service while
+sending screen packages. Its startup/property commands could otherwise interrupt
+the Cube's configuration update and produce a five-second confirmation timeout.
+Sync resumes with its saved mode and wake delay, including after a failed upload.
+A previously stopped service stays stopped. Firmware acknowledgement and exact
+cached-package verification remain required; failed writes are never silently
+accepted or automatically repeated.
+
+## 0.46.1 update
+
+Vivo screen pictures and action icons now get smoothly rounded corners in the
+actual exported artwork, including the pressed state. Wide/tall pictures are
+rounded at their own fitted edges. The Studio picture preview uses the same
+renderer. Original uploads are preserved; existing selected pictures receive the
+rounding on their next Deploy without being uploaded again.
+
+## 0.46 update
+
+Package updates show a progress dialog, then offer **Deploy now** or **Later**.
+The update changes the PC library first. Core activation and new device settings
+may require Deploy. Deploy now opens the normal draft review and confirmation;
+it does not silently deploy unrelated edits. Waiting packages keep a per-Core
+Deploy reminder on their Store card, including after restart. Only packages used
+in the verified deployment are marked current; a newer concurrently installed
+version remains pending. Existing placed widget settings are preserved.
+
+VivoCube module actions now have a **Vivo screen picture** panel: upload PNG/JPG/
+WebP (up to 2 MB), use an action icon, or clear the screen and its actions. Program
+actions use their executable icon where available. Uploads and clear operations
+stay in the draft until Deploy, and Undo/save/backup retain them.
+
+Deploy compiles an actual single-button Vivo screen package, registers the same
+button ID on Core and uploads the artwork with firmware acknowledgement and
+cached-byte verification. Missing registration could previously leave an assigned
+website/program action inert. Existing Cube network settings and other modules
+are preserved. Original profiles and old artwork are backed up. Screen images
+are shared across profiles; multi-button composition is not supported by this
+one-button editor. Clearing a screen clears that Cube's button actions across
+profiles after confirmation.
 
 ## 0.45 update
 

@@ -125,8 +125,9 @@ class EditorTests(unittest.TestCase):
         self.assertEqual(response.status_code,200);self.assertFalse(response.json['acknowledged']);self.assertEqual(bridge.call_count,1)
 
     def test_mismatch_preserves_draft_and_backup(self):
-        with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request'),patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':[]}),patch.object(editor.time,'sleep'):
+        with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request'),patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':[]}),patch.object(editor.time,'sleep'),patch.object(server.store,'mark_deployed') as activated:
             self.assertEqual(self.post('/api/editor/deploy').status_code,502)
+            activated.assert_not_called()
         self.assertTrue(editor.draft_path(server,'core1').with_suffix('.rollback.json').exists())
         self.assertEqual(self.client.get('/api/editor',headers=self.headers).json['draft']['revision'],self.draft['revision'])
 

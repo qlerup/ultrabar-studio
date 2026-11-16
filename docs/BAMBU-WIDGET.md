@@ -1,6 +1,6 @@
 # Bambu native integration
 
-Requires Studio 0.46, root-enabled CB01 / LineOS 1.0.9 and the reviewed Bambu
+Requires Studio 0.47, root-enabled CB01 / LineOS 1.0.9 and the reviewed Bambu
 companion APK (`dk.ultrabar.bambu`). Earlier LineOS 1.0.8 has not been tested with
 this renderer, even though the existing native host supports it.
 

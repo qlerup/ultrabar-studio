@@ -74,14 +74,18 @@ def cube_previews(devices, target, adb):
         serial = device['serial']
         if device['type'] != 'VIVO_CUBE' or not re.fullmatch(r'[0-9A-Fa-f]{16}', serial):
             continue
-        path = f'{PACKAGE_DIR}/{serial.lower()}.tgz'
+        candidates=[]
+        for name in dict.fromkeys((serial.upper(),serial.lower())):
+            path=f'{PACKAGE_DIR}/{name}.tgz'
+            try:
+                meta=adb('-s',target,'shell','stat','-c','%s %Y',path).split()
+                if len(meta)==2 and all(v.isdigit() for v in meta):candidates.append((int(meta[1]),int(meta[0]),path))
+            except Exception:continue
+        if not candidates:
+            results[serial]={'error':'No saved artwork on CoreBAR'};continue
+        _,size,path=max(candidates)
         try:
-            size = adb('-s', target, 'shell', 'stat', '-c', '%s', path)
-        except Exception:
-            results[serial] = {'error': 'No saved artwork on CoreBAR'}
-            continue
-        try:
-            if not size.isdigit() or not 0 < int(size) <= 8 * 1024 * 1024:
+            if not 0 < size <= 8 * 1024 * 1024:
                 raise ValueError('Invalid package size')
             raw = adb('-s', target, 'exec-out', 'cat', path, binary=True)
             image = package_image(raw)

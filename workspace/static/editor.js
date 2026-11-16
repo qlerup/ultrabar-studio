@@ -21,8 +21,9 @@
     $('editor-content').classList.toggle('editor-working',working||actionSaving);
     $('edit-profile').disabled=working||actionSaving;
     $('action-undo').disabled=working||actionSaving||!history.length;
+    for(const control of $('vivo-screen-settings').querySelectorAll('button,input'))control.disabled=working||actionSaving;
   }
-  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{}}));if(history.length>30)history.shift();dirty=true;updateControls();}
+  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{}}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
   function showMode(next){if(actionSaving)return;mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
   async function openEditor(){
@@ -50,6 +51,7 @@
     if(!draft)return;
     draft.background_apps??=[];for(const app of draft.background_apps)app.settings??={};
     draft.app_settings??={};
+    draft.vivo_screens??={};
     if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
     const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
@@ -71,6 +73,7 @@
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
         if(w.kind==='bambu')for(const key of ['primary','secondary','expandedSlots','showJob','showTemperatures','showLayers','showRemaining','showControls','liquidMotion'])if(w[key]!==undefined)nativeSpec(t)[key]=w[key];
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
+        else if(nativeSpec(t))Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion});
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
         return t;
@@ -259,6 +262,7 @@
   function renderAppSettingsRecovery(){
     let box=$('draft-app-settings');if(!box){box=el('div');box.id='draft-app-settings';document.querySelector('.draft-tools').append(box);}
     box.replaceChildren();for(const key of Object.keys(draft.app_settings||{}))box.append(button('Forget draft settings: '+(appSettingsDefs.get(key)?.name||key),()=>change(()=>delete draft.app_settings[key]),'danger-quiet'));
+    for(const serial of Object.keys(draft.vivo_screens||{}))box.append(button('Forget draft Vivo picture: '+serial.slice(-6),()=>change(()=>delete draft.vivo_screens[serial]),'danger-quiet'));
   }
   function moveWidget(from,to){backgroundIndex=-1;if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
   function renderNativePreview(w,card){
@@ -461,7 +465,7 @@
     if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));
   }
-  function modules(){const map=new Map((snapshot.hardware?.devices||[]).filter(d=>['DOT_KEY','VIVO_CUBE','KNOB_KEY','SENSE_CUBE'].includes(d.type)).map(d=>[d.serial,{serialNo:d.serial,productId:d.type}]));for(const m of current().module)map.set(m.serialNo,m);return [...map.values()];}
+  function modules(){if(!current())return [];const map=new Map((snapshot?.hardware?.devices||[]).filter(d=>['DOT_KEY','VIVO_CUBE','KNOB_KEY','SENSE_CUBE'].includes(d.type)).map(d=>[d.serial,{serialNo:d.serial,productId:d.type}]));for(const m of current().module)map.set(m.serialNo,m);return [...map.values()];}
   function renderActionDevices(){
     if(!draft)return;
     const strip=$('action-devices'),focused=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
@@ -500,6 +504,49 @@
     return choices;
   }
   function currentInput(){return inputChoices.find(item=>item.key===inputKey);}
+  function vivoButton(module){const saved=draft.vivo_screens?.[module.serialNo];return saved?.button||(Array.isArray(module.config)&&module.config[0]?.keyCode)||101;}
+  function ensureVivoSlot(serial,button){
+    let module=current().module.find(m=>m.serialNo===serial);if(!module){module={serialNo:serial,productId:'VIVO_CUBE',config:[]};current().module.push(module);}
+    if(!module.config.some(slot=>slot.keyCode===button))module.config.push({keyCode:button,widgetType:1});
+  }
+  async function prepareVivoPicture(action,force=false){
+    const module=modules().find(m=>m.serialNo===moduleSerial);if(module?.productId!=='VIVO_CUBE')return null;
+    if(draft.vivo_screens?.[moduleSerial]?.source==='custom'&&!force)return null;
+    const saved=action?savedPcAction(action):null;let image;
+    if(saved?.kind==='program')image=(await(await api('/api/pc/program-icon',{method:'POST',body:JSON.stringify({target:saved.target})})).json()).image;
+    else{
+      const app=action?.type==='ACTIVITY'?action.values?.find(v=>v.id==='1')?.value:null;
+      if(typeof app==='string'){
+        try{const blob=await(await api('/api/editor/icons/app/'+encodeURIComponent(app))).blob(),body=new FormData();body.append('image',blob,'app.png');image=(await(await api('/api/pc/images',{method:'POST',body})).json()).image;}catch(_){/* Use the Studio app picture if the device icon is unavailable. */}
+      }
+      if(!image)image=(await(await api('/api/pc/default-image',{method:'POST',body:JSON.stringify({kind:action?.type==='ACTIVITY'?'program':'url'})})).json()).image;
+    }
+    return {image:image.sha256,clear:false,button:vivoButton(module),source:'action'};
+  }
+  function renderVivoScreen(module){
+    const box=$('vivo-screen-settings');box.replaceChildren();box.hidden=module?.productId!=='VIVO_CUBE';if(box.hidden)return;
+    const serial=module.serialNo,record=draft.vivo_screens?.[serial],preview=el('div','vivo-picture-preview'),copy=el('div','vivo-picture-controls');
+    if(record?.clear)preview.textContent='Blank screen';
+    else if(record?.image)showShortcutPicture('/api/editor/vivo-picture/'+record.image,preview);
+    else if(cubeImages[serial]?.url){const img=el('img');img.src=cubeImages[serial].url;img.alt='Current Vivo screen';preview.append(img);}
+    else preview.textContent='Choose a picture';
+    copy.append(el('h3','','Vivo screen picture'),el('p','muted','One full-screen button. This image is shared across profiles and all press types on this Cube. Upload a picture, or use the action’s icon. Changes apply on Deploy.'));
+    const label=el('label','property-field','Upload screen picture'),upload=el('input');upload.id='vivo-picture-upload';upload.type='file';upload.accept='image/png,image/jpeg,image/webp';label.append(upload);copy.append(label,el('p','muted','PNG, JPG or WebP, up to 2 MB. Studio automatically rounds the picture corners on the Vivo screen.'));
+    async function updatePicture(getPicture){
+      if(working||actionSaving)return;const context=[draft.device_id,current().id,serial].join('|');actionSaving=true;busy=true;updateControls();
+      try{const image=await getPicture();if(context!==[draft?.device_id,current()?.id,moduleSerial].join('|'))throw new Error('The selected device changed. Choose its picture again.');
+        change(()=>{ensureVivoSlot(serial,image.button);draft.vivo_screens??={};draft.vivo_screens[serial]=image;});$('action-feedback').textContent='Vivo screen picture saved in your draft. Save, then Deploy to display it.';
+      }catch(error){message(error.message,true);}finally{actionSaving=false;busy=false;updateControls();}
+    }
+    upload.onchange=()=>{const file=upload.files[0];if(!file)return;if(file.size>2*1024*1024){message('Choose a PNG, JPG or WebP picture up to 2 MB.',true);return;}
+      updatePicture(async()=>{const body=new FormData();body.append('image',file);const data=await(await api('/api/pc/images',{method:'POST',body})).json();return {image:data.image.sha256,clear:false,button:vivoButton(module),source:'custom'};});
+    };
+    const tools=el('div','editor-buttons');tools.append(button('Use action icon',()=>updatePicture(()=>prepareVivoPicture(inputScene()?.actions?.[0]||module.config?.[0]?.singleClick?.actions?.[0],true))),button('Clear screen & actions',()=>{
+      if(working||actionSaving||!confirm('Clear this Vivo screen and its button actions across all profiles? Save and Deploy to apply.'))return;
+      change(()=>{ensureVivoSlot(serial,vivoButton(module));for(const profile of draft.profiles)for(const m of profile.module)if(m.serialNo===serial)for(const slot of m.config)for(const kind of ['singleClick','doubleClick','longPress'])if(slot[kind])slot[kind].actions=[];draft.vivo_screens??={};draft.vivo_screens[serial]={image:null,clear:true,button:vivoButton(module),source:'blank'};});
+      $('action-feedback').textContent='Vivo screen and actions cleared in the draft. Save and Deploy to apply.';
+    },'danger-quiet'));copy.append(tools);box.append(preview,copy);
+  }
   function renderModules(){
     const list=modules();if(!list.some(m=>m.serialNo===moduleSerial)){moduleSerial='';inputKey='';resetActionComposer();}
     renderActionDevices();
@@ -509,6 +556,7 @@
     $('action-module-title').textContent=m?`${names[m.productId]||m.productId} / ${m.serialNo.slice(-6)}`:'';
     $('action-module-status').textContent='Set up one press or gesture at a time.';
     $('action-vivo-help').hidden=m?.productId!=='VIVO_CUBE';
+    renderVivoScreen(m);
     const box=$('action-input-choices'),focused=box.contains(document.activeElement)?document.activeElement.dataset.inputKey:null;box.replaceChildren();
     for(const item of inputChoices){
       const b=button('',()=>{if(working||actionSaving)return;inputKey=item.key;resetActionComposer();renderModules();});
@@ -588,9 +636,9 @@
     if(!actionChoiceItems.length){$('action-choice-empty').hidden=false;$('action-choice-empty').textContent=actionType==='core-app'?'No Core apps are available. Refresh the connection to load apps from CoreBAR.':'No saved actions of this type are available. Choose Open website or Open PC program to create a PC action.';}
   }
   function chooseActionType(type){if(working||actionSaving)return;const index=editingActionIndex;resetActionComposer();editingActionIndex=index;actionType=type;renderActionLibrary();}
-  function commitWizardAction(a){
+  function commitWizardAction(a,artwork=null){
     const index=editingActionIndex;resetActionComposer();
-    change(()=>{const scene=inputScene(true);scene.actions??=[];if(index!==null)scene.actions.splice(index,1,clone(a));else scene.actions.push(clone(a));});
+    change(()=>{const scene=inputScene(true);scene.actions??=[];if(index!==null)scene.actions.splice(index,1,clone(a));else scene.actions.push(clone(a));if(artwork){draft.vivo_screens??={};draft.vivo_screens[moduleSerial]=artwork;}});
     $('action-feedback').textContent=(index===null?'Action added.':'Action updated.')+' Save your draft, then Deploy to Core when ready.';
   }
   function editAssignedAction(a,index){
@@ -611,16 +659,19 @@
   $('action-setup-form').onsubmit=async event=>{
     event.preventDefault();if(working||actionSaving||!inputKey||!actionType)return;
     $('action-setup-error').textContent='';
-    if(actionType!=='website'&&actionType!=='program'){const a=actionChoiceItems[Number($('action-choice').value)];if(a)commitWizardAction(a);return;}
     const context=[draft.device_id,current().id,moduleSerial,inputKey].join('|');
     const target=$('action-target').value.trim(),kind=actionType==='website'?'url':'program';
     const fallback=kind==='url'?target.replace(/^https?:\/\//,'').split('/')[0]:target.split(/[\\/]/).pop().replace(/\.exe$/i,'');
     const name=$('action-name').value.trim()||('Open '+fallback).slice(0,100);
     actionSaving=true;busy=true;updateControls();$('action-setup-submit').disabled=true;
     try{
-      const data=await(await api('/api/pc/actions',{method:'POST',body:JSON.stringify({name,kind,target,device_id:draft.device_id})})).json();pcActions=data.actions;
+      let action;
+      if(actionType==='website'||actionType==='program'){const data=await(await api('/api/pc/actions',{method:'POST',body:JSON.stringify({name,kind,target,device_id:draft.device_id})})).json();pcActions=data.actions;action=pcAction(data.action);}
+      else action=actionChoiceItems[Number($('action-choice').value)];
+      if(!action)throw new Error('Choose an action first.');
+      const artwork=await prepareVivoPicture(action);
       if(context!==[draft?.device_id,current()?.id,moduleSerial,inputKey].join('|'))throw new Error('The selected input changed. Your PC action was saved; choose it under PC action to assign it.');
-      commitWizardAction(pcAction(data.action));
+      commitWizardAction(action,artwork);
     }catch(error){$('action-setup-error').textContent=error.message;}
     finally{actionSaving=false;busy=false;updateControls();renderActionLibrary();}
   };
@@ -632,7 +683,7 @@
     if(!actions.length)box.append(el('p','canvas-empty','No actions assigned yet. Choose what happens in step 2, then fill in step 3.'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
-  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{}})})).json();draft=response.draft;dirty=false;updateControls();}
+  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{}})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
   async function refreshPc(){
     try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
@@ -682,7 +733,15 @@
   $('draft-restore').onclick=()=>{if(!confirm('Replace this draft with the saved pre-deploy settings? Core changes only when you deploy.'))return;operation(async()=>{const data=await (await api('/api/editor/restore-draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Pre-deploy settings loaded as a draft. Review, then deploy to restore Core.');});};
   $('draft-export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(draft,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='ultrabar-studio-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
-  window.studioEditor={async saveBeforeUpdate(){
+  window.studioEditor={async deployFromStore(device){
+    if(!snapshot)throw new Error('Connect Core first, then choose Review & deploy on the package card. The update stays in your library.');
+    if(device&&snapshot.device_id!==device)throw new Error('The selected Core changed. Review the connected device before deploying this update.');
+    if(working||busy||actionSaving)throw new Error('Wait for the current operation to finish, then deploy the update.');
+    await openEditor();
+    if(!draft||draft.device_id!==snapshot?.device_id)throw new Error('Could not load this Core draft. Reconnect and try again.');
+    $('mode-layout').click();$('draft-deploy').click();
+    if(!$('deploy-dialog').open)throw new Error($('editor-notice').textContent||'Finish your draft before deploying.');
+  },async saveBeforeUpdate(){
     if(working||busy)throw new Error('Wait for the current device operation to finish before updating.');
     if(!dirty)return;
     working=true;busy=true;controls();updateControls();

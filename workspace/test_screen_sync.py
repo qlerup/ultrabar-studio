@@ -22,6 +22,11 @@ class ScreenSyncTests(unittest.TestCase):
         self.entry['android']['signerSha256']='a'*64
         with self.assertRaises(store.StoreError):screen_sync.prepare(self.server,'core',self.entry)
         self.server.adb.assert_not_called()
+    def test_artwork_does_not_start_a_previously_stopped_sync_service(self):
+        self.server.adb.return_value='ACTIVITY MANAGER SERVICES\n (nothing)'
+        with screen_sync.pause_for_artwork(self.server,'core'):pass
+        self.assertEqual(self.server.adb.call_count,1)
+        self.assertIn('dumpsys',self.server.adb.call_args.args)
     def test_missing_root_or_vivos_stops_before_install(self):
         self.server.adb.return_value='2000'
         with self.assertRaisesRegex(store.StoreError,'root'):screen_sync.prepare(self.server,'core',self.entry)

@@ -42,6 +42,7 @@
         </div>
         <div id="actions-editor" hidden><p class="muted action-device-help">Select a device to configure its buttons and gestures. Select CoreBAR to edit the screen layout.</p><div id="action-devices" class="hardware-preview" role="group" aria-label="Select a device to configure"></div><p id="action-device-empty" class="muted">Choose a module above to edit its actions.</p><div id="action-config" hidden>
           <div class="action-module-heading"><h3 id="action-module-title"></h3><p id="action-module-status" class="muted"></p></div>
+          <section id="vivo-screen-settings" class="builder-stage vivo-screen-settings" aria-label="Vivo screen picture" hidden></section>
           <div class="action-wizard">
             <section class="action-step" aria-labelledby="action-step-input-title"><div class="action-step-heading"><span class="action-step-number">1</span><div><h3 id="action-step-input-title">Choose a press or gesture</h3><p class="muted">What will you do on this device?</p></div></div><div id="action-input-choices" class="action-choice-grid" role="group" aria-label="Press or gesture"></div></section>
             <section id="action-step-type" class="action-step" aria-labelledby="action-step-type-title" hidden><div class="action-step-heading"><span class="action-step-number">2</span><div><h3 id="action-step-type-title">Choose what happens</h3><p id="action-step-type-help" class="muted"></p></div></div><div class="action-choice-grid action-type-choices">
@@ -59,7 +60,7 @@
           </div>
           <p id="action-feedback" class="muted" role="status"></p>
           <section id="assigned-actions" class="builder-stage assigned-actions" aria-labelledby="action-input-title" hidden><div class="section-heading"><h3 id="action-input-title">Assigned actions</h3><button id="action-undo" type="button">Undo last change</button></div><p class="muted">These actions run in order. You can add more than one.</p><div id="action-sequence" class="action-sequence"></div></section>
-          <p class="muted action-vivo-help" id="action-vivo-help" hidden>Uses the existing button layout on the VivoCube screen.</p>
+          <p class="muted action-vivo-help" id="action-vivo-help" hidden>Deploy sends the screen picture and registers the Vivo button on Core. Keep Studio running for website and PC program actions.</p>
         </div></div>
         <div id="pc-editor" hidden><div class="pc-panel"><div class="section-heading"><div><h3>This PC</h3><p id="pc-status" class="muted">Reading PC connection…</p></div><button id="pc-connect">Connect PC companion</button></div><p class="muted">Keep Studio running for website/program buttons and PC measurements. Studio only runs the PC actions you save here.</p><div id="pc-metrics" class="pc-metrics"></div><p class="muted">Studio widgets show CPU, RAM, GPU and disk usage directly on Core. Select a disk widget to choose one drive or all drives. Keep Studio connected for live values.</p><div id="pc-actions-list"></div></div></div>
         <details class="draft-tools"><summary>Draft &amp; recovery tools</summary><div class="editor-buttons"><button id="draft-export">Download draft</button><button id="draft-reset">Reload draft from Core</button><button id="draft-restore">Load pre-deploy backup as draft</button></div><p class="muted">Reload replaces your draft. Restoring a backup only prepares a draft; use Deploy to apply it.</p></details>
@@ -83,6 +84,13 @@
     <div class="manual-app-footer"><p class="muted">Manual apps are not reviewed by Store. Add only packages you trust. Adding an app does not install it.</p><button id="manual-app-add" class="primary" disabled>Add manual app</button></div>
   </dialog>
   <dialog id="store-install-dialog" aria-labelledby="store-install-title"><h2 id="store-install-title">Install package?</h2><div id="store-install-summary"></div><p class="muted">Only continue if you trust the publisher and the listed permissions.</p><div class="editor-buttons"><button id="store-install-cancel">Cancel</button><button id="store-install-confirm" class="primary">Install</button></div></dialog>
+  <dialog id="store-progress" aria-labelledby="store-progress-title" aria-describedby="store-progress-message store-progress-help">
+    <div class="deploy-heading"><div class="deploy-state-icon" aria-hidden="true"></div><div><div class="eyebrow">STUDIO LIBRARY</div><h2 id="store-progress-title">Updating package</h2></div></div>
+    <p id="store-progress-package" class="muted"></p><p id="store-progress-message" role="status" aria-live="polite"></p>
+    <div id="store-progress-spinner" role="progressbar" aria-label="Package update in progress"><span></span></div>
+    <p id="store-progress-help" class="muted"></p>
+    <div class="store-progress-actions"><button id="store-progress-later" disabled>Updating…</button><button id="store-progress-deploy" class="primary" hidden>Deploy now</button></div>
+  </dialog>
   <dialog id="settings-dialog" aria-labelledby="settings-title">
     <div class="guide-heading"><div><div class="eyebrow">ULTRABAR STUDIO</div><h2 id="settings-title">Settings</h2></div><form method="dialog"><button>Close</button></form></div>
     <h3>Startup</h3>
