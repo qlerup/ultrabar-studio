@@ -20,12 +20,12 @@
   const status=(text,error=false)=>{$('store-status').textContent=text;$('store-status').classList.toggle('error',error);};
   const version=v=>v.split('.').map(Number);
   const newer=(a,b)=>{a=version(a);b=version(b);for(let i=0;i<3;i++){if(a[i]!==b[i])return a[i]>b[i];}return false;};
-  function record(p){return installed.find(i=>i.id===p.id&&!i.device_id);}
+  function record(p){return installed.find(i=>i.id===p.id&&!i.device_id)||installed.find(i=>p.id==='studio.bambu'&&i.id==='studio.bambu.widget'&&!i.device_id&&i.type==='corebar-widget'&&i.source?.startsWith('https://github.com/qlerup/ultrabar-bambu/blob/'));}
   function render(){
     $('store-device').textContent=snapshot?`Selected CoreBAR: ${snapshot.model} / ${snapshot.target}`:'No CoreBAR connected. Apps and widgets can still be installed into your library on this PC.';
     const box=$('store-packages');statsObserver.disconnect();visibleStats.clear();statsPackages.clear();box.replaceChildren();
     const query=$('store-search').value.trim().toLowerCase(),filter=$('store-filter').value;
-    const all=[...new Map([...packages,...manualPackages].map(p=>[p.id,p])).values()];for(const p of installed){if(!p.device_id&&!all.some(x=>x.id===p.id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
+    const all=[...new Map([...packages,...manualPackages].map(p=>[p.id,p])).values()];for(const p of installed){if(p.id==='studio.bambu.widget'&&all.some(x=>x.id==='studio.bambu')&&p.source?.startsWith('https://github.com/qlerup/ultrabar-bambu/blob/'))continue;if(!p.device_id&&!all.some(x=>x.id===p.id))all.push({...p,description:p.origin==='local'?'Local development package. Select its folder again to install a new build.':'Installed package is no longer listed in the current catalog.',unlisted:true});}
     const visible=all.filter(p=>(p.name+' '+p.description).toLowerCase().includes(query)&&(filter==='all'||filter===p.type||filter==='installed'&&record(p)));
     $('store-local-folder').disabled=job?.state==='running';
     for(const p of visible){

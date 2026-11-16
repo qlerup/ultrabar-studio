@@ -269,6 +269,37 @@ class Store:
         from editor import atomic_json
         atomic_json(self.server.DATA_DIR/'store/installed.json',data)
     def key(self,p,device): return p['id']+':pc'
+    @staticmethod
+    def previous_record(p,records):
+        current=records.get(p['id']+':pc')
+        if current:return current
+        # Repair the short-lived duplicate registration without touching other packages.
+        if p['id']=='studio.bambu' and p.get('type')=='corebar-widget' and p.get('source','').startswith('https://github.com/qlerup/ultrabar-bambu/blob/'):
+            alias=records.get('studio.bambu.widget:pc')
+            if alias and alias.get('type')=='corebar-widget' and alias.get('source','').startswith('https://github.com/qlerup/ultrabar-bambu/blob/'):return alias
+
+    def migrate_bambu_draft(self,draft):
+        record=self.records().get('studio.bambu:pc')
+        if not record or record.get('type')!='corebar-widget' or not record.get('source','').startswith('https://github.com/qlerup/ultrabar-bambu/blob/'):return False
+        changed=False;applicable=False
+        for profile in draft.get('profiles',[]):
+            for widget in profile.get('homeData',[]):
+                param=widget.get('param');payload=param.get('payload') if isinstance(param,dict) else None
+                params=payload.get('params') if isinstance(payload,dict) else None
+                if not isinstance(params,dict):continue
+                if params.get('kind')=='bambu' and params.get('packageId') in ('studio.bambu','studio.bambu.widget'):
+                    applicable=True
+                    before=dict(params)
+                    params['packageId']='studio.bambu';params['packageVersion']=record['version']
+                    if params.get('companionApp')=='dk.ultrabar.bambu':params.pop('companionApp')
+                    changed=changed or before!=params
+        if applicable:
+            background=draft.get('background_apps',[])
+            draft['background_apps']=[a for a in background if a['id']!='dk.ultrabar.bambu']
+            changed=changed or background!=draft['background_apps']
+            if isinstance(draft.get('app_settings'),dict) and 'dk.ultrabar.bambu' in draft['app_settings']:
+                draft['app_settings'].pop('dk.ultrabar.bambu');changed=True
+        return changed
     def remember_icons(self,packages):
         self.stats.remember(packages)
         with self.lock:
@@ -436,7 +467,7 @@ class Store:
             deferred=p['type']=='corebar-app'
             if screen_sync.applies(p):screen_sync.validate_identity(p)
             with self.lock:
-                old=self.records().get(self.key(p,device))
+                old=self.previous_record(p,self.records())
             self.update_job(name=p['name'],version=p['version'],is_update=bool(old and valid_version(p['version'])>valid_version(old['version'])))
             if old and valid_version(old['version'])>valid_version(p['version']):raise StoreError('Package downgrades are not supported.')
             self.update_job(message='Downloading and verifying package...')
@@ -477,7 +508,9 @@ class Store:
                         atomic_json(cached.parent/'library.json', dependencies)
                 with self.lock:
                     self.update_job(message='Saving package to your PC library…')
-                    records=self.records();records[self.key(p,device)]=record;self.save(records)
+                    records=self.records();records[self.key(p,device)]=record
+                    if p['id']=='studio.bambu' and p['type']=='corebar-widget':records.pop('studio.bambu.widget:pc',None)
+                    self.save(records)
             self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if deferred or p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
         except Exception as exc:
             text=str(exc) if isinstance(exc,(StoreError,server.DeviceError)) else 'Installation could not be completed. Check the connection and retry; Core may already have installed the package.'

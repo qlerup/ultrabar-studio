@@ -79,6 +79,14 @@
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
         return t;
       });
+      if(draft&&(data.installed||[]).some(p=>p.id==='studio.bambu'&&p.type==='corebar-widget'&&p.source?.startsWith('https://github.com/qlerup/ultrabar-bambu/blob/'))){
+        const saved=(data.installed||[]).find(p=>p.id==='studio.bambu');
+        const needs=draft.profiles.some(p=>p.homeData.some(w=>{const s=nativeSpec(w);return s?.kind==='bambu'&&['studio.bambu','studio.bambu.widget'].includes(s.packageId)&&(s.companionApp==='dk.ultrabar.bambu'||s.packageId!=='studio.bambu'||s.packageVersion!==saved.version);}));
+        if(needs)change(()=>{
+          for(const profile of draft.profiles)for(const w of profile.homeData){const s=nativeSpec(w);if(s?.kind==='bambu'&&['studio.bambu','studio.bambu.widget'].includes(s.packageId)){s.packageId='studio.bambu';s.packageVersion=saved.version;if(s.companionApp==='dk.ultrabar.bambu')delete s.companionApp;}}
+          draft.background_apps=draft.background_apps.filter(a=>a.id!=='dk.ultrabar.bambu');if(draft.app_settings)delete draft.app_settings['dk.ultrabar.bambu'];
+        },false);
+      }
       if(draft&&!drag)renderLibrary();
       if(draft&&!drag)renderProperties();
     }catch(error){message('Could not load installed store presets. '+error.message,true);}

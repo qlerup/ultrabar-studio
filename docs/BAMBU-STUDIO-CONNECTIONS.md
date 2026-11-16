@@ -55,12 +55,15 @@ layout restoration are retained.
 
 ## Updating from the Core app
 
-The earlier `studio.bambu` package is an Android app. Store registrations cannot
-change type, so the Studio version is registered as `studio.bambu.widget`. Install
-it, replace old Bambu cards, select Studio printers, and remove the old Bambu entry
-from Background apps before Deploy. Old Core credentials are not extracted or
-silently imported. Uninstall the old APK separately after checking the new setup;
-otherwise its private data remains untouched.
+The original `studio.bambu` identity is retained. Version 2.0.1 appears as **Update**
+for the installed 1.x app. Studio 0.48.1 preserves placed widget IDs, names, colors,
+readings and display preferences, removes obsolete companion dependencies and
+background settings, and keeps the original saved draft recoverable until Save.
+Configure printer connections in Studio, select each card's printer, Save and Deploy.
+The briefly published duplicate `studio.bambu.widget` is consolidated into the
+original identity on a successful update; failed updates preserve existing records.
+Core credentials are not extracted or deleted. Uninstall the old APK separately
+when it is no longer needed.
 
 ## Validation and physical acceptance
 

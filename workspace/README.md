@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.48.0 Windows
+# UltraBar Studio — 0.48.1 Windows
+
+## 0.48.1 update
+
+Bambu keeps its original Store identity and updates existing installations. The
+upgrade retains placed cards and display preferences while removing obsolete
+Core-app dependencies. The briefly published duplicate widget registration is
+consolidated on successful update. Failed updates preserve the existing library.
 
 ## 0.48 update
 

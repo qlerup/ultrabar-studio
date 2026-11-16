@@ -115,11 +115,13 @@ def load_draft(server, snapshot):
         if 'background_apps' not in draft:draft['background_apps']=saved_background(server,snapshot['device_id'])
         if 'app_settings' not in draft:draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
         if 'vivo_screens' not in draft:draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
+        server.store.migrate_bambu_draft(draft)
         return draft
     draft = fresh_draft(snapshot)
     draft['background_apps']=saved_background(server,snapshot['device_id'])
     draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
     draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
+    server.store.migrate_bambu_draft(draft)
     atomic_json(path, draft)
     return draft
 
@@ -341,9 +343,12 @@ def register_editor(server):
                 return jsonify(error='The device or draft changed. Reopen the editor before saving.'), 409
             profiles = body.get('profiles')
             validate(profiles, draft['base_profiles'])
-            background=body.get('background_apps',draft.get('background_apps',[]))
+            candidate=dict(profiles=profiles,background_apps=body.get('background_apps',draft.get('background_apps',[])),app_settings=body.get('app_settings',draft.get('app_settings',{})))
+            validate_background(candidate['background_apps'])
+            server.store.migrate_bambu_draft(candidate)
+            background=candidate['background_apps']
             validate_background(background)
-            settings=app_settings.validate_all(server,body.get('app_settings',draft.get('app_settings',{})))
+            settings=app_settings.validate_all(server,candidate['app_settings'])
             screens=body.get('vivo_screens',draft.get('vivo_screens',{}));vivo.validate(screens,profiles)
             draft.update(profiles=profiles, background_apps=background,app_settings=settings,vivo_screens=screens, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
             atomic_json(draft_path(server, snapshot['device_id']), draft)
