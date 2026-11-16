@@ -1,5 +1,8 @@
 # Bambu native integration
 
+Historical Core-app architecture (Studio 0.47). For Studio 0.48, see
+[printer connections in Studio](BAMBU-STUDIO-CONNECTIONS.md).
+
 Requires Studio 0.47, root-enabled CB01 / LineOS 1.0.9 and the reviewed Bambu
 companion APK (`dk.ultrabar.bambu`). Earlier LineOS 1.0.8 has not been tested with
 this renderer, even though the existing native host supports it.

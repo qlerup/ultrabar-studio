@@ -191,6 +191,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if manifest.get('type')=='corebar-widget' and any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,48,0):
+        raise StoreError('Studio-managed Bambu widgets require Studio 0.48.0 or newer.')
     if any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,46,0):
         raise StoreError('Bambu liquid widgets must declare Studio 0.46.0 or newer.')
 

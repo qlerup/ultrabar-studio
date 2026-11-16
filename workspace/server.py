@@ -355,6 +355,8 @@ from store import register_store
 register_store(sys.modules[__name__])
 import app_settings
 app_settings.register(sys.modules[__name__])
+import bambu
+bambu.register(sys.modules[__name__])
 
 if __name__ == '__main__':
     from waitress import serve

@@ -87,6 +87,7 @@ def main():
         if http:
             http.task_dispatcher.shutdown()
             server.native_widgets.stop.set()
+            server.bambu.close()
             server.companion.stop.set()
             if server.native_widgets.thread:
                 server.native_widgets.thread.join(5)

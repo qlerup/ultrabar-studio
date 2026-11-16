@@ -8,6 +8,12 @@ Java.perform(function () {
         loader.addDexPath.overload('java.lang.String').call(loader, '/data/local/tmp/studio-widgets.dex');
     }
     const Card = Java.use('dk.ultrabarx.widgets.StudioCard');
+    const Bambu = Java.use('dk.ultrabarx.widgets.BambuTile');
+    setInterval(function () {
+        Java.perform(function () {
+            for (const event of JSON.parse(String(Bambu.drainActions()))) send({bambuAction: event});
+        });
+    }, 250);
     const Holder = Java.use('com.ultrabar.launch.common.adapter.holder.PcControlHolder');
     Holder.updateUI.implementation = function () {
         this.updateUI();
