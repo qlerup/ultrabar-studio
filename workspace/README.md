@@ -1,4 +1,24 @@
-# UltraBar Studio — 0.46.2 Windows
+# UltraBar Studio — 0.47.0 Windows
+
+## 0.47 update (under review)
+
+Adds the Bambu native widget and a fixed companion IPC contract. Each
+placed card can choose its primary/secondary reading, expanded size (2–5 slots),
+detail fields, controls visibility and liquid/reduced motion. Tapping grows a
+native presentation from the actual card position, including real slot gaps and
+host corner radius. Neighboring cards move left and/or right; closing restores the
+existing layout without changing profile positions. The animation runs on Core.
+
+Install/deploy Bambu on Core first and enter printer credentials there.
+The native card receives sanitised state only; controls remain gated by the app's
+explicit enable switch, fresh status and printer capabilities. Unsupported or
+offline readings stay unavailable. Studio must reconnect to restore native cards
+after a Core/LineOS restart, as with the existing native runtime.
+
+New package support requires reviewed Studio 0.47 and Store contract changes;
+current released Studio versions do not understand the new Bambu kind. Renderer
+preview screenshots use sample data and are separate from real-printer testing.
+
 
 ## 0.46.2 update
 

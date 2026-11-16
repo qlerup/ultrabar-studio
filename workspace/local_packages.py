@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def read_folder(server,folder):
-    from store import StoreError,MAX_SIZE,ASSET_PREFIX,validate_entry,validate_icon_bytes,widget_package,plugin_templates,inspect_apk
+    from store import StoreError,MAX_SIZE,ASSET_PREFIX,validate_entry,validate_icon_bytes,widget_package,plugin_templates,inspect_apk,require_widget_version
     root=Path(folder).resolve()
     def read(name,limit,required=True):
         path=root/name
@@ -29,6 +29,10 @@ def read_folder(server,folder):
     slug=re.sub('[^a-z0-9]+','-',root.name.lower()).strip('-')[:40] or 'package'
     folder_key=hashlib.sha256(str(root).casefold().encode()).hexdigest()[:12]
     p=manifest or dict(schemaVersion=1,id='test.'+slug+'-'+folder_key,name=root.name[:100],description='Local development package.',version='1.0.0',type=kind,license='Local development; see package license.',permissions=[],compatibility=dict(minStudioVersion='0.24.0',hostApi=1,models=['CB01'],abis=['armeabi-v7a'],lineosVersions=['1.0.8','1.0.9']))
+    if kind=='corebar-widget':
+        widgets=widget_package(payload)
+        if manifest is None and any(w['kind']=='bambu' for w in widgets):p['compatibility']['minStudioVersion']='0.46.0'
+        require_widget_version(widgets,p)
     if not isinstance(p.get('id'),str) or not re.fullmatch(r'[a-z][a-z0-9]*(?:\.[a-z][a-z0-9-]*)+',p['id']):raise StoreError('Invalid local package ID.')
     original_id=p['id'];p['id']='local.'+original_id
     p.pop('publisher',None);p['source']='local:folder'
@@ -40,6 +44,8 @@ def read_folder(server,folder):
             raise StoreError('Local '+name+' differs from its declared checksum or size. Update manifest.json before testing.')
         p[name]=dict(url=ASSET_PREFIX+'local/'+digest+('.png' if name=='icon' else '.apk' if kind=='corebar-app' else '.json'),size=len(raw),sha256=digest)
     p=validate_entry(p);validate_icon_bytes(raw_icon,p['icon'])
-    if kind=='corebar-app':inspect_apk(server,root/types[kind],p)
+    if kind=='corebar-app':
+        embedded=inspect_apk(server,root/types[kind],p)
+        if isinstance(embedded,dict):p['bundledWidgets']=embedded
     p['origin']='local';p['original_id']=original_id
     return p,payload,raw_icon

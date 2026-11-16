@@ -41,8 +41,11 @@ def specifications(profiles):
             spec = payload.get('params')
             if widget.get('type') != 'PC_CONTROL' or not re.fullmatch(r'studio_native_[a-f0-9]{32}', key):
                 raise EditError('Invalid native widget ID or type.')
-            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock'):
+            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock', 'bambu'):
                 raise EditError('Choose a supported Studio widget.')
+            from bambu_contract import validate as validate_bambu
+            try:validate_bambu(spec)
+            except ValueError as exc:raise EditError(str(exc)) from exc
             if 'kindOptions' in spec:
                 options=spec['kindOptions']
                 if not isinstance(options,list) or not 2<=len(options)<=3 or any(k not in ('cpu','memory','gpu') for k in options) or len(set(options))!=len(options) or spec['kind'] not in options:
@@ -99,6 +102,10 @@ class NativeWidgets:
             raise EditError('This native widget build supports ARM32 CoreBAR only.')
         package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
         check_lineos(package)
+        if any(s['kind']=='bambu' for s in specs.values()):
+            companion=adb('-s',target,'shell','pm','path','dk.ultrabar.bambu')
+            if not companion.startswith('package:'):
+                raise EditError('Install Bambu Panel from Store and deploy its app to Core before deploying the Bambu widget. Set up printer credentials in the app.')
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
             raise EditError('Native runtime integrity check failed. Reinstall Studio.')

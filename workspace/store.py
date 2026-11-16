@@ -18,6 +18,7 @@ from flask import jsonify, request
 import updates
 import screen_sync
 import app_settings_contract
+import bundle_contract
 import uuid
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
@@ -98,6 +99,8 @@ def validate_icon_bytes(raw,icon):
 def validate_entry(entry):
     if not isinstance(entry, dict): raise StoreError('Invalid catalog entry.')
     p = copy.deepcopy(entry)
+    try:bundle_contract.validate(p,widget_package)
+    except ValueError as exc:raise StoreError(str(exc)) from exc
     if 'settings' in p:
         if p.get('type')!='corebar-app':raise StoreError('App settings require a corebar-app package.')
         try:app_settings_contract.validate_schema(p['settings'])
@@ -156,6 +159,7 @@ def plugin_templates(raw):
     return result
 
 def widget_package(raw):
+    from bambu_contract import FIELDS as BAMBU_FIELDS,validate as validate_bambu
     try:data=json.loads(raw)
     except (ValueError,UnicodeError) as exc:raise StoreError('Invalid widget package JSON.') from exc
     if not isinstance(data,dict) or set(data)!={'widgetApi','runtime','widgets'} or type(data['widgetApi']) is not int or data['widgetApi']!=1 or data['runtime']!='studio-native-v1':
@@ -164,12 +168,18 @@ def widget_package(raw):
     if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
     result=[];ids=set()
     for w in widgets:
-        if not isinstance(w,dict) or set(w)-{'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}:raise StoreError('Unsupported widget field. Executable code is not supported.')
+        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
         key=w.get('id')
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
         base={k:v for k,v in w.items() if k in ('name','kind','background','textColor','accent')}
-        plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
+        if w.get('kind')=='bambu':
+            if not isinstance(w.get('name'),str) or not 1<=len(w['name'])<=100:raise StoreError('Invalid printer widget name.')
+            for color in ('background','textColor','accent'):
+                if color in w and not re.fullmatch(r'#[a-fA-F0-9]{6}',str(w[color])):raise StoreError('Invalid widget color.')
+        else:plugin_templates(json.dumps(dict(pluginApi=1,widgets=[base])).encode())
+        try:validate_bambu(w)
+        except ValueError as exc:raise StoreError(str(exc)) from exc
         if w.get('hourFormat','24') not in ('12','24') or any(type(w[k]) is not bool for k in ('showSeconds','showDate') if k in w):raise StoreError('Invalid clock settings.')
         if w['kind']!='clock' and any(k in w for k in ('hourFormat','showSeconds','showDate')):raise StoreError('Clock settings require a clock widget.')
         if 'kindOptions' in w:
@@ -178,6 +188,11 @@ def widget_package(raw):
                 raise StoreError('Choose 2-3 distinct CPU, RAM or GPU kinds including the default kind.')
         result.append(dict(w,_widgetPackage=True))
     return result
+
+
+def require_widget_version(widgets,manifest):
+    if any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,46,0):
+        raise StoreError('Bambu liquid widgets must declare Studio 0.46.0 or newer.')
 
 
 def v2_signers(path):
@@ -214,6 +229,8 @@ def v2_signers(path):
 
 def inspect_apk(server,path,entry):
     try:
+        embedded=bundle_contract.inspect_apk(path,entry)
+        if embedded is not None:bundle_contract.validate(dict(entry,bundledWidgets=embedded),widget_package)
         if entry.get('settings'):app_settings_contract.inspect_apk(path,entry['settings'])
         r=subprocess.run([str(server.ROOT/'assets/android/aapt.exe'),'dump','badging',str(path)],capture_output=True,timeout=15,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         info=r.stdout.decode('utf-8',errors='replace')
@@ -230,6 +247,7 @@ def inspect_apk(server,path,entry):
         if 'application-debuggable' in info: raise StoreError('Debug APKs cannot be installed from the store.')
         if permissions!=set(entry['permissions']): raise StoreError('APK permissions do not match the approved catalog.')
         if v2_signers(path)!=[android['signerSha256']]: raise StoreError('APK signing identity does not match the approved catalog.')
+        return embedded
     except StoreError: raise
     except Exception as exc: raise StoreError('The APK could not be verified.') from exc
 
@@ -269,8 +287,8 @@ class Store:
         return raw
     def templates(self):
         with self.lock:
-            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') for widget in p.get('widgets',[])]
-            templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app')
+            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
+            templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app' and not p.get('bundledWidgets'))
             return templates
     def status(self):
         with self.lock:return copy.deepcopy(self.job)
@@ -433,11 +451,18 @@ class Store:
                 if local:record.update(origin='local',original_id=p['original_id'],description=p['description'],license=p['license'],compatibility=p['compatibility'])
                 if p.get('icon'):record['icon']=copy.deepcopy(p['icon'])
                 if p.get('settings'):record['settings']=copy.deepcopy(p['settings'])
+                if p.get('bundledWidgets'):
+                    record['bundledWidgets']=copy.deepcopy(p['bundledWidgets'])
+                    record['widgets']=bundle_contract.validate(p,widget_package)
                 if p['type'] in ('studio-plugin','corebar-widget'):
                     if size>65536:raise StoreError('Plugin preset file is too large.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
+                    require_widget_version(record['widgets'],p)
                 elif deferred:
-                    inspect_apk(server,path,p)
+                    embedded=inspect_apk(server,path,p)
+                    if isinstance(embedded,dict):
+                        p=dict(p,bundledWidgets=embedded)
+                        record.update(bundledWidgets=copy.deepcopy(embedded),widgets=bundle_contract.validate(p,widget_package))
                     record.update(deferred=True,device_id=None,android=copy.deepcopy(p['android']),compatibility=copy.deepcopy(p['compatibility']),permissions=list(p['permissions']))
                     cached=server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
                     cached.parent.mkdir(parents=True,exist_ok=True)
@@ -514,9 +539,18 @@ class Store:
         requested={w['id'] for p in profiles for w in p.get('homeData',[]) if w.get('type')=='APPS'}
         background={a['id']:a for a in background_apps or []}
         requested.update(background)
-        if not requested:return
+        bundled=[w.get('param',{}).get('payload',{}).get('params',{}) for p in profiles for w in p.get('homeData',[]) if w.get('param',{}).get('payload',{}).get('action')=='studioNative' and w.get('param',{}).get('payload',{}).get('params',{}).get('companionApp')]
+        if not requested and not bundled:return
         with self.lock:
             dependencies=self.dependencies()
+        by_store={p['id']:p for p in dependencies.values()}
+        for params in bundled:
+            package=by_store.get(params.get('packageId'))
+            if package is None:raise StoreError('Install the widget’s bundled app package into the library before deploying.')
+            templates=bundle_contract.validate(package,widget_package)
+            if not templates or params['companionApp']!=package['android']['packageId'] or not any(t['id']==params.get('widgetKey') and t['kind']==params.get('kind') for t in templates):raise StoreError('The placed widget is not declared by its bundled app package.')
+            requested.add(package['android']['packageId'])
+        if not requested:return
         plan=[];existing_background=[]
         for package_id in sorted(requested):
             if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')
