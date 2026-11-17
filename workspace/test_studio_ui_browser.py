@@ -13,6 +13,8 @@ class StudioPanelBrowserTests(unittest.TestCase):
         for package, name, label, default in [('example.first','First clock','First ticking',False),('example.second','Second clock','Second ticking',True)]:
             descriptor=dict(api=1,settings=dict(api=1,fields=[dict(key='showSeconds',label=label,type='boolean',default=default)]),help=name+' help from package')
             templates.append(dict(id='clock',name=name,kind='clock',_widgetPackage=True,_storePackage=package,_storeVersion='1.0.0',_studio=descriptor))
+        # Legacy studio-plugin clocks become stock TIME cards without native params.
+        templates.append(dict(name='Legacy clock preset',kind='clock',_storePackage='example.legacy',_storeVersion='1.0.0',_studio=studio_contract.legacy_descriptor(dict(kind='clock'))))
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=templates)))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
@@ -52,6 +54,34 @@ class StudioPanelBrowserTests(unittest.TestCase):
             expect(page.locator('[data-connection-field=code]')).to_have_attribute('type','password')
             expect(page.get_by_role('heading',name='Add device',exact=True)).to_be_visible()
             page.locator('#studio-connections').get_by_role('button',name='Close',exact=True).click()
+
+    def test_provider_mutations_update_other_package_pickers(self):
+        templates=[dict(id='printer',name=name,kind='bambu',_widgetPackage=True,_storePackage=package,_storeVersion='1.0.0',_studio=studio_contract.legacy_bambu()) for package,name in [('example.first','First printer'),('example.second','Second printer')]]
+        old=dict(id='a'*32,name='Old printer',host='192.168.1.30',status=dict(connection='Connected'))
+        new=dict(id='b'*32,name='New printer',host='192.168.1.31',status=dict(connection='Connected'))
+        connections=[old]
+        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy):
+            page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=templates)))
+            page.route('**/api/studio/integrations/*/*/list',lambda r:r.fulfill(json=dict(items=connections)))
+            def remove(route):
+                connections[:]=[new]
+                route.fulfill(json=dict(items=connections))
+            page.route('**/api/studio/integrations/*/*/remove',remove)
+            page.on('dialog',lambda dialog:dialog.accept())
+            page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
+            page.locator('#mode-layout').click()
+            for name in ('First printer','Second printer'):
+                item=page.locator('#widget-library').get_by_role('button',name=name,exact=True)
+                expect(item).to_be_visible();item.drag_to(page.locator('#core-screen'))
+                expect(page.locator('[data-connection-key] option').filter(has_text='Old printer')).to_have_count(1)
+            page.locator('#core-canvas .canvas-widget').filter(has_text='First printer').click()
+            page.get_by_role('button',name='Manage printers',exact=True).click()
+            page.locator('#studio-connections').get_by_role('button',name='Remove',exact=True).click()
+            expect(page.locator('.studio-connection-row')).to_contain_text('New printer')
+            page.locator('#studio-connections').get_by_role('button',name='Close',exact=True).click()
+            page.locator('#core-canvas .canvas-widget').filter(has_text='Second printer').click()
+            expect(page.locator('[data-connection-key] option').filter(has_text='Old printer')).to_have_count(0)
+            expect(page.locator('[data-connection-key] option').filter(has_text='New printer')).to_have_count(1)
 
 
 if __name__=='__main__':unittest.main()

@@ -75,7 +75,7 @@
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
         if(w._bundledApp&&w.kind!=='bambu'){t._bundledApp=clone(w._bundledApp);nativeSpec(t).companionApp=w._bundledApp.id;}
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
-        for(const field of (w._studio||w.studio)?.settings?.fields||[])nativeSpec(t)[field.key]=w[field.key]??field.default;
+        if(nativeSpec(t))for(const field of (w._studio||w.studio)?.settings?.fields||[])nativeSpec(t)[field.key]=w[field.key]??field.default;
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:nativeSpec(t).hourFormat??w.hourFormat??'24',showSeconds:nativeSpec(t).showSeconds??w.showSeconds??true,showDate:nativeSpec(t).showDate??w.showDate??true});}
         else if(nativeSpec(t))Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion});
         if(w.background)t.bgColor=w.background;

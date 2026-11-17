@@ -19,7 +19,9 @@ window.studioPackageUI=(()=>{
   }
   function create({api,onConnectionsChange,onError}){
     const cache=new Map(),loading=new Set();
-    const identity=b=>b.packageId+'/'+b.widgetKey;
+    // Connection records are owned/shared by the trusted provider, not a widget.
+    // Requests still authenticate the installed package/widget at the endpoint.
+    const identity=b=>b.descriptor.connection.provider;
     const endpoint=(b,op)=>'/api/studio/integrations/'+encodeURIComponent(b.packageId)+'/'+encodeURIComponent(b.widgetKey)+'/'+op;
     const call=async(b,op,body)=>{const response=await api(endpoint(b,op),op==='list'?{}:{method:'POST',body:JSON.stringify(body||{})});return response.json();};
     const remember=(b,data)=>{if(data.items)cache.set(identity(b),data.items);};
