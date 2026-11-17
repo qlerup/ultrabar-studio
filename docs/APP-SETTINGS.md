@@ -16,4 +16,7 @@ Restoring a backup prepares a draft, and applying it requires a new Deploy.
 
 Settings API 1 does not provision bridge credentials or execute contributor code.
 Existing packages without the descriptor keep their existing controls. JSON native
-widgets continue using widgetApi 1 and their existing per-block settings.
+widgets continue using widgetApi 1 and per-block values. From Studio 0.49.0 they
+may own their settings UI and connection panels through a declarative `studio`
+descriptor; see [Studio panels](STUDIO-PANELS.md). Both mechanisms use the shared
+field renderer while retaining their separate setting scopes and transports.

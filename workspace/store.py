@@ -19,6 +19,7 @@ import updates
 import screen_sync
 import app_settings_contract
 import bundle_contract
+import studio_contract
 import uuid
 
 CATALOG_URL = 'https://raw.githubusercontent.com/qlerup/ultrabar-store/catalog/catalog.json'
@@ -168,7 +169,7 @@ def widget_package(raw):
     if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
     result=[];ids=set()
     for w in widgets:
-        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
+        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions','studio'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
         key=w.get('id')
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
@@ -186,11 +187,20 @@ def widget_package(raw):
             options=w['kindOptions']
             if not isinstance(options,list) or not 2<=len(options)<=3 or any(k not in ('cpu','memory','gpu') for k in options) or len(set(options))!=len(options) or w['kind'] not in options:
                 raise StoreError('Choose 2-3 distinct CPU, RAM or GPU kinds including the default kind.')
+        if 'studio' in w:
+            try:studio_contract.validate(w['studio'],w['kind'])
+            except ValueError as exc:raise StoreError(str(exc)) from exc
+            if 'kindOptions' in w:
+                for field in w['studio'].get('settings',{}).get('fields',[]):
+                    if field['key']=='kind' and not {option['value'] for option in field['options']}<=set(w['kindOptions']):
+                        raise StoreError('Studio kind choices must stay within the widget measurement options.')
         result.append(dict(w,_widgetPackage=True))
     return result
 
 
 def require_widget_version(widgets,manifest):
+    if any('studio' in w for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<studio_contract.MIN_VERSION:
+        raise StoreError('App-owned Studio panels require Studio 0.49.0 or newer.')
     if manifest.get('type')=='corebar-widget' and any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,48,0):
         raise StoreError('Studio-managed Bambu widgets require Studio 0.48.0 or newer.')
     if any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,46,0):
@@ -320,7 +330,7 @@ class Store:
         return raw
     def templates(self):
         with self.lock:
-            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
+            templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],_studio=studio_contract.resolve(widget),**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
             templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app' and not p.get('bundledWidgets'))
             return templates
     def status(self):
