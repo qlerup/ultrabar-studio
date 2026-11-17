@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.49.1 Windows
+# UltraBar Studio — 0.49.2 Windows
+
+## 0.49.2 update
+
+The unfolded Bambu widget gives each reported nozzle its own labelled reading in °C.
+The layout adapts to the number of nozzles and the width of the widget, including
+printers with nine nozzles such as the H3C.
+After updating Studio, use Save and Deploy to load the updated Core renderer.
 
 ## 0.49.1 update
 

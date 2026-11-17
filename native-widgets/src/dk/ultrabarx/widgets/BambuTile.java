@@ -12,6 +12,8 @@ import android.view.animation.LinearInterpolator;
 import android.widget.*;
 import org.json.*;
 import java.util.ArrayList;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /** Model-independent Core home tile. Studio owns connections and credentials. */
 public final class BambuTile {
@@ -21,6 +23,7 @@ public final class BambuTile {
     private static WaterLayer expanded;
     private static final java.util.ArrayDeque<JSONObject> commands = new java.util.ArrayDeque<>();
     private static final int WHITE = 0xffeff6fa, MUTED = 0xff96aab5, MINT = 0xff86e4c3;
+    private static final Pattern TOOL_TEMPERATURE = Pattern.compile("(T[0-9]+) ([0-9]+) / [0-9]+Â?°");
     public static void update(JSONObject data, long timestamp) {
         printers = data == null ? new JSONObject() : data; received = timestamp;
         main.post(() -> { if (expanded != null) expanded.refresh(); });
@@ -51,11 +54,15 @@ public final class BambuTile {
         switch(field) {
             case "progress": return s.has("mc_percent") ? Math.max(0,Math.min(100,s.optInt("mc_percent")))+"%" : "—";
             case "remaining": return s.has("mc_remaining_time")&&s.optInt("mc_remaining_time")>=0 ? s.optInt("mc_remaining_time")/60+"h "+s.optInt("mc_remaining_time")%60+"m" : "—";
-            case "temperature": return s.has("nozzle_temper") ? s.optInt("nozzle_temper")+"°" : "—";
+            case "temperature": return temperature(s, "nozzle_temper");
             case "job": return s.optString("subtask_name", "No active job");
             case "layers": return s.has("layer_num") ? "Layer "+s.optInt("layer_num")+" / "+s.optInt("total_layer_num") : "Layer —";
             case "none": return ""; default: return "—";
         }
+    }
+    private static String temperature(JSONObject s, String key) {
+        double degrees = s.optDouble(key);
+        return Double.isNaN(degrees) || Double.isInfinite(degrees) ? "—" : Math.round(degrees) + "°C";
     }
     private static void label(Canvas canvas, Paint paint, String text, float x, float y, float size, int color, boolean bold, float maxWidth) {
         paint.setColor(color); paint.setTextSize(size); paint.setTypeface(Typeface.create(bold?"sans-serif-medium":"sans-serif",Typeface.NORMAL));
@@ -91,7 +98,8 @@ public final class BambuTile {
         label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,width-40);
         if(primary.equals("progress")&&width>=245)printerMark(canvas,p,width-72,65,.95f,accent);
         label(canvas,p,primary.equals("progress")?state(s):primary.equals("remaining")?"TIME REMAINING":primary.equals("temperature")?"ACTIVE NOZZLE":"PRINTER STATUS",23,133,11,accent,false,width-40);
-        label(canvas,p,metric(s,spec.optString("secondary","remaining")),23,165,14,MUTED,false,width-42);
+        String secondary = spec.optString("secondary", "remaining");
+        label(canvas,p,(secondary.equals("temperature") ? "Nozzle " : "") + metric(s,secondary),23,165,14,MUTED,false,width-42);
         p.setColor(0x22ffffff); canvas.drawRoundRect(22,183,width-22,187,2,2,p);
         float percent = fresh(s)?Math.max(0,Math.min(100,s.optInt("mc_percent"))):0;
         p.setColor(accent); canvas.drawRoundRect(22,183,22+(width-44)*percent/100,187,2,2,p);
@@ -123,7 +131,8 @@ public final class BambuTile {
         private final Paint paint = new Paint(3); private final Path path = new Path();
         private final RectF from = new RectF(), to = new RectF(), current = new RectF();
         private final LinearLayout body, hero, temperatures, actions;
-        private TextView name, status, value, job, details, nozzle, bed, chamber, controlHint;
+        private TextView name, status, value, job, details, controlHint;
+        private final ArrayList<TemperatureTile> temperatureTiles = new ArrayList<>();
         private Button pause, stop, light;
         private ProgressBar progress;
         private ValueAnimator animator;
@@ -177,8 +186,7 @@ public final class BambuTile {
             progress=new ProgressBar(getContext(),null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));LinearLayout.LayoutParams progressParams=new LinearLayout.LayoutParams(-1,4);progressParams.setMargins(0,8,18,6);hero.addView(progress,progressParams);
             details=txt("Waiting for printer",12,muted,false);hero.addView(details);
             middle.addView(hero,new LinearLayout.LayoutParams(0,-2,1.15f));
-            temperatures=new LinearLayout(getContext());temperatures.setPadding(18,0,0,0);
-            nozzle=temperatureTile("NOZZLE",0xffffbc8c);bed=temperatureTile("BED",0xffe6d58f);chamber=temperatureTile("CHAMBER",0xffa4bdd1);
+            temperatures=new LinearLayout(getContext());temperatures.setOrientation(LinearLayout.VERTICAL);temperatures.setPadding(12,0,0,0);
             middle.addView(temperatures,new LinearLayout.LayoutParams(0,-2,1));body.addView(middle,new LinearLayout.LayoutParams(-1,0,1));
             controlHint=txt("",11,muted,false);body.addView(controlHint);
             actions=new LinearLayout(getContext());
@@ -190,7 +198,100 @@ public final class BambuTile {
             setOnKeyListener((v,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)close();return true;}return false;});
         }
         private TextView txt(String s,int size,int color,boolean bold){TextView v=new TextView(getContext());v.setText(s);v.setTextColor(color);v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,size);v.setSingleLine(true);v.setEllipsize(android.text.TextUtils.TruncateAt.END);if(bold)v.setTypeface(Typeface.create("sans-serif-medium",0));return v;}
-        private TextView temperatureTile(String title,int tint){LinearLayout tile=new LinearLayout(getContext());tile.setOrientation(1);tile.setGravity(Gravity.CENTER_VERTICAL);tile.setPadding(12,10,8,10);GradientDrawable bg=new GradientDrawable();bg.setColor(0x0bffffff);bg.setCornerRadius(18);bg.setStroke(1,0x10ffffff);tile.setBackground(bg);tile.addView(txt(title,9,tint,false));TextView reading=txt("—",to.width()<650?20:26,foreground,true);reading.setPadding(0,5,0,0);tile.addView(reading);LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,88,1);p.setMargins(0,0,6,0);temperatures.addView(tile,p);return reading;}
+        private final class TemperatureTile extends LinearLayout {
+            final TextView label, reading;
+
+            TemperatureTile(int tint, int rowHeight) {
+                super(WaterLayer.this.getContext());
+                setOrientation(VERTICAL);
+                setGravity(Gravity.CENTER);
+                setPadding(4, 0, 4, 0);
+                GradientDrawable background = new GradientDrawable();
+                background.setColor(0x0bffffff);
+                background.setCornerRadius(18);
+                background.setStroke(1, 0x10ffffff);
+                setBackground(background);
+
+                label = txt("", 11, tint, true);
+                label.setHorizontallyScrolling(false);
+                label.setGravity(Gravity.CENTER);
+                label.setAutoSizeTextTypeUniformWithConfiguration(8, 11, 1, android.util.TypedValue.COMPLEX_UNIT_PX);
+                addView(label, new LinearLayout.LayoutParams(-1, 15));
+
+                reading = txt("—", 26, foreground, true);
+                reading.setHorizontallyScrolling(false);
+                reading.setGravity(Gravity.CENTER);
+                reading.setAutoSizeTextTypeUniformWithConfiguration(12, 26, 1, android.util.TypedValue.COMPLEX_UNIT_PX);
+                addView(reading, new LinearLayout.LayoutParams(-1, Math.min(36, rowHeight - 15)));
+            }
+
+            void show(String title, String value) {
+                if (!title.contentEquals(label.getText())) label.setText(title);
+                if (!value.contentEquals(reading.getText())) reading.setText(value);
+            }
+        }
+
+        private void layoutTemperatures(int nozzleCount) {
+            int total = nozzleCount + 2;
+            if (temperatureTiles.size() == total) return;
+            temperatureTiles.clear();
+            temperatures.removeAllViews();
+
+            float weight = nozzleCount > 2 ? 2.5f : nozzleCount == 2 ? 1.45f : 1f;
+            LinearLayout.LayoutParams params = (LinearLayout.LayoutParams) temperatures.getLayoutParams();
+            params.weight = weight;
+            temperatures.setLayoutParams(params);
+            float width = (to.width() - body.getPaddingLeft() - body.getPaddingRight()) * weight / (1.15f + weight) - temperatures.getPaddingLeft();
+            int columns = Math.max((total + 2) / 3, (int) (width / 48));
+            int rows = (total + columns - 1) / columns;
+            int height = rows == 1 ? 88 : rows == 2 ? 51 : 39;
+
+            for (int rowIndex = 0; rowIndex < rows; rowIndex++) {
+                LinearLayout row = new LinearLayout(getContext());
+                LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, height);
+                if (rowIndex > 0) rowParams.topMargin = 4;
+                temperatures.addView(row, rowParams);
+                int remainingRows = rows - rowIndex;
+                int rowSize = (total - temperatureTiles.size() + remainingRows - 1) / remainingRows;
+                for (int column = 0; column < rowSize; column++) {
+                    int index = temperatureTiles.size();
+                    int tint = index < nozzleCount ? 0xffffbc8c : index == nozzleCount ? 0xffe6d58f : 0xffa4bdd1;
+                    TemperatureTile tile = new TemperatureTile(tint, height);
+                    LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(0, -1, 1);
+                    if (column > 0) tileParams.leftMargin = 4;
+                    row.addView(tile, tileParams);
+                    temperatureTiles.add(tile);
+                }
+            }
+        }
+
+        private void refreshTemperatures(JSONObject s, boolean live) {
+            ArrayList<String[]> nozzles = new ArrayList<>();
+            JSONArray readings = live ? s.optJSONArray("nozzle_readings") : null;
+            if (readings != null) {
+                for (int i = 0; i < Math.min(readings.length(), 16); i++) {
+                    JSONObject nozzle = readings.optJSONObject(i);
+                    if (nozzle != null && nozzle.has("tool")) {
+                        nozzles.add(new String[]{"NOZZLE T" + nozzle.optInt("tool"), temperature(nozzle, "temperature")});
+                    }
+                }
+            } else if (live) {
+                // Older Studio versions send a formatted summary, including an extra Â before °.
+                Matcher tools = TOOL_TEMPERATURE.matcher(s.optString("nozzles"));
+                while (nozzles.size() < 2 && tools.find()) {
+                    nozzles.add(new String[]{"NOZZLE " + tools.group(1), tools.group(2) + "°C"});
+                }
+            }
+            if (nozzles.isEmpty()) nozzles.add(new String[]{"NOZZLE", live ? temperature(s, "nozzle_temper") : "—"});
+
+            layoutTemperatures(nozzles.size());
+            for (int i = 0; i < nozzles.size(); i++) {
+                String[] nozzle = nozzles.get(i);
+                temperatureTiles.get(i).show(nozzle[0], nozzle[1]);
+            }
+            temperatureTiles.get(nozzles.size()).show("BED", live ? temperature(s, "bed_temper") : "—");
+            temperatureTiles.get(nozzles.size() + 1).show("CHAMBER", live ? temperature(s, "chamber_temper") : "—");
+        }
         private Button btn(String s,int color,Runnable action){Button b=new Button(getContext());b.setText(s);b.setTextColor(color);b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,13);b.setAllCaps(false);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(8,0,8,0);GradientDrawable d=new GradientDrawable();d.setColor(0x18ffffff);d.setCornerRadius(14);d.setStroke(1,0x16ffffff);b.setBackground(d);b.setOnClickListener(v->action.run());return b;}
         void refresh(){
             JSONObject s=snapshot(spec);name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
@@ -199,8 +300,7 @@ public final class BambuTile {
             String summary=spec.optBoolean("showRemaining",true)?metric(s,"remaining")+" left":"";
             if(spec.optBoolean("showLayers",true))summary+=(summary.isEmpty()?"":"  ·  ")+metric(s,"layers");details.setText(fresh(s)?summary:"Waiting for a live printer connection");
             temperatures.setVisibility(spec.optBoolean("showTemperatures",true)?VISIBLE:GONE);
-            String multi=s.optString("nozzles","");boolean multiple=fresh(s)&&!multi.isEmpty()&&!multi.equals("null");nozzle.setText(multiple?multi.replaceAll(" / [0-9]+°","°").replace("  ·  ","\n"):fresh(s)?s.optString("nozzle_temper","—")+"°":"—");nozzle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,multiple?13:to.width()<650?20:26);nozzle.setSingleLine(!multiple);nozzle.setMaxLines(multiple?2:1);
-            bed.setText(fresh(s)?s.optString("bed_temper","—")+"°":"—");chamber.setText(fresh(s)&&s.has("chamber_temper")?s.optString("chamber_temper")+"°":"—");
+            refreshTemperatures(s, fresh(s));
             String action=s.optString("gcode_state").equals("PAUSE")?"resume":"pause";pause.setText(action.equals("resume")?"▶  Resume":"Ⅱ  Pause");
             boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_"+(s.optString("light").equals("on")?"light_off":"light_on")));
             String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility(spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);

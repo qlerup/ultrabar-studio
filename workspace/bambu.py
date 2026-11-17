@@ -317,9 +317,11 @@ class Link:
             # Bound arbitrary printer strings before they reach Core's metrics file.
             data = {k: v[:256] if isinstance(v, str) else v for k, v in data.items() if not isinstance(v, float) or math.isfinite(v)}
             tools = self.state.data.get('tools', {})
-            summary = '  Â·  '.join(f'T{i} {v[0]} / {v[1]}Â°' for i, v in sorted(tools.items()) if len(tools) <= 2 or i == self.state.data.get('active_tool', 0))
+            ordered_tools = sorted(tools.items())
+            summary = '  ·  '.join(f'T{i} {v[0]} / {v[1]}°' for i, v in ordered_tools if len(tools) <= 2 or i == self.state.data.get('active_tool', 0))
             data.update(name=self.profile['name'], connection=self.status, detail=self.detail, fresh=fresh,
-                        controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(), nozzles=summary)
+                        controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(),
+                        nozzles=summary, nozzle_readings=[{'tool': tool, 'temperature': reading[0]} for tool, reading in ordered_tools])
             data['control_reason'] = ('Enable controls in Studio' if not self.profile['controls'] else
                                       'Waiting for live printer status' if not fresh else
                                       'Waiting for printer confirmation' if self.queued or self.pending else

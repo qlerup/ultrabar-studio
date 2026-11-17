@@ -286,8 +286,8 @@
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
     if(spec.kind==='bambu'){
-      const primary={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°'};
-      const secondary={remaining:'0h 47m remaining',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°',none:''};
+      const primary={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°C'};
+      const secondary={remaining:'0h 47m remaining',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°C',none:''};
       card.classList.add('bambu-preview');
       card.append(el('span','native-source','BAMBU LAB · SAMPLE PREVIEW'),el('span','native-value',primary[spec.primary||'progress']),el('span','native-detail',secondary[spec.secondary||'remaining']),bar(64),el('span','native-detail','Tap on Core to unfold · '+(spec.expandedSlots||3)+' slots'));
     }else if(spec.kind==='clock'){
