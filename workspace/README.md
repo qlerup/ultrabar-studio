@@ -1,4 +1,15 @@
-# UltraBar Studio — 0.49.0 Windows
+# UltraBar Studio — 0.49.1 Windows
+
+## 0.49.1 update
+
+The Core Bambu widget no longer shows the obsolete Setup button. Pause/resume and
+Stop are hidden when the printer does not allow print controls. The chamber light
+remains available independently of print-command signing when live light status
+and the Studio control permission allow it. A status hint explains locked controls.
+
+After updating Studio, use Save and Deploy to load the updated Core renderer.
+Pause/stop require compatible printer firmware and LAN Only + Developer Mode when
+reported by the printer; Studio does not change printer network modes.
 
 ## 0.49.0 update
 

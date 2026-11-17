@@ -243,17 +243,29 @@ class State:
             if isinstance(item, dict) and item.get('node') == 'chamber_light' and item.get('mode') in ('on', 'off'):
                 return item['mode']
 
+    def print_control_reason(self, now):
+        if not self.fresh(now):
+            return 'Waiting for live printer status'
+        try:
+            value = self.data.get('fun', '0')
+            flags = value if type(value) is int else int(value, 16) if isinstance(value, str) else None
+            if flags is None or flags < 0:
+                return 'Waiting for printer control status'
+            if flags & 0x20000000:
+                return 'Print controls need LAN Only + Developer Mode'
+        except ValueError:
+            return 'Waiting for printer control status'
+        if not self.state_at or now - self.state_at >= 30:
+            return 'Waiting for current print state'
+        return ''
+
     def allows(self, action, now):
         if not self.fresh(now):
             return False
-        try:
-            if int(str(self.data.get('fun', '0')), 16) & 0x20000000:
-                return False
-        except ValueError:
-            return False
+        # ledctrl is a system command; the signature flag restricts print commands.
         if action in ('light_on', 'light_off'):
             return self.light() is not None
-        if not self.state_at or now - self.state_at >= 30:
+        if self.print_control_reason(now):
             return False
         return self.data.get('gcode_state') in {'pause': ('RUNNING',), 'resume': ('PAUSE',), 'stop': ('RUNNING', 'PAUSE', 'PREPARE')}.get(action, ())
 
@@ -308,6 +320,11 @@ class Link:
             summary = '  Â·  '.join(f'T{i} {v[0]} / {v[1]}Â°' for i, v in sorted(tools.items()) if len(tools) <= 2 or i == self.state.data.get('active_tool', 0))
             data.update(name=self.profile['name'], connection=self.status, detail=self.detail, fresh=fresh,
                         controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(), nozzles=summary)
+            data['control_reason'] = ('Enable controls in Studio' if not self.profile['controls'] else
+                                      'Waiting for live printer status' if not fresh else
+                                      'Waiting for printer confirmation' if self.queued or self.pending else
+                                      self.state.print_control_reason(time.monotonic()))
+            data['print_controls_available'] = fresh and self.profile['controls'] and not self.state.print_control_reason(time.monotonic())
             for action in ACTIONS:
                 data['can_'+action] = fresh and self.profile['controls'] and not (self.queued or self.pending) and self.state.allows(action, time.monotonic())
             return data

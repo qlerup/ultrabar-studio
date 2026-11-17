@@ -20,7 +20,12 @@ The Bambu Android app is not required for these widgets.
    printer connection requires **Reconnect** in Manage printers.
 
 The PC needs LAN access to each printer on TLS MQTT port 8883. Compatible firmware
-may require LAN mode and Developer Mode for controls. Studio does not change
+may require LAN Only and Developer Mode for print controls. When the printer
+reports print-command signing is required, Core hides pause/resume and stop.
+Chamber-light commands are independent of that print-command flag. Core shows
+the light only with fresh known light state and enabled Studio controls. The old
+Core Setup button is removed; setup remains in Studio. After a Studio runtime
+update, use Save and Deploy to load the new Core renderer. Studio does not change
 printer modes. Cloud login, camera, uploads, job starts, heating and AMS operations
 are not implemented.
 

@@ -70,6 +70,41 @@ class ProtocolTests(unittest.TestCase):
         for value in (data['code'],data['serial'],data['host'],data['pin']):self.assertNotIn(value,snapshot)
         link.close();self.assertFalse(link.request('pause'))
 
+    def test_signed_print_mode_keeps_known_lights_available_and_hides_print_controls(self):
+        for flags in ('27FF1AFFF9CB7', 0x20000000):
+            with self.subTest(flags=flags):
+                data=profile();data['controls']=True;link=bambu.Link(data);link.connected=True
+                now=time.monotonic()
+                link.state.accept(dict(print=dict(command='push_status',gcode_state='RUNNING',fun=flags,lights_report=[dict(node='chamber_light',mode='on')])),now)
+                status=link.snapshot()
+                self.assertTrue(status['fresh']);self.assertTrue(status['can_light_off'])
+                self.assertFalse(status['can_pause']);self.assertFalse(status['can_stop'])
+                self.assertFalse(status['print_controls_available'])
+                self.assertIn('Developer Mode',status['control_reason'])
+                self.assertFalse(link.request('pause'));self.assertTrue(link.request('light_off'))
+                self.assertFalse(link.snapshot()['can_light_off']) # pending command gate still applies
+                link.close()
+
+    def test_developer_mode_state_and_enable_switch_are_separate_from_job_state(self):
+        data=profile();data['controls']=True;link=bambu.Link(data);link.connected=True
+        now=time.monotonic()
+        link.state.accept(dict(print=dict(command='push_status',gcode_state='IDLE',fun=0,lights_report=[dict(node='chamber_light',mode='off')])),now)
+        self.assertTrue(link.snapshot()['print_controls_available'])
+        self.assertFalse(link.snapshot()['can_pause']);self.assertTrue(link.snapshot()['can_light_on'])
+        data['controls']=False
+        self.assertFalse(link.snapshot()['print_controls_available']);self.assertFalse(link.snapshot()['can_light_on'])
+        self.assertEqual(link.snapshot()['control_reason'],'Enable controls in Studio')
+        link.close()
+
+    def test_unknown_lights_and_stale_state_do_not_enable_commands(self):
+        data=profile();data['controls']=True;link=bambu.Link(data);link.connected=True
+        now=time.monotonic()
+        link.state.accept(dict(print=dict(command='push_status',gcode_state='RUNNING',fun='0')),now)
+        self.assertFalse(link.snapshot()['can_light_on']);self.assertTrue(link.snapshot()['can_pause'])
+        link.state.report_at=now-31
+        self.assertFalse(link.snapshot()['print_controls_available']);self.assertFalse(link.request('pause'))
+        link.close()
+
 
 class PrinterTests(unittest.TestCase):
     def setUp(self):

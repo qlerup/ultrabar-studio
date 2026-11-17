@@ -5,18 +5,15 @@ import android.app.AlertDialog;
 import android.content.*;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
 import android.os.*;
 import android.provider.Settings;
 import android.view.*;
 import android.view.animation.LinearInterpolator;
 import android.widget.*;
 import org.json.*;
-import java.lang.ref.WeakReference;
 import java.util.ArrayList;
-import java.util.concurrent.Executors;
 
-/** Model-independent Core home tile. Credential ownership remains in the companion APK. */
+/** Model-independent Core home tile. Studio owns connections and credentials. */
 public final class BambuTile {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static volatile JSONObject printers = new JSONObject();
@@ -126,7 +123,7 @@ public final class BambuTile {
         private final Paint paint = new Paint(3); private final Path path = new Path();
         private final RectF from = new RectF(), to = new RectF(), current = new RectF();
         private final LinearLayout body, hero, temperatures, actions;
-        private TextView name, status, value, job, details, nozzle, bed, chamber;
+        private TextView name, status, value, job, details, nozzle, bed, chamber, controlHint;
         private Button pause, stop, light;
         private ProgressBar progress;
         private ValueAnimator animator;
@@ -183,13 +180,13 @@ public final class BambuTile {
             temperatures=new LinearLayout(getContext());temperatures.setPadding(18,0,0,0);
             nozzle=temperatureTile("NOZZLE",0xffffbc8c);bed=temperatureTile("BED",0xffe6d58f);chamber=temperatureTile("CHAMBER",0xffa4bdd1);
             middle.addView(temperatures,new LinearLayout.LayoutParams(0,-2,1));body.addView(middle,new LinearLayout.LayoutParams(-1,0,1));
+            controlHint=txt("",11,muted,false);body.addView(controlHint);
             actions=new LinearLayout(getContext());
             pause=btn("Ⅱ  Pause",accent,()->execute(getContext(),spec,snapshot(spec).optString("gcode_state").equals("PAUSE")?"resume":"pause"));
             stop=btn("■  Stop",0xffffa6ab,()->new AlertDialog.Builder(getContext()).setTitle("Stop this print?").setMessage("The current print will end and cannot be resumed.").setNegativeButton("Keep printing",null).setPositiveButton("Stop print",(d,w)->execute(getContext(),spec,"stop")).show());
             light=btn("◉  Light",foreground,()->execute(getContext(),spec,snapshot(spec).optString("light").equals("on")?"light_off":"light_on"));
             for(Button button:new Button[]{pause,stop,light}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,42,1);p.setMargins(0,0,6,0);actions.addView(button,p);}
-            Button setup=btn("Setup ↗",muted,()->{try{Intent i=new Intent();i.setClassName("dk.ultrabar.bambu","dk.ultrabar.bambu.MainActivity");getContext().startActivity(i);close();}catch(Exception e){Toast.makeText(getContext(),"Install Bambu from Store first",Toast.LENGTH_LONG).show();}});
-            actions.addView(setup,new LinearLayout.LayoutParams(96,42));body.addView(actions);refresh();
+            body.addView(actions);refresh();
             setOnKeyListener((v,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)close();return true;}return false;});
         }
         private TextView txt(String s,int size,int color,boolean bold){TextView v=new TextView(getContext());v.setText(s);v.setTextColor(color);v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,size);v.setSingleLine(true);v.setEllipsize(android.text.TextUtils.TruncateAt.END);if(bold)v.setTypeface(Typeface.create("sans-serif-medium",0));return v;}
@@ -205,8 +202,12 @@ public final class BambuTile {
             String multi=s.optString("nozzles","");boolean multiple=fresh(s)&&!multi.isEmpty()&&!multi.equals("null");nozzle.setText(multiple?multi.replaceAll(" / [0-9]+°","°").replace("  ·  ","\n"):fresh(s)?s.optString("nozzle_temper","—")+"°":"—");nozzle.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,multiple?13:to.width()<650?20:26);nozzle.setSingleLine(!multiple);nozzle.setMaxLines(multiple?2:1);
             bed.setText(fresh(s)?s.optString("bed_temper","—")+"°":"—");chamber.setText(fresh(s)&&s.has("chamber_temper")?s.optString("chamber_temper")+"°":"—");
             String action=s.optString("gcode_state").equals("PAUSE")?"resume":"pause";pause.setText(action.equals("resume")?"▶  Resume":"Ⅱ  Pause");
-            boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_light_on"));
-            for(Button b:new Button[]{pause,stop,light}){b.setVisibility(spec.optBoolean("showControls",true)?VISIBLE:GONE);b.setAlpha(b.isEnabled()?1:.55f);}
+            boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_"+(s.optString("light").equals("on")?"light_off":"light_on")));
+            String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility(spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);
+            boolean show=spec.optBoolean("showControls",true)&&s.optBoolean("controls")&&fresh(s);
+            pause.setVisibility(show&&s.optBoolean("print_controls_available")?VISIBLE:GONE);stop.setVisibility(pause.getVisibility());
+            String lightState=s.optString("light");light.setVisibility(show&&(lightState.equals("on")||lightState.equals("off"))?VISIBLE:GONE);
+            for(Button b:new Button[]{pause,stop,light})b.setAlpha(b.isEnabled()?1:.55f);
         }
         void open(){requestFocus();if(sourceItem!=null)sourceItem.setAlpha(0);animateTo(true);}
         void close(){if(closing)return;closing=true;animateTo(false);}
