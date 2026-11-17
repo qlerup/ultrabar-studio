@@ -133,6 +133,7 @@ public final class BambuTile {
         private final LinearLayout body, hero, temperatures, actions;
         private TextView name, status, value, job, details, controlHint;
         private final ArrayList<TemperatureTile> temperatureTiles = new ArrayList<>();
+        private boolean shortToolLabels;
         private Button pause, stop, light;
         private ProgressBar progress;
         private ValueAnimator animator;
@@ -244,6 +245,8 @@ public final class BambuTile {
             float width = (to.width() - body.getPaddingLeft() - body.getPaddingRight()) * weight / (1.15f + weight) - temperatures.getPaddingLeft();
             int columns = Math.max((total + 2) / 3, (int) (width / 48));
             int rows = (total + columns - 1) / columns;
+            int largestRow = (total + rows - 1) / rows;
+            shortToolLabels = width / largestRow - 4 < 60;
             int height = rows == 1 ? 88 : rows == 2 ? 51 : 39;
 
             for (int rowIndex = 0; rowIndex < rows; rowIndex++) {
@@ -287,7 +290,8 @@ public final class BambuTile {
             layoutTemperatures(nozzles.size());
             for (int i = 0; i < nozzles.size(); i++) {
                 String[] nozzle = nozzles.get(i);
-                temperatureTiles.get(i).show(nozzle[0], nozzle[1]);
+                String title = shortToolLabels && nozzle[0].startsWith("NOZZLE T") ? nozzle[0].substring(7) : nozzle[0];
+                temperatureTiles.get(i).show(title, nozzle[1]);
             }
             temperatureTiles.get(nozzles.size()).show("BED", live ? temperature(s, "bed_temper") : "—");
             temperatureTiles.get(nozzles.size() + 1).show("CHAMBER", live ? temperature(s, "chamber_temper") : "—");

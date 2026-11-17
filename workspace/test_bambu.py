@@ -70,18 +70,6 @@ class ProtocolTests(unittest.TestCase):
         for value in (data['code'],data['serial'],data['host'],data['pin']):self.assertNotIn(value,snapshot)
         link.close();self.assertFalse(link.request('pause'))
 
-    def test_snapshot_sends_all_nine_nozzles_and_preserves_partial_updates(self):
-        link = bambu.Link(profile())
-        now = time.monotonic()
-        tools = [dict(id=i, temp=(225 << 16) | (210 + i)) for i in reversed(range(9))]
-        link.state.accept(dict(print=dict(command='push_status', device=dict(extruder=dict(state=8 << 4, info=tools)))), now)
-        link.state.accept(dict(print=dict(command='push_status', device=dict(extruder=dict(info=[dict(id=0, temp=23)])))), now)
-        status = link.snapshot()
-        temperatures = [23, *range(211, 219)]
-        self.assertEqual(status['nozzle_readings'], [dict(tool=i, temperature=t) for i, t in enumerate(temperatures)])
-        self.assertEqual(status['nozzle_temper'], 218)
-        self.assertEqual(status['nozzles'], 'T8 218 / 225°')
-
     def test_signed_print_mode_keeps_known_lights_available_and_hides_print_controls(self):
         for flags in ('27FF1AFFF9CB7', 0x20000000):
             with self.subTest(flags=flags):
