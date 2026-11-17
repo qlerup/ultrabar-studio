@@ -1,0 +1,83 @@
+"""Package-scoped operations for trusted Studio connection providers."""
+from flask import jsonify, request
+import bambu
+import studio_contract
+from editor import EditError
+
+
+OPERATIONS = {'list', 'discover', 'probe', 'save', 'remove', 'reconnect'}
+
+
+class BambuLan:
+    """Keeps printer protocol, certificate approval and private storage authoritative."""
+    def __init__(self, server):
+        self.manager = server.bambu
+
+    def invoke(self, operation, body):
+        if operation == 'list':
+            return dict(items=self.manager.listing())
+        if operation == 'discover':
+            if body:
+                raise EditError('Discovery does not accept connection parameters.')
+            return dict(items=bambu.discover())
+        if operation == 'probe':
+            if set(body) != {'host'}:
+                raise EditError('Choose a local device address to test.')
+            host = bambu.private_host(body['host'])
+            try:
+                stream, pin = bambu.tls(host)
+                stream.close()
+                return dict(pin=pin)
+            except (OSError, ValueError) as exc:
+                raise EditError('Could not read the device certificate. Check its IP, LAN mode and network access from this PC.') from exc
+        if operation == 'save':
+            key = self.manager.save(body)
+            return dict(id=key, items=self.manager.listing())
+        if set(body) != {'id'} or not isinstance(body['id'], str):
+            raise EditError('Choose a saved connection.')
+        key = body['id']
+        if operation == 'remove':
+            self.manager.remove(key)
+        elif operation == 'reconnect':
+            with self.manager.lock:
+                profile = next((p for p in self.manager.read() if p['id'] == key), None)
+                if profile is None:
+                    raise EditError('Unknown connection.')
+                if key in self.manager.links:
+                    self.manager.links.pop(key).close()
+                link = self.manager.links[key] = bambu.Link(profile)
+                link.start()
+        return dict(items=self.manager.listing())
+
+
+# Only compiled-in adapters may execute operations. App packages supply UI data.
+PROVIDERS = {'bambu-lan': BambuLan}
+
+
+def descriptor(server, package, widget):
+    with server.store.lock:
+        records = server.store.records()
+        record = next((p for p in records.values() if p.get('id') == package and (p.get('type') in ('corebar-widget', 'studio-plugin') or p.get('bundledWidgets'))), None)
+        template = next((w for w in record.get('widgets', []) if w.get('id') == widget), None) if record else None
+        if template is None:
+            raise EditError('This app widget is no longer installed. Reinstall it before managing its connections.')
+        try:
+            panel = studio_contract.resolve(template)
+        except ValueError as exc:
+            raise EditError('The app connection descriptor is invalid. Update or reinstall the app.') from exc
+        connection = panel.get('connection') if panel else None
+        if not connection or connection['provider'] not in PROVIDERS:
+            raise EditError('This app widget does not provide a supported connection panel.')
+        return connection
+
+
+def register(server):
+    @server.app.route('/api/studio/integrations/<package>/<widget>/<operation>', methods=['GET', 'POST'])
+    def integration_operation(package, widget, operation):
+        if operation not in OPERATIONS or (request.method == 'GET') != (operation == 'list'):
+            raise EditError('Unsupported app connection operation.')
+        connection = descriptor(server, package, widget)
+        body = {} if request.method == 'GET' else request.get_json(silent=True)
+        if not isinstance(body, dict):
+            raise EditError('App connection parameters must be an object.')
+        return jsonify(PROVIDERS[connection['provider']](server).invoke(operation, body))

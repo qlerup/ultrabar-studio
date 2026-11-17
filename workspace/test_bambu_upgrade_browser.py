@@ -51,8 +51,8 @@ class BambuUpgradeBrowserTests(unittest.TestCase):
             expect(card).to_contain_text('In library: 2.0.1')
             page.locator('#nav-editor').click();page.locator('#mode-layout').click()
             placed=page.locator('#core-canvas .canvas-widget').filter(has_text='My workshop printer');expect(placed).to_have_count(1);placed.click()
-            expect(page.locator('#bambu-primary')).to_have_value('remaining');expect(page.locator('#bambu-expandedSlots')).to_have_value('5')
-            expect(page.locator('#bambu-showControls')).not_to_be_checked()
+            expect(page.locator('#widget-setting-primary')).to_have_value('remaining');expect(page.locator('#widget-setting-expandedSlots')).to_have_value('5')
+            expect(page.locator('#widget-setting-showControls')).not_to_be_checked()
             expect(page.locator('#background-apps button')).to_have_count(0)
             page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')
             saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']

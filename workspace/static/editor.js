@@ -8,7 +8,8 @@
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const pcWidgetForms=new Map();
   const appSettingsDefs=new Map();
-  let bambuPrinters=[];
+  const studioBindings=new Map();
+  const packageUI=window.studioPackageUI.create({api,onConnectionsChange:()=>{if(draft)renderProperties();},onError:text=>message(text,true)});
   const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
@@ -41,7 +42,7 @@
       draft=data.draft;dirty=false;history=[];profileIndex=Math.min(selectedProfile,draft.profiles.length-1);widgetIndex=0;
       message(data.conflict?'Core settings have changed since this draft was created. Use Draft & recovery tools to reload before deploying.':'Changes stay in your draft until you deploy.',data.conflict);
       renderEditor();
-      await Promise.allSettled([loadCatalog(),refreshPc(),loadStorePresets(),loadBambuPrinters()]);
+      await Promise.allSettled([loadCatalog(),refreshPc(),loadStorePresets()]);
     }catch(error){message(error.message,true);}
     finally{working=false;updateControls();}
   }
@@ -64,6 +65,8 @@
     try{
       const data=await(await api('/api/store/installed')).json();
       appSettingsDefs.clear();for(const p of data.installed||[])if(p.settings&&p.android?.packageId)appSettingsDefs.set(p.android.packageId,{name:p.name,schema:p.settings});
+      studioBindings.clear();
+      for(const widget of data.widgets||[]){const descriptor=widget._studio||widget.studio;if(descriptor)studioBindings.set(widget._storePackage+':'+widget.id,{packageId:widget._storePackage,widgetKey:widget.id,kind:widget.kind,kindOptions:widget.kindOptions,descriptor});}
       storeIconByPackage.clear();storeIconByApp.clear();
       for(const p of data.installed||[]){if(/^[a-f0-9]{64}$/.test(p.icon?.sha256||'')){storeIconByPackage.set(p.id,p.icon.sha256);if(p.android?.packageId)storeIconByApp.set(p.android.packageId,p.icon.sha256);}}
       storePresets=(data.widgets||[]).map((w,i)=>{
@@ -72,8 +75,8 @@
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
         if(w._bundledApp&&w.kind!=='bambu'){t._bundledApp=clone(w._bundledApp);nativeSpec(t).companionApp=w._bundledApp.id;}
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
-        if(w.kind==='bambu')for(const key of ['primary','secondary','expandedSlots','showJob','showTemperatures','showLayers','showRemaining','showControls','liquidMotion'])if(w[key]!==undefined)nativeSpec(t)[key]=w[key];
-        if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:w.hourFormat||'24',showSeconds:w.showSeconds??true,showDate:w.showDate??true});}
+        for(const field of (w._studio||w.studio)?.settings?.fields||[])nativeSpec(t)[field.key]=w[field.key]??field.default;
+        if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:nativeSpec(t).hourFormat??w.hourFormat??'24',showSeconds:nativeSpec(t).showSeconds??w.showSeconds??true,showDate:nativeSpec(t).showDate??w.showDate??true});}
         else if(nativeSpec(t))Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion});
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
@@ -226,86 +229,17 @@
     $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
     draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
   }
-  async function loadBambuPrinters(){
-    try{const data=await (await api('/api/bambu/printers')).json();bambuPrinters=data.printers||[];if(draft)renderProperties();}
-    catch(error){message('Could not load printers. '+error.message,true);}
+  function studioBinding(spec){
+    return studioBindings.get(spec.packageId+':'+spec.widgetKey)||[...studioBindings.values()].find(b=>b.packageId===spec.packageId&&(b.kind===spec.kind||b.kindOptions?.includes(spec.kind)));
   }
-  function renderPrinterPicker(panel,spec){
-    const wrap=el('label','property-field','Printer'),select=el('select');select.id='bambu-printerId';
-    option(select,'','Choose a printer');
-    for(const printer of bambuPrinters)option(select,printer.id,printer.name);
-    if(spec.printerId&&!bambuPrinters.some(p=>p.id===spec.printerId))option(select,spec.printerId,'Unavailable printer - choose another');
-    select.value=spec.printerId||'';select.onchange=()=>change(()=>spec.printerId=select.value);wrap.append(select);
-    const manage=button('Manage printers',()=>managePrinters());manage.id='bambu-manage';
-    panel.append(wrap,manage,el('p','muted','Each widget can follow a different printer. Studio must stay running for live data.'));
-  }
-  function managePrinters(){
-    const dialog=el('dialog','bambu-dialog');dialog.id='bambu-connections';
-    const heading=el('div','bambu-dialog-heading'),close=button('Close',()=>dialog.close());
-    heading.append(el('h3','','Bambu printers'),close);
-    const notice=el('p','muted');notice.setAttribute('role','status');
-    const list=el('div','bambu-printer-list'),form=el('form','bambu-printer-form');form.id='bambu-printer-form';
-    dialog.append(heading,el('p','muted','Connect printers from this PC. Access codes are protected by your Windows account and are never sent to Core.'),notice,list,form);
-    let editing=null,pending=null,saving=false;
-    const error=text=>{notice.textContent=text;notice.classList.add('error');};
-    const refresh=async()=>{const data=await (await api('/api/bambu/printers')).json();bambuPrinters=data.printers||[];renderList();renderProperties();};
-    function renderList(){
-      list.replaceChildren();
-      if(!bambuPrinters.length)list.append(el('p','muted','No printers yet. Add your first printer below.'));
-      for(const printer of bambuPrinters){
-        const row=el('section','bambu-printer-row');row.append(el('strong','',printer.name),el('p','muted',printer.host+' · '+(printer.status?.connection||'Not connected')));
-        const actions=el('div','property-moves');
-        actions.append(button('Edit',()=>edit(printer)),button('Reconnect',async()=>{
-          try{await api('/api/bambu/printers/'+printer.id+'/reconnect',{method:'POST',body:'{}'});await refresh();notice.textContent='Connecting. Refresh status to check live readings.';}
-          catch(e){error(e.message);}
-        }),button('Remove',async()=>{
-          if(!confirm('Remove '+printer.name+'? Widgets using this printer will need another printer selected.'))return;
-          try{await api('/api/bambu/printers/'+printer.id+'/remove',{method:'POST',body:'{}'});if(editing?.id===printer.id)edit(null);await refresh();}
-          catch(e){error(e.message);}
-        },'danger-quiet'));row.append(actions);list.append(row);
-      }
-      list.append(button('Add printer',()=>edit(null)),button('Refresh status',async()=>{try{await refresh();}catch(e){error(e.message);}}));
-    }
-    function edit(printer){
-      if(saving)return;editing=printer;pending=null;notice.textContent='';notice.classList.remove('error');form.replaceChildren(el('h4','',printer?'Edit printer':'Add printer'));
-      const inputs={};
-      for(const [key,label,value,type] of [['name','Printer name',printer?.name||'','text'],['host','Printer IP address',printer?.host||'','text'],['serial','Printer serial number',printer?.serial||'','text'],['code',printer?'LAN access code (leave blank to keep it)':'8-character LAN access code','','password']]){
-        const wrap=el('label','property-field',label),input=el('input');input.id='bambu-connection-'+key;input.type=type;input.value=value;input.required=key!=='code'||!printer;input.autocomplete='off';input.maxLength=key==='code'?8:key==='serial'?32:48;wrap.append(input);form.append(wrap);inputs[key]=input;
-      }
-      const controlWrap=el('label','property-field','Enable pause, resume, stop and light'),controls=el('input');controls.type='checkbox';controls.id='bambu-connection-controls';controls.checked=!!printer?.controls;controlWrap.append(controls);form.append(controlWrap);
-      form.append(el('p','muted','Find the IP, serial and LAN access code in the printer network settings. The PC and printer need LAN access. Some firmware requires Developer Mode for controls.'));
-      const results=el('div','bambu-search-results'),search=button('Search local network',async()=>{
-        search.disabled=true;search.textContent='Searching…';results.replaceChildren();
-        try{
-          const data=await (await api('/api/bambu/discover',{method:'POST',body:'{}'})).json();
-          if(!data.printers?.length)results.append(el('p','muted','No printers found. Enter the IP and serial manually; multicast may be blocked on this network.'));
-          for(const found of data.printers||[])results.append(button(found.name+' · '+found.host,()=>{
-            inputs.host.value=found.host;inputs.serial.value=found.serial;if(!inputs.name.value)inputs.name.value=found.name;
-            pending=null;approval.hidden=true;submit.textContent='Check connection';results.replaceChildren();
-          }));
-        }catch(e){error(e.message);}finally{search.disabled=false;search.textContent='Search local network';}
-      });form.append(search,results);
-      const approval=el('section','bambu-certificate');approval.hidden=true;
-      const submit=el('button','primary','Check connection');submit.type='submit';
-      form.append(approval,submit);
-      for(const input of [...Object.values(inputs),controls])input.addEventListener('input',()=>{pending=null;approval.hidden=true;submit.textContent='Check connection';});
-      form.onsubmit=async event=>{
-        event.preventDefault();if(saving)return;saving=true;submit.disabled=true;notice.textContent='';notice.classList.remove('error');
-        const candidate=Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,k==='code'?v.value:v.value.trim()]));candidate.controls=controls.checked;if(editing)candidate.id=editing.id;
-        search.disabled=true;for(const input of [...Object.values(inputs),controls])input.disabled=true;
-        try{
-          if(!pending){
-            const result=await (await api('/api/bambu/probe',{method:'POST',body:JSON.stringify({host:candidate.host})})).json();
-            pending={...candidate,pin:result.pin};approval.replaceChildren(el('strong','','Approve printer certificate'),el('p','muted','No access code has been sent. Compare this SHA-256 fingerprint with a trusted connection to your printer before approving.'),el('code','bambu-fingerprint',result.pin));approval.hidden=false;submit.textContent='Trust certificate & save';
-          }else{
-            const result=await (await api('/api/bambu/printers',{method:'POST',body:JSON.stringify(pending)})).json();
-            inputs.code.value='';pending=null;bambuPrinters=result.printers||[];renderList();renderProperties();notice.textContent='Printer saved. Choose it for a widget, then Save and Deploy.';saving=false;edit(null);notice.textContent='Printer saved. Choose it for a widget, then Save and Deploy.';
-          }
-        }catch(e){error(e.message);}
-        finally{saving=false;submit.disabled=false;search.disabled=false;for(const input of [...Object.values(inputs),controls])input.disabled=false;}
-      };
-    }
-    renderList();edit(null);document.body.append(dialog);dialog.addEventListener('close',()=>{pending=null;form.replaceChildren();dialog.remove();renderProperties();});dialog.showModal();
+  function renderPackageSettings(panel,spec){
+    const binding=studioBinding(spec);
+    if(!binding){panel.append(el('p','muted','Install this widget package to load its settings.'));return;}
+    const descriptor=binding.descriptor;
+    const update=(key,value)=>change(()=>{spec[key]=value;if(descriptor.sources?.[key]==='pc.drives')delete spec.drives;});
+    if(descriptor.connection)packageUI.picker(panel,binding,spec,update);
+    if(descriptor.settings)window.studioPackageUI.fields(panel,descriptor.settings,spec,update,{sources:descriptor.sources,metrics:pcMetrics,prefix:'widget-setting'});
+    if(descriptor.help)panel.append(el('p','muted',descriptor.help));
   }
   function renderBackgroundProperties(panel){
     const app=draft.background_apps[backgroundIndex];if(!app)return;
@@ -329,18 +263,9 @@
     if(packageId===screenSyncId&&legacy)for(const key of Object.keys(defaults))if(Object.hasOwn(legacy,key))defaults[key]=legacy[key];
     const values={...defaults,...draft.app_settings?.[packageId]};
     section.append(el('p','muted',draft.app_settings?.[packageId]?'Saved in this draft. Settings apply to this app across all profiles after Deploy.':'Defaults are shown. Read from Core to load the app’s current settings before editing.'));
-    for(const field of definition.schema.fields){
-      const wrap=el('label','property-field'+(field.type==='boolean'?' app-setting-toggle':''),field.label),input=el(field.type==='choice'?'select':'input');input.dataset.appSetting=field.key;
-      if(field.type==='choice'){for(const choice of field.options)option(input,choice.value,choice.label);input.value=values[field.key];}
-      else if(field.type==='boolean'){input.type='checkbox';input.checked=values[field.key];}
-      else{input.type=['integer','number'].includes(field.type)?'number':field.type==='url'?'url':'text';input.value=values[field.key];if(field.maxLength)input.maxLength=field.maxLength;if(field.min!=null){input.min=field.min;input.max=field.max;input.step=field.step;}}
-      input.onchange=()=>{
-        if(!input.checkValidity()){input.reportValidity();return;}
-        const value=field.type==='boolean'?input.checked:['integer','number'].includes(field.type)?Number(input.value):input.value;
-        change(()=>{draft.app_settings??={};draft.app_settings[packageId]={...values,[field.key]:value};});
-      };
-      wrap.append(input);if(field.help)wrap.append(el('small','muted',field.help));section.append(wrap);
-    }
+    window.studioPackageUI.fields(section,definition.schema,values,(key,value)=>{
+      change(()=>{draft.app_settings??={};draft.app_settings[packageId]={...values,[key]:value};});
+    },{prefix:'app-setting'});
     const read=button('Read settings from Core',()=>operation(async()=>{
       const device=draft.device_id;
       const data=await(await api('/api/editor/app-settings/read',{method:'POST',body:JSON.stringify({device_id:device,package:packageId})})).json();
@@ -512,41 +437,8 @@
     if(spec){
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
-      if(spec.kind==='clock'){
-        const wrap=el('label','property-field','Time format'),select=el('select');select.id='widget-hour-format';option(select,'24','24 hours');option(select,'12','12 hours');select.value=spec.hourFormat||'24';select.onchange=()=>change(()=>spec.hourFormat=select.value);wrap.append(select);panel.append(wrap);
-        for(const [key,label] of [['showSeconds','Show seconds'],['showDate','Show date']]){const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='widget-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);}
-      }
-      if(spec.kind==='bambu'){
-        renderPrinterPicker(panel,spec);
-        for(const [key,label,choices] of [
-          ['primary','Main reading',[['progress','Print progress'],['state','Printer status'],['remaining','Time remaining'],['temperature','Nozzle temperature']]],
-          ['secondary','Secondary reading',[['remaining','Time remaining'],['state','Printer status'],['job','Job name'],['layers','Layer count'],['temperature','Nozzle temperature'],['none','None']]],
-          ['expandedSlots','Size when unfolded',[[2,'2 slots'],[3,'3 slots'],[4,'4 slots'],[5,'5 slots']]]
-        ]){
-          const wrap=el('label','property-field',label),select=el('select');select.id='bambu-'+key;
-          for(const [value,title] of choices)option(select,String(value),title);
-          select.value=String(spec[key]??({primary:'progress',secondary:'remaining',expandedSlots:3}[key]));
-          select.onchange=()=>change(()=>spec[key]=key==='expandedSlots'?Number(select.value):select.value);wrap.append(select);panel.append(wrap);
-        }
-        for(const [key,label] of [['showJob','Job name'],['showTemperatures','Temperatures'],['showLayers','Layer count'],['showRemaining','Time remaining'],['showControls','Printer controls'],['liquidMotion','Liquid unfold animation']]){
-          const wrap=el('label','property-field',label),input=el('input');input.type='checkbox';input.id='bambu-'+key;input.checked=spec[key]!==false;input.onchange=()=>change(()=>spec[key]=input.checked);wrap.append(input);panel.append(wrap);
-        }
-        panel.append(el('p','muted','Display preferences apply to this widget. Printer connections and access codes stay on this PC. Enable controls in Manage printers. Unfolding moves neighboring cards, then restores them on close.'));
-      }
-      if(spec.kindOptions?.length){
-        const wrap=el('label','property-field','Show'),select=el('select');select.id='widget-kind';
-        const labels={cpu:'CPU usage',memory:'RAM usage',gpu:'GPU usage'};
-        for(const kind of spec.kindOptions)option(select,kind,labels[kind]||kind);
-        select.value=spec.kind;select.onchange=()=>change(()=>{spec.kind=select.value;});wrap.append(select);panel.append(wrap);
-      }
-      if(spec.kind==='disk'){
-        const wrap=el('label','property-field','Drive'),select=el('select');select.id='widget-drive';option(select,'all','All drives (2 at a time)');
-        const drives=new Set((pcMetrics.disks||[]).map(d=>d.name));if(spec.drive!=='all')drives.add(spec.drive);
-        for(const drive of drives)option(select,drive,drive.slice(0,2));select.value=spec.drive;
-        select.onchange=()=>change(()=>{spec.drive=select.value;delete spec.drives;});wrap.append(select);panel.append(wrap);
-        if(spec.drive==='all')panel.append(el('p','muted','Shows two drives at a time. With more than two drives, the card switches to the next pair every 6 seconds.'));
-      }
-      panel.append(el('p','muted',spec.kind==='bambu'?'Add your printer in Studio and select it above. Preview shows sample data. Save and Deploy to show live readings. Keep Studio running on this PC, just like CPU and drive widgets.':spec.kind==='clock'?'Deploy to show this clock on Core. Uses Core time and locale; preview uses PC time. Keep Studio connected to restore the widget after Core restarts.':'Preview your colors here, then deploy to Core. Keep Studio connected for live readings.'));
+      renderPackageSettings(panel,spec);
+      panel.append(el('p','muted','Preview shows sample data. Save and Deploy to show this widget on Core. Keep Studio running for live PC data.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
     if(shortcut)renderPcWidgetSettings(w,panel);
     if(w.type==='APPS')renderAppSettings(w.id,panel);

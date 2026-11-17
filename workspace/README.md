@@ -1,4 +1,13 @@
-# UltraBar Studio — 0.48.3 Windows
+# UltraBar Studio — 0.49.0 Windows
+
+## 0.49.0 update
+
+Native app packages can own their settings fields, help and connection panels.
+Studio renders the reviewed data through a shared UI and trusted provider API.
+Bambu connections now update automatically while their manager is open, preserving
+form input and focus. Clock, monitor and drive settings use the same renderer.
+Existing packages retain compatible controls; Android app settings keep API 1.
+See [app-owned panels](../docs/STUDIO-PANELS.md) for the contributor contract.
 
 ## 0.48.3 update
 

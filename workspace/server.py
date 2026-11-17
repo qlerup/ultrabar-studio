@@ -359,6 +359,8 @@ import app_settings
 app_settings.register(sys.modules[__name__])
 import bambu
 bambu.register(sys.modules[__name__])
+import studio_integrations
+studio_integrations.register(sys.modules[__name__])
 
 if __name__ == '__main__':
     from waitress import serve

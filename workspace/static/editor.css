@@ -30,13 +30,13 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .clock-face{display:grid;gap:6px}.clock-time{font-size:64px;font-weight:500;letter-spacing:-3px}.clock-date{font-size:17px;color:#d4e5dd}
 @media(max-width:750px){#layout-editor{grid-template-columns:minmax(0,1fr)}#layout-editor>.builder-properties,#layout-editor>.builder-library{grid-column:1}.core-scroll-controls{gap:8px}#widget-library{grid-template-columns:repeat(2,minmax(0,1fr))}}
 
-.bambu-dialog{width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;border:1px solid #42534e;border-radius:16px;background:#17211f;color:#eef6f2;padding:24px}
-.bambu-dialog::backdrop{background:#0009}
-.bambu-dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
-.bambu-printer-row{padding:16px 0;border-bottom:1px solid #42534e}
-.bambu-printer-row p{margin:6px 0}
-.bambu-printer-list>.property-moves,.bambu-printer-form{margin-top:20px}
-.bambu-printer-form .property-field{margin:12px 0}
-.bambu-printer-form input:not([type=checkbox]){width:100%;box-sizing:border-box}
-.bambu-certificate{border:1px solid #86e4c3;border-radius:8px;padding:16px;margin:16px 0}
-.bambu-fingerprint{display:block;overflow-wrap:anywhere;font-size:13px}
+.studio-connections-dialog{width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;border:1px solid #42534e;border-radius:16px;background:#17211f;color:#eef6f2;padding:24px}
+.studio-connections-dialog::backdrop{background:#0009}
+.studio-connections-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
+.studio-connection-row{padding:16px 0;border-bottom:1px solid #42534e}
+.studio-connection-row p{margin:6px 0}
+.studio-connection-list>.property-moves,.studio-connection-form{margin-top:20px}
+.studio-connection-form .property-field{margin:12px 0}
+.studio-connection-form input:not([type=checkbox]){width:100%;box-sizing:border-box}
+.studio-certificate{border:1px solid #86e4c3;border-radius:8px;padding:16px;margin:16px 0}
+.studio-fingerprint{display:block;overflow-wrap:anywhere;font-size:13px}

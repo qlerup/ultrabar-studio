@@ -5,6 +5,7 @@ from unittest.mock import patch
 from werkzeug.serving import make_server
 from playwright.sync_api import sync_playwright, expect
 import server
+from studio_contract import legacy_descriptor
 
 class DesignTests(unittest.TestCase):
  def test_workspace_at_window_sizes(self):
@@ -28,12 +29,12 @@ class DesignTests(unittest.TestCase):
       browser=pw.chromium.launch(channel='msedge');page=browser.new_page()
       page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=False,current_version=server.updates.VERSION,latest_version=server.updates.VERSION)))
       errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
-      page.route('**/api/preferences',lambda r:r.fulfill(json=dict(target=snapshot['target'],setup_seen=True)))
+      page.route('**/api/preferences',lambda r:r.fulfill(json=dict(target='',setup_seen=True)))
       page.route('**/api/connect',lambda r:r.fulfill(json=snapshot))
       page.route('**/api/hardware',lambda r:r.fulfill(json=dict(target=snapshot['target'],hardware=snapshot['hardware'])))
       page.route('**/api/screen*',lambda r:r.fulfill(status=502,json=dict(error='Preview unavailable in offline test')))
       page.route('**/api/cube-previews',lambda r:r.fulfill(json=dict(previews={})))
-      page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[dict(id='studio.clock',icon=dict(sha256='a'*64)),dict(id='studio.drive.widget',icon=dict(sha256='b'*64)),dict(id='studio.system.widget',icon=dict(sha256='c'*64))],widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True),dict(id='drive-usage',name='Drive usage',kind='disk',_widgetPackage=True,_storePackage='studio.drive.widget',_storeVersion='1.0.0'),dict(id='system-monitor',name='System Monitor',kind='cpu',kindOptions=['cpu','memory','gpu'],_widgetPackage=True,_storePackage='studio.system.widget',_storeVersion='1.0.0')])))
+      page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[dict(id='studio.clock',icon=dict(sha256='a'*64)),dict(id='studio.drive.widget',icon=dict(sha256='b'*64)),dict(id='studio.system.widget',icon=dict(sha256='c'*64))],widgets=[dict(id='clock',name='Store Clock',kind='clock',_widgetPackage=True,_storePackage='studio.clock',_storeVersion='1.0.0',hourFormat='24',showSeconds=True,showDate=True,_studio=legacy_descriptor(dict(kind='clock'))),dict(id='drive-usage',name='Drive usage',kind='disk',_widgetPackage=True,_storePackage='studio.drive.widget',_storeVersion='1.0.0',_studio=legacy_descriptor(dict(kind='disk'))),dict(id='system-monitor',name='System Monitor',kind='cpu',kindOptions=['cpu','memory','gpu'],_widgetPackage=True,_storePackage='studio.system.widget',_storeVersion='1.0.0',_studio=legacy_descriptor(dict(kind='cpu',kindOptions=['cpu','memory','gpu'])))])))
       page.route('**/api/editor/icons/**',lambda r:r.fulfill(content_type='image/png',body=screen_image))
       page.route('**/api/store/icons/*',lambda r:r.fulfill(status=502,json=dict(error='Offline icon')) if r.request.url.endswith('c'*64) else r.fulfill(content_type='image/png',body=screen_image))
       builtins=[('com.ultrabar.calculator','Calculator'),('com.ultrabar.alarmclock','Alarmclock'),('com.aiks.leisuregame','Space Dodger'),('com.aiks.aurorasniper','AuroraSniper'),('com.ultrabar.whitenoise','White Noise'),('com.stellarring.screensaver','StellarRing'),('com.flip.screensaver','ScreensaverFlip')]
@@ -162,20 +163,20 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('#background-apps button')).to_have_count(before_background)
       page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).drag_to(page.locator('#core-screen'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+1)
-      expect(page.locator('#widget-kind')).to_have_value('cpu')
-      page.locator('#widget-kind').select_option('memory')
-      expect(page.locator('#widget-kind')).to_have_value('memory')
+      expect(page.locator('#widget-setting-kind')).to_have_value('cpu')
+      page.locator('#widget-setting-kind').select_option('memory')
+      expect(page.locator('#widget-setting-kind')).to_have_value('memory')
       page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).drag_to(page.locator('#core-canvas'))
-      expect(page.locator('#widget-kind')).to_have_value('cpu')
-      page.locator('#widget-kind').select_option('gpu')
+      expect(page.locator('#widget-setting-kind')).to_have_value('cpu')
+      page.locator('#widget-setting-kind').select_option('gpu')
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+2)
       page.wait_for_timeout(450)
       page.locator('details[data-group="store"]').get_by_role('button',name='Store Clock',exact=True).drag_to(page.locator('#core-canvas'))
-      expect(page.locator('#widget-hour-format')).to_have_value('24')
-      page.locator('#widget-hour-format').select_option('12')
-      page.locator('#widget-showSeconds').uncheck()
-      page.locator('#widget-showDate').uncheck()
-      expect(page.locator('#widget-hour-format')).to_have_value('12')
+      expect(page.locator('#widget-setting-hourFormat')).to_have_value('24')
+      page.locator('#widget-setting-hourFormat').select_option('12')
+      page.locator('#widget-setting-showSeconds').uncheck()
+      page.locator('#widget-setting-showDate').uncheck()
+      expect(page.locator('#widget-setting-hourFormat')).to_have_value('12')
       expect(page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True)).to_have_count(1)
       expect(page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True)).to_have_count(1)
       page.wait_for_timeout(450)
@@ -185,9 +186,9 @@ class DesignTests(unittest.TestCase):
        expect(gpu).to_have_count(1)
       page.wait_for_timeout(450)  # End the post-drag click suppression window.
       page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True).drag_to(page.locator('#core-screen'))
-      expect(page.locator('#widget-drive')).to_have_value('all')
-      page.locator('#widget-drive').select_option('C:\\')
-      expect(page.locator('#widget-drive')).to_have_value('C:\\')
+      expect(page.locator('#widget-setting-drive')).to_have_value('all')
+      page.locator('#widget-setting-drive').select_option('C:\\')
+      expect(page.locator('#widget-setting-drive')).to_have_value('C:\\')
       page.locator('#draft-save').click()
       expect(page.locator('#editor-notice')).to_contain_text('Draft saved')
       saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
