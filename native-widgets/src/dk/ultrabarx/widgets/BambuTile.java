@@ -131,8 +131,15 @@ public final class BambuTile {
         float size = Math.min(86, width * .34f);
         float artworkX = width - 18 - size;
         float readingWidth = showArtwork ? artworkX - 30 : width - 42;
-        float valueSize = primary.equals("progress") ? Math.min(52, readingWidth / 1.8f) : 30;
-        label(canvas,p,value,22,108,valueSize,text,true,readingWidth);
+        if (primary.equals("progress")) {
+            p.setColor(text);
+            p.setTypeface(Typeface.create("sans-serif-medium", Typeface.NORMAL));
+            p.setTextSize(52);
+            p.setTextSize(BambuPresentation.fittedTextSize(p.getTextSize(), p.measureText(value), readingWidth));
+            canvas.drawText(value, 22, 108, p);
+        } else {
+            label(canvas,p,value,22,108,30,text,true,readingWidth);
+        }
         if (image != null) {
             float scale = size / Math.max(image.getWidth(), image.getHeight());
             float imageWidth = image.getWidth() * scale, imageHeight = image.getHeight() * scale;

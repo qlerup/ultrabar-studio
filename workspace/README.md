@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.4 Windows
+# UltraBar Studio — 0.52.5 Windows
+
+## 0.52.5 update
+
+Bambu print progress fits next to the printer image on Core, including 100%.
 
 ## 0.52.4 update
 
