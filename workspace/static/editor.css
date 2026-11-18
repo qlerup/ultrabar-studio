@@ -17,7 +17,13 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .core-canvas .canvas-widget.clock-preview{flex-basis:541.6px;width:541.6px}
 .core-scroll-controls{display:flex;gap:14px;align-items:center;margin:12px 0}
 .core-scroll-controls button{padding:6px 12px}
-.core-scroll-controls input{flex:1;min-width:0;accent-color:var(--mint);padding:0;cursor:ew-resize}
+.core-scroll-controls input{appearance:none;flex:1;min-width:0;height:34px;margin:0;padding:0;border:0;background:transparent;cursor:ew-resize}
+.core-scroll-controls input::-webkit-slider-runnable-track{height:2px;border-radius:1px;background:#57536b}
+.core-scroll-controls input::-moz-range-track{height:2px;border-radius:1px;background:#57536b}
+.core-scroll-controls input::-webkit-slider-thumb{appearance:none;width:12px;height:12px;margin-top:-5px;border:0;border-radius:50%;background:var(--mint)}
+.core-scroll-controls input::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--mint)}
+.core-scroll-controls input:disabled{opacity:.45;cursor:default}
+@media(forced-colors:active){.core-scroll-controls input{appearance:auto}}
 .stock-preview .stock-title{font-size:19px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stock-preview small{font-size:12px}
 .stock-gauge{display:grid;place-items:center;width:132px;height:132px;flex-shrink:0;border-radius:50%;background:conic-gradient(#a8dbbc var(--usage),#40514b 0);padding:9px}
@@ -44,8 +50,8 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .studio-fingerprint{display:block;overflow-wrap:anywhere;font-size:13px}
 
 .core-screen .core-canvas.mixed-widgets{display:block;position:relative}
-.mixed-widgets::after{content:"";position:absolute;width:var(--layout-right);height:1px;left:0;top:0;pointer-events:none}
-.mixed-widgets.grid-drag::after{width:calc(var(--layout-right) + 1424px)}
+.core-canvas::after{content:"";position:absolute;width:max(var(--slot-right,0px),var(--layout-right,0px));height:1px;left:0;top:0;pointer-events:none}
+.mixed-widgets.grid-drag::after{width:max(var(--slot-right,0px),calc(var(--layout-right) + 1424px))}
 .mixed-widgets .canvas-widget{position:absolute}
 .core-canvas.grid-drag{background-image:repeating-linear-gradient(to right,#625980 0 1px,transparent 1px 140.4px),linear-gradient(transparent 139px,#625980 139px 140px,transparent 140px);background-position:10px 0,0 0;background-attachment:local}
 .widget-insert-marker.grid-marker{border:2px solid #b9a9ff;border-radius:10px;background:#b9a93b21;box-shadow:none}

@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.3 Windows
+# UltraBar Studio — 0.52.4 Windows
+
+## 0.52.4 update
+
+The CoreBAR layout preview keeps a margin after the last slot. Drag the small
+slider handle on its thin track to move through the preview.
 
 ## 0.52.3 update
 

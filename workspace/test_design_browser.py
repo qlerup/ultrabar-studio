@@ -151,6 +151,24 @@ class DesignTests(unittest.TestCase):
       page.locator('#widget-undo').click()
       expect(canvas.locator('.small-widget')).to_have_count(0)
       page.locator('#core-next').click()
+      slider=page.get_by_role('slider',name='Scroll Core preview')
+      for width in (1440,390):
+       page.set_viewport_size(dict(width=width,height=960))
+       slider.scroll_into_view_if_needed()
+       slider.press('Home')
+       expect(slider).to_have_value('0')
+       assert canvas.evaluate('(node)=>node.scrollLeft')==0
+       bounds=slider.bounding_box()
+       x=bounds['x']+6;y=bounds['y']+bounds['height']/2
+       page.mouse.move(x,y);page.mouse.down();page.mouse.move(bounds['x']+bounds['width']-5,y,steps=12);page.mouse.up()
+       expect(slider).to_have_value(slider.get_attribute('max'))
+       assert canvas.evaluate('''(node)=>{
+         const slots=[...node.querySelectorAll('.core-slot')];
+         const right=Math.max(...slots.map(slot=>slot.getBoundingClientRect().right));
+         const screen=node.getBoundingClientRect();
+         return Math.abs(screen.right-right-20*screen.width/1424)<1;
+       }''')
+      page.set_viewport_size(dict(width=1440,height=960))
       empty=canvas.locator('[data-slot-column="10"]')
       add=empty.get_by_role('button',name='Choose layout for empty slot')
       expect(add).to_have_css('opacity','0')

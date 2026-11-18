@@ -624,6 +624,7 @@
       }
     }
     const {splits}=layoutParts(),end=Math.min(512,Math.max(10,nextFreeColumn(positions)+2));
+    let lastSlotEnd=0;
     function addSlot(column,split){
       const slot=el('div',split?'core-slot core-slot-split':'core-slot');
       slot.dataset.slotColumn=column;
@@ -644,19 +645,25 @@
         trigger.setAttribute('aria-haspopup','dialog');
         slot.append(trigger);
       }
-      if(empty)canvas.append(slot);
+      if(empty){
+        canvas.append(slot);
+        lastSlotEnd=Math.max(lastSlotEnd,column+2);
+      }
     }
     for(const column of splits)addSlot(column,true);
     for(let column=0;column+1<end;column++){
       if(splitOverlaps(column,2)||[0,1,2,3].some(offset=>occupied.has(key(column,0)+offset)))continue;
       addSlot(column,false);column++;
     }
+    // Absolutely positioned slots do not contribute trailing padding to the scroll area.
+    canvas.style.setProperty('--slot-right',gridMargin+lastSlotEnd*cellPitch+'px');
   }
   function renderCanvas(){
     const canvas=$('core-canvas'),position=canvas.scrollLeft;canvas.replaceChildren();
     const grid=hasGrid(),positions=positionsForCurrent();
     canvas.classList.toggle('mixed-widgets',grid);
     if(grid)canvas.style.setProperty('--layout-right',gridMargin+nextFreeColumn(positions)*cellPitch+'px');
+    else canvas.style.removeProperty('--layout-right');
     current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
     renderEmptySlots(canvas,positions);
