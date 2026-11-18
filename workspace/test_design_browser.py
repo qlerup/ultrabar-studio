@@ -39,7 +39,8 @@ class DesignTests(unittest.TestCase):
       page.route('**/api/store/icons/*',lambda r:r.fulfill(status=502,json=dict(error='Offline icon')) if r.request.url.endswith('c'*64) else r.fulfill(content_type='image/png',body=screen_image))
       builtins=[('com.ultrabar.calculator','Calculator'),('com.ultrabar.alarmclock','Alarmclock'),('com.aiks.leisuregame','Space Dodger'),('com.aiks.aurorasniper','AuroraSniper'),('com.ultrabar.whitenoise','White Noise'),('com.stellarring.screensaver','StellarRing'),('com.flip.screensaver','ScreensaverFlip')]
       page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[dict(id=ident,name=name,type='APPS') for ident,name in builtins]+[dict(id='com.example.thirdparty',name='Third-party app',type='APPS')])))
-      page.route('**/api/pc',lambda r:r.fulfill(json=dict(actions=[],metrics=dict(disks=[dict(name='C:\\',percent=25,used_gb=25,total_gb=100)]),status='Test',native_status='Test')))
+      cpu_reading=None
+      page.route('**/api/pc',lambda r:r.fulfill(json=dict(actions=[],metrics=dict(cpu=cpu_reading,disks=[dict(name='C:\\',percent=25,used_gb=25,total_gb=100)]),status='Test',native_status='Test')))
       page.route('**/api/pc/connect',lambda r:r.fulfill(json=dict(actions=[],metrics={})))
       page.route('**/api/discover',lambda r:r.fulfill(json=dict(devices=[])))
       page.goto('http://'+host);page.locator('#connection-open').click();page.locator('#manual-connection summary').click();page.locator('#target').fill(snapshot['target']);page.locator('#connect').click()
@@ -215,6 +216,10 @@ class DesignTests(unittest.TestCase):
       page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).drag_to(page.locator('#core-screen'))
       expect(page.locator('#core-canvas .canvas-widget')).to_have_count(count+1)
       expect(page.locator('#widget-setting-kind')).to_have_value('cpu')
+      reading=canvas.locator('.canvas-widget.selected .native-value')
+      expect(reading).to_have_text('--')
+      cpu_reading=37
+      expect(reading).to_have_text('37.0%',timeout=8000)
       page.locator('#widget-setting-kind').select_option('memory')
       expect(page.locator('#widget-setting-kind')).to_have_value('memory')
       page.locator('details[data-group="store"]').get_by_role('button',name='System Monitor',exact=True).drag_to(page.locator('#core-canvas'))

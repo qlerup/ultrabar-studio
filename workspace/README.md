@@ -1,9 +1,17 @@
-# UltraBar Studio — 0.52.1 Windows
+# UltraBar Studio — 0.52.2 Windows
+
+## 0.52.2 update
+
+Fixed live CPU, RAM, GPU and drive readings in the layout preview. Readings now
+refresh while the CoreBAR editor is visible.
+
+Updated the Studio user guide to match the current editor, Store library, slot
+layout options and update workflow. See the [getting-started guide](../.github/README.md).
 
 ## 0.52.1 update
 
 Empty slots start large. Hover over an empty slot in the CoreBAR preview and
-choose the plus to split it into a 2×2 grid. Drop a widget that supports Small
+click **+**, then choose **2×2 grid**. Drop a widget that supports Small
 into any of the four cells. An empty grid can be changed back to one large slot.
 
 ## 0.52.0 update
@@ -522,7 +530,7 @@ Installer: `release/UltraBarStudio-Setup-0.9.0.exe`.
 - Installed data remains in `%LOCALAPPDATA%/UltraBar Studio`: backups, drafts, hardware arrangements and PC action registrations. Reinstalling does not reset it.
 - Regression tests cover drafts, conflicts, backup ordering, ambiguous deployment replies, rejected overlays, PC action validation and native metric responses. Live checks use Core 10.10.0.181; user layout restored after temporary deployment checks.
 
-Latest installer: `release/UltraBarStudio-Setup-0.8.0.exe`.
+Installer for this release: `release/UltraBarStudio-Setup-0.8.0.exe`.
 
 Earlier version notes below describe the capabilities at those releases.
 
@@ -534,7 +542,7 @@ Earlier version notes below describe the capabilities at those releases.
 - Unsupported composite layouts report an explicit error. Saved default artwork is not a framebuffer or an active-layer readback. Physical navigation and animation do not trigger preview capture; use Refresh previews.
 - Tested image decoding, invalid input, package limits, serial isolation, real artwork retrieval, no capture during unchanged polling, change-triggered capture and manual refresh.
 
-Latest installer: `release/UltraBarStudio-Setup-0.7.0.exe`.
+Installer for this release: `release/UltraBarStudio-Setup-0.7.0.exe`.
 
 ## 0.6 update
 
@@ -543,7 +551,7 @@ Latest installer: `release/UltraBarStudio-Setup-0.7.0.exe`.
 - VivoCube screen preview remains unavailable. The inspected QLink VivoCube protocol exposes power state and active layer/widget IDs, but no framebuffer capture. VivoCube is not an Android display on CoreBAR. No simulated image is presented as a live preview.
 - Verified real 1424x280 capture, pause, capture failure/recovery, narrow layout and screen-off reporting.
 
-Latest installer: `release/UltraBarStudio-Setup-0.6.0.exe`.
+Installer for this release: `release/UltraBarStudio-Setup-0.6.0.exe`.
 
 ## 0.5 update
 
@@ -552,7 +560,7 @@ Latest installer: `release/UltraBarStudio-Setup-0.6.0.exe`.
 - The guide hands off to Find devices and includes manual connection and troubleshooting instructions.
 - Checked desktop and narrow-window layout, close/Escape behavior, focus restoration and real device-discovery handoff.
 
-Latest installer: `release/UltraBarStudio-Setup-0.5.0.exe`.
+Installer for this release: `release/UltraBarStudio-Setup-0.5.0.exe`.
 
 ## 0.4 update
 
@@ -563,7 +571,7 @@ Latest installer: `release/UltraBarStudio-Setup-0.5.0.exe`.
 - Discovery identifies the device without knowing its IP. Select a result to connect. WiFi ADB must still be enabled; advertised TCP 7431 is CoreBridge, not the ADB port. The initial connection uses ADB 5555, with manual entry available for other ports. Discovery announcements are hints, not trusted credentials.
 - Tested real UDP discovery, mouse drag, order persistence after page restart, layout save failure, keyboard move, status refresh during drag and existing live status/error recovery.
 
-Latest installer: `release/UltraBarStudio-Setup-0.4.0.exe`.
+Installer for this release: `release/UltraBarStudio-Setup-0.4.0.exe`.
 
 ## 0.3 update
 
@@ -573,7 +581,7 @@ The prior version only queried status on Connect/Refresh and could leave an old 
 
 Status errors replace previous online/offline indicators with Unknown and retry automatically. The selected module's detail line updates along with its indicator. Polling does not create profile backups or reload the displayed action editor. Tested offline → online, connection loss → unknown → recovery, and the actual six-module device response.
 
-Latest installer: `release/UltraBarStudio-Setup-0.3.0.exe`. Earlier version notes below describe the original 0.2 packaging.
+Installer for this release: `release/UltraBarStudio-Setup-0.3.0.exe`. Earlier version notes below describe the original 0.2 packaging.
 
 ## Historical Windows packaging notes (0.2)
 

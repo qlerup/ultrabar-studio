@@ -11,25 +11,33 @@
 
 A community-built Windows companion for UltraBar X / CoreBAR. Independent of the official UltraBarX software.
 
-[Latest release](https://github.com/qlerup/ultrabar-studio/releases/latest)
+[Download UltraBar Studio for Windows](https://github.com/qlerup/ultrabar-studio/releases/latest)
+
+## Get started
+
+1. Install Studio and choose **Connect device**. The setup guide covers first-time CoreBAR setup.
+2. Open **Design & actions** to arrange the CoreBAR screen or configure module buttons.
+3. Choose **Save draft** to keep your work locally and **Deploy to Core** to review and apply changes to CoreBAR.
 
 - See connected modules, status and saved screen previews.
 - Arrange your desk layout around a centered CoreBAR.
-- Edit profiles, widgets and button actions, then deploy to Core.
+- Mix large and small widgets in the CoreBAR preview. Hover over an empty slot and use **+** to split it into four cells. Drag cards into position.
 - Choose VivoCube screen pictures and action icons, with verified button registration on Core.
 - Review package-update progress and choose Deploy now or Later; pending activation stays visible.
 - Drag separate website and PC app widgets onto Core; upload a picture or use the program icon automatically.
 - Add live CPU, RAM, GPU and disk widgets where supported.
-- Browse collapsible libraries for **UltraBarX**, **Studio & App Store** and **Installed apps**.
+- Browse the **UltraBarX**, **Studio**, **App Store** and **Other apps & widgets on Core** library groups.
 - Save local drafts and backups, and download verified Studio updates in the app. The installer replaces program files and keeps saved data.
 
-Native Studio widgets currently require a root-enabled ARM32 CB01 running LineOS 1.0.8 or 1.0.9, with Studio connected. GPU readings depend on available sensors. Other firmware has not been verified.
+Native Studio widgets currently require a root-enabled ARM32 CB01 running LineOS 1.0.8 or 1.0.9, with Studio connected. Small widgets and mixed layouts require LineOS 1.0.9. GPU readings depend on available sensors. Other firmware has not been verified.
 
 ## App & Plugin Store
 
-Studio 0.20 supports integrated widget packages: install once, drag from **Studio & App Store**, configure in the right panel, then **Deploy** to activate on Core. Packages use the shared clock/date and hardware-widget runtime. Standalone APK installation remains available as a separate app type; arbitrary executable plugins are not supported.
-
-[Submit your widget](https://github.com/qlerup/ultrabar-store/blob/main/CONTRIBUTING.md). GitHub checks the submission and explains errors in the PR. The owner reviews and merges approved catalog entries; new packages appear without a Studio update.
+Install a supported package from **App & Plugin Store**. Widgets appear in the
+**App Store** library in Design & actions. Drag a widget into the CoreBAR preview,
+configure it and deploy. Supported Core apps can also be placed in **Background
+apps**. Native widgets use Studio's shared runtime, with dedicated large and small
+presentations where the package supports them.
 
 Developers can submit their own supported apps, widgets and presets so other users can install them through the Store. Keep the source in your own repository, publish a release and submit a Store PR. New packages require maintainer acceptance; eligible updates to registered packages can auto-merge after checks. [Read the submission guide](https://github.com/qlerup/ultrabar-store/blob/main/SUBMIT-A-PACKAGE.md). Use **Install from folder** in Studio to test locally before submitting.
 
@@ -37,7 +45,7 @@ Developers can submit their own supported apps, widgets and presets so other use
 
 Studio's Windows installer and executable are currently not code-signed. Windows may show an **unrecognized app**, **unknown publisher** or **Windows protected your PC** warning because the file or publisher does not have an established reputation. That reputation warning alone does not mean malware has been detected; it is also not a guarantee that software is safe or free of defects. See [Microsoft's SmartScreen explanation](https://learn.microsoft.com/windows/apps/package-and-deploy/smartscreen-reputation).
 
-Download Studio only from this repository's official [Releases](https://github.com/qlerup/ultrabar-studio/releases). Each release includes a SHA-256 checksum file. Verify the source and decide whether you trust the download before running it.
+Download Studio only from this repository's official [Releases](https://github.com/qlerup/ultrabar-studio/releases). Each release includes the Windows installer, a SHA-256 checksum file and metadata for the in-app updater. Verify the source and decide whether you trust the download before running it.
 
 ## Independence and use at your own risk
 

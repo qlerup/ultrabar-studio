@@ -1,7 +1,7 @@
 'use strict';
 (() => {
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
-  let editorGeneration=0, pcMetrics={};
+  let editorGeneration=0, pcMetrics={}, pcRequest=null;
   let storePresets=[];
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
@@ -921,8 +921,32 @@
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
   async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{},compact_profiles:draft.compact_profiles||{}})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
+  function readPc(){
+    if(!pcRequest)pcRequest=api('/api/pc').then(response=>response.json()).finally(()=>{pcRequest=null;});
+    return pcRequest;
+  }
+  function usesPcMetrics(widget){
+    const spec=nativeSpec(widget);
+    return spec?['cpu','memory','gpu','disk'].includes(spec.kind):['CPU','MEMORY','STORAGE'].includes(widget.type);
+  }
+  async function refreshPreviewMetrics(){
+    if(pcRequest||drag||!current()?.homeData.some(usesPcMetrics))return;
+    const generation=editorGeneration;
+    try{
+      const data=await readPc();
+      if(generation!==editorGeneration||mode!=='layout'||$('editor-content').hidden)return;
+      pcMetrics=data.metrics||{};
+      if(working||drag)return;
+      $('core-canvas').querySelectorAll('.canvas-widget').forEach((card,index)=>{
+        const widget=current().homeData[index];
+        if(!widget||!usesPcMetrics(widget))return;
+        if(nativeSpec(widget))renderNativePreview(widget,card);
+        else renderStockPreview(widget,card);
+      });
+    }catch(error){$('pc-status').textContent=error.message;}
+  }
   async function refreshPc(){
-    try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
+    try{const data=await readPc();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
       const metrics=$('pc-metrics');metrics.replaceChildren();for(const [label,value] of [['CPU',data.metrics?.cpu],['RAM',data.metrics?.memory],['GPU',data.metrics?.gpu?.usage]]){const card=el('div','metric-card');card.append(el('span','muted',label),el('strong','',value==null?'Unavailable':Math.round(value)+'%'));metrics.append(card);}for(const disk of data.metrics?.disks||[]){const card=el('div','metric-card');card.append(el('span','muted',disk.name),el('strong','',Math.round(disk.percent)+'%'),el('small','muted',disk.used_gb+' / '+disk.total_gb+' GB'));metrics.append(card);}
       $('pc-actions-list').replaceChildren(el('h3','','Saved PC actions'));for(const a of pcActions){const row=el('div','pc-action-row');row.append(el('strong','',a.name),el('span','muted',a.target),button('Add to Core',()=>{showMode('layout');addPcWidget(a);}));$('pc-actions-list').append(row);}if(draft){renderActionLibrary();if(!drag){renderLibrary();renderCanvas();renderProperties();}}
     }catch(error){$('pc-status').textContent=error.message;}
@@ -983,6 +1007,10 @@
     working=true;busy=true;controls();updateControls();
     try{await save();}finally{working=false;busy=false;controls();updateControls();}
   },snapshotChanged(){ $('nav-editor').disabled=!snapshot;if(draft&&draft.device_id!==snapshot?.device_id){editorGeneration++;draft=null;dirty=false;apps=[];pcActions=[];overview();}if(snapshot)api('/api/pc/connect',{method:'POST',body:'{}'}).catch(error=>message(error.message,true));},hasUnsaved(){return dirty;}};
-  setInterval(()=>{if(snapshot&&!document.hidden&&mode==='pc'&&!$('editor-content').hidden&&!working)refreshPc();},5000);
+  setInterval(()=>{
+    if(!snapshot||document.hidden||$('editor-content').hidden||working)return;
+    if(mode==='pc')refreshPc();
+    if(mode==='layout')refreshPreviewMetrics();
+  },5000);
 setInterval(()=>{if(!working&&!drag&&draft&&document.body.classList.contains('editing')){$('core-canvas').querySelectorAll('.canvas-widget').forEach((card,i)=>{const w=current().homeData[i];if(w&&nativeSpec(w)?.kind==='clock')renderNativePreview(w,card);});}},1000);
 })();
