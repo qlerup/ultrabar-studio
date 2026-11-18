@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.5 Windows
+# UltraBar Studio — 0.52.6 Windows
+
+## 0.52.6 update
+
+The large Bambu layout preview follows the Core card's spacing and reading order.
+The printer image sits beside the main reading with print status underneath.
 
 ## 0.52.5 update
 

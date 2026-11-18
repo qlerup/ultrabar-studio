@@ -126,13 +126,14 @@ window.studioPackageUI=(()=>{
       }
       const device=items?.find(item=>item.id===values[connection.key]);
       const preset=config.presets.find(preset=>preset.value===device?.[source.key]);
+      const preview={...preset,connectionName:device?.name};
       const thumbnail=device?.thumbnail;
-      if(!preset||!thumbnail||!/^[A-Za-z0-9+/]{1,8192}={0,2}$/.test(thumbnail)||thumbnail.length%4)return preset||{};
+      if(!preset||!thumbnail||!/^[A-Za-z0-9+/]{1,8192}={0,2}$/.test(thumbnail)||thumbnail.length%4)return preview;
       if(!thumbnails.has(thumbnail)){
         const bytes=Uint8Array.from(atob(thumbnail),character=>character.charCodeAt(0));
         thumbnails.set(thumbnail,URL.createObjectURL(new Blob([bytes],{type:'image/png'})));
       }
-      return {...preset,imageUrl:thumbnails.get(thumbnail)};
+      return {...preview,imageUrl:thumbnails.get(thumbnail)};
     }
     return {picker,presentation,clear:()=>{
       cache.clear();previewRequests.clear();

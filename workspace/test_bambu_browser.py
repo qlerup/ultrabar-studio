@@ -97,6 +97,20 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('[data-connection-key=printerId]').select_option(ids[0])
             image=page.locator('#core-canvas .bambu-preview img.package-artwork')
             expect(image).to_have_js_property('naturalWidth',30)
+            preview=page.locator('#core-canvas .bambu-preview')
+            expect(preview.locator('.native-title')).to_have_text('H2D workshop')
+            expect(preview.locator('.native-source')).to_have_text('Printing')
+            expect(preview.locator('.bambu-sample')).to_have_text('Sample')
+            for width in (1600,390):
+                page.set_viewport_size(dict(width=width,height=1000))
+                self.assertTrue(preview.evaluate('''card => {
+                    const box = selector => card.querySelector(selector).getBoundingClientRect();
+                    const image = box('.package-artwork'), value = box('.native-value');
+                    const status = box('.native-source'), bar = box('.native-track');
+                    return value.right < image.left && status.right < image.left &&
+                        value.bottom < status.top && image.bottom < bar.top;
+                }'''))
+            page.set_viewport_size(dict(width=1600,height=1000))
             first_thumbnail=image.get_attribute('src')
             page.locator('[data-connection-key=printerId]').select_option(ids[1])
             expect(image).to_have_js_property('naturalWidth',30)

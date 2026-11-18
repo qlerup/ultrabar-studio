@@ -431,7 +431,8 @@
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
     const presentation=packageUI.presentation(studioBinding(spec),spec);
-    card.replaceChildren(el('strong','native-title',presentation.labels?.title||w.name||'Studio'));
+    const printerName=spec.kind==='bambu'?presentation.connectionName:null;
+    card.replaceChildren(el('strong','native-title',printerName||presentation.labels?.title||w.name||'Studio'));
     if(!card.classList.contains('small-widget')||spec.kind!=='bambu'){
       if(spec.kind==='bambu'&&presentation.imageUrl){
         const image=el('img','package-artwork');image.src=presentation.imageUrl;image.alt='';image.draggable=false;card.append(image);
@@ -456,10 +457,15 @@
       return;
     }
     if(spec.kind==='bambu'){
-      const primary={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°C'};
-      const secondary={remaining:'0h 47m remaining',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°C',none:''};
+      const primary=spec.primary||'progress';
+      const values={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°C'};
+      const status={progress:'Printing',state:'PRINTER STATUS',remaining:'TIME REMAINING',temperature:'ACTIVE NOZZLE'};
+      const secondary={remaining:'0h 47m',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°C',none:''};
       card.classList.add('bambu-preview');
-      card.append(el('span','native-source','BAMBU LAB · SAMPLE PREVIEW'),el('span','native-value',primary[spec.primary||'progress']),el('span','native-detail',secondary[spec.secondary||'remaining']),bar(64),el('span','native-detail','Tap on Core to unfold · '+(spec.expandedSlots||3)+' slots'));
+      const arrow=el('span','bambu-unfold-arrow','↗');arrow.setAttribute('aria-hidden','true');
+      card.append(el('span','bambu-sample','Sample'),el('span','native-value'+(primary==='progress'?' bambu-percent':''),values[primary]),
+        el('span','native-source',status[primary]),el('span','native-detail',secondary[spec.secondary||'remaining']),
+        bar(64),el('span','bambu-unfold','Tap to unfold'),arrow);
     }else if(spec.kind==='clock'){
       const now=new Date(),format={hour:'2-digit',minute:'2-digit',hour12:spec.hourFormat==='12'};if(spec.showSeconds!==false)format.second='2-digit';
       card.append(el('span','native-source','CORE CLOCK'),el('span','native-clock-time',now.toLocaleTimeString([],format)));

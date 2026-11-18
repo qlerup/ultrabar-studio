@@ -44,7 +44,20 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .studio-connections-dialog{width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;border:1px solid #42534e;border-radius:16px;background:#17211f;color:#eef6f2;padding:24px}
 .studio-connections-dialog::backdrop{background:#0009}
 .native-preview{position:relative}.package-artwork{position:absolute;right:8%;top:23%;width:24%;height:27%;pointer-events:none}.native-preview:has(.package-artwork) .native-value{max-width:68%;overflow:hidden;text-overflow:ellipsis}
-.bambu-preview .package-artwork{right:7%;top:23%;width:34%;height:36%;object-fit:contain}.bambu-preview:has(.package-artwork) .native-value{max-width:59%}
+.bambu-preview{--bambu-art-size:min(86px,34%)}
+.bambu-preview .native-title{position:absolute;left:32px;right:62px;top:17px;font-weight:500}
+.bambu-preview::before{content:'';position:absolute;left:19px;top:23px;width:6px;height:6px;border-radius:50%;background:var(--widget-accent)}
+.bambu-preview .bambu-sample{position:absolute;right:16px;top:17px;color:#96aab5;font-size:10px}
+.bambu-preview .package-artwork{right:16px;top:54px;width:var(--bambu-art-size);height:auto;aspect-ratio:1;object-fit:contain}
+.bambu-preview .native-value,.bambu-preview .native-source{position:absolute;left:20px;right:18px;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bambu-preview:has(.package-artwork) :is(.native-value,.native-source){right:calc(24px + var(--bambu-art-size));max-width:none}
+.bambu-preview .native-value{bottom:124px;font-size:30px;font-weight:500;letter-spacing:0;line-height:1.12}
+.bambu-preview .bambu-percent{font-size:52px}
+.bambu-preview .native-source{top:119px;left:21px;font-size:11px;letter-spacing:0}
+.bambu-preview .native-detail{position:absolute;left:21px;right:18px;top:148px;color:#96aab5;font-size:14px;opacity:1}
+.bambu-preview .native-track{position:absolute;left:20px;right:20px;top:181px;height:4px;background:#ffffff22}
+.bambu-unfold,.bambu-unfold-arrow{position:absolute;left:21px;top:203px;color:#96aab5;font-size:11px}
+.bambu-unfold-arrow{left:auto;right:23px;top:198px;color:var(--widget-accent);font-size:18px}
 .studio-connections-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .studio-connection-row{padding:16px 0;border-bottom:1px solid #42534e}
 .studio-connection-row p{margin:6px 0}
