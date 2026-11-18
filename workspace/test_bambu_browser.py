@@ -158,6 +158,6 @@ class BambuBrowserTests(unittest.TestCase):
             page.reload();page.locator('#connection-open').click();page.locator('#manual-connection summary').click()
             page.locator('#target').fill('192.168.1.20:5555');page.locator('#connect').click()
             page.locator('#nav-editor').click();page.locator('#mode-layout').click()
-            page.locator('#core-canvas .canvas-widget').filter(has_text='SAMPLE PREVIEW').first.click()
+            page.locator('#core-canvas .bambu-preview').first.click()
             expect(page.locator('#widget-setting-expandedSlots')).to_have_value('5')
             expect(page.locator('#widget-setting-primary')).to_have_value('remaining')
