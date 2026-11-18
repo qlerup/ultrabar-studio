@@ -76,9 +76,10 @@ window.studioPackageUI=(()=>{
         if(saving)return;editing=item;pending=null;message('');form.replaceChildren(node('h4','',(item?'Edit ':'Add ')+config.itemLabel));
         const inputs={};
         for(const field of config.fields){
-          const wrap=node('label','property-field',field.label),input=node('input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
-          input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
-          if(field.type==='boolean')input.checked=!!item?.[field.key];else input.value=field.type==='secret'?'':item?.[field.key]||'';
+          const wrap=node('label','property-field',field.label),input=node(field.type==='choice'?'select':'input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
+          if(field.type==='choice')for(const option of field.options){const o=node('option','',option.label);o.value=option.value;input.append(o);}
+          else input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
+          if(field.type==='boolean')input.checked=!!item?.[field.key];else input.value=field.type==='secret'?'':item?.[field.key]||(field.type==='choice'?'generic':'');
           input.required=!!field.required&&!(field.type==='secret'&&item);input.autocomplete='off';if(field.maxLength)input.maxLength=field.maxLength;
           wrap.append(input);if(field.type==='secret'&&item)wrap.append(node('small','muted','Leave blank to keep the saved value.'));if(field.help)wrap.append(node('small','muted',field.help));form.append(wrap);inputs[field.key]=input;
         }

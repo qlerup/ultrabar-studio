@@ -107,6 +107,21 @@ class ProtocolTests(unittest.TestCase):
 
 
 class PrinterTests(unittest.TestCase):
+    def test_models_preserve_legacy_credentials_and_roundtrip_without_leaking_secrets(self):
+        old=profile();self.manager.store([old])
+        self.assertEqual(self.manager.read(),[old])
+        self.assertEqual(self.manager.listing()[0]['model'],'generic')
+        self.manager.save(dict(old,model='h2d',code=''))
+        saved=self.manager.read()[0]
+        self.assertEqual(saved['model'],'h2d');self.assertEqual(saved['code'],old['code'])
+        self.assertEqual(self.manager.listing()[0]['model'],'h2d')
+        self.assertEqual(self.manager.links[old['id']].snapshot()['model'],'h2d')
+        self.manager.save(dict(old,code=''))
+        self.assertEqual(self.manager.read()[0]['model'],'h2d')
+        for model in ('injected', {}, None):
+            with self.subTest(model=model),self.assertRaises(EditError):self.manager.save(dict(old,model=model))
+        self.assertEqual(self.manager.read()[0]['model'],'h2d')
+
     def setUp(self):
         temp=tempfile.TemporaryDirectory();self.addCleanup(temp.cleanup)
         self.root=Path(temp.name);self.context=SimpleNamespace(DATA_DIR=self.root)

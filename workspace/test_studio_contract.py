@@ -13,6 +13,18 @@ from store import StoreError, require_widget_version, widget_package
 
 
 class StudioContractTests(unittest.TestCase):
+    def test_model_choices_are_bounded_and_require_compatible_studio(self):
+        descriptor=legacy_bambu()
+        field=dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value='generic',label='Other'),dict(value='h2d',label='H2D')])
+        descriptor['connection']['fields'].append(field)
+        validate(descriptor,'bambu')
+        widget=dict(kind='bambu',studio=descriptor)
+        with self.assertRaises(StoreError):require_widget_version([widget],dict(compatibility=dict(minStudioVersion='0.49.3')))
+        require_widget_version([widget],dict(compatibility=dict(minStudioVersion='0.50.0')))
+        for options in ([dict(value='shell',label='Wrong')], [dict(value='generic',label='Other')]*2, []):
+            field['options']=options
+            with self.assertRaises(ValueError):validate(descriptor,'bambu')
+
     def test_legacy_descriptors_cover_existing_widget_controls(self):
         for kind in ('bambu', 'clock', 'disk', 'cpu', 'memory', 'gpu'):
             widget = dict(kind=kind, kindOptions=['cpu', 'memory', 'gpu'])

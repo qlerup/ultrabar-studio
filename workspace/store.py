@@ -215,6 +215,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any(f.get('key')=='model' for w in widgets for f in w.get('studio',{}).get('connection',{}).get('fields',[])) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,50,0):
+        raise StoreError('Printer model presets require Studio 0.50.0 or newer.')
     if any('studio' in w for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<studio_contract.MIN_VERSION:
         raise StoreError('App-owned Studio panels require Studio 0.49.0 or newer.')
     if manifest.get('type')=='corebar-widget' and any(w.get('kind')=='bambu' for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,48,0):

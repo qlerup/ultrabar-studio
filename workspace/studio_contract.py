@@ -18,8 +18,9 @@ SETTINGS = {
     },
 }
 CONNECTION_FIELDS = {
-    'bambu-lan': {'name': 'string', 'host': 'string', 'serial': 'string', 'code': 'secret', 'controls': 'boolean'},
+    'bambu-lan': {'name': 'string', 'host': 'string', 'serial': 'string', 'code': 'secret', 'controls': 'boolean', 'model': 'choice'},
 }
+PRINTER_MODELS = {'generic', 'a1', 'a1-mini', 'p1p', 'p1s', 'x1c', 'x1e', 'h2d', 'h2s', 'h2c', 'h3c'}
 
 
 def _text(value, name, limit=100):
@@ -62,11 +63,11 @@ def validate(descriptor, kind):
             _text(connection[key], key, 2000 if key == 'setupHelp' else 100)
         fields = connection['fields']
         expected = CONNECTION_FIELDS[connection['provider']]
-        if not isinstance(fields, list) or len(fields) != len(expected):
+        if not isinstance(fields, list) or len(fields) not in (len(expected), len(expected)-1):
             raise ValueError('studio: declare every provider connection field exactly once.')
         seen = set()
         for field in fields:
-            if not isinstance(field, dict) or set(field)-{'key', 'label', 'type', 'maxLength', 'required', 'help'}:
+            if not isinstance(field, dict) or set(field)-{'key', 'label', 'type', 'maxLength', 'required', 'help', 'options'}:
                 raise ValueError('studio: invalid connection field.')
             key = field.get('key')
             if not isinstance(key, str) or key not in expected or key in seen or field.get('type') != expected[key]:
@@ -77,11 +78,27 @@ def validate(descriptor, kind):
                 _text(field['help'], 'field help', 500)
             if 'required' in field and type(field['required']) is not bool:
                 raise ValueError('studio: required must be a boolean.')
-            if field['type'] == 'boolean':
+            if field['type'] == 'choice':
+                options = field.get('options')
+                if key != 'model' or not isinstance(options, list) or not 1 <= len(options) <= len(PRINTER_MODELS):
+                    raise ValueError('studio: invalid printer model choices.')
+                choices = set()
+                for option in options:
+                    if not isinstance(option, dict) or set(option) != {'value', 'label'} or not isinstance(option['value'], str) or option['value'] not in PRINTER_MODELS or option['value'] in choices:
+                        raise ValueError('studio: unsupported printer model.')
+                    choices.add(option['value'])
+                    _text(option['label'], 'model label')
+                if 'generic' not in choices or 'maxLength' in field:
+                    raise ValueError('studio: model choices must include generic.')
+            elif 'options' in field:
+                raise ValueError('studio: options require a choice field.')
+            elif field['type'] == 'boolean':
                 if 'maxLength' in field:
                     raise ValueError('studio: boolean fields cannot have maxLength.')
             elif type(field.get('maxLength')) is not int or not 1 <= field['maxLength'] <= 2048:
                 raise ValueError('studio: specify a bounded connection field length.')
+        if seen != set(expected) and seen != set(expected)-{'model'}:
+            raise ValueError('studio: declare every provider connection field exactly once.')
     if len(json.dumps(descriptor, allow_nan=False).encode()) > 32768:
         raise ValueError('studio: panel descriptor exceeds 32 KiB.')
     return copy.deepcopy(descriptor)

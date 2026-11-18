@@ -69,11 +69,6 @@ public final class BambuTile {
         while (paint.measureText(text) > maxWidth && text.length() > 2) text = text.substring(0,text.length()-2)+"…";
         canvas.drawText(text, x, y, paint);
     }
-    private static void printerMark(Canvas c,Paint p,float x,float y,float scale,int accent){
-        c.save();c.translate(x,y);c.scale(scale,scale);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(1.6f);p.setColor((accent&0x00ffffff)|0x99000000);
-        c.drawRoundRect(0,0,43,56,4,4,p);c.drawLine(4,12,39,12,p);c.drawLine(22,12,22,22,p);c.drawLine(16,22,28,22,p);c.drawLine(28,22,22,29,p);c.drawLine(22,29,16,22,p);
-        c.drawLine(7,47,36,47,p);c.drawLine(11,43,22,36,p);c.drawLine(22,36,33,43,p);c.drawLine(33,43,22,50,p);c.drawLine(22,50,11,43,p);p.setStyle(Paint.Style.FILL);c.restore();
-    }
     private static float cornerRadius(View source){
         View view=source;
         while(view!=null&&view.getHeight()<=source.getHeight()+2){
@@ -95,8 +90,9 @@ public final class BambuTile {
         p.setColor(fresh(s)?accent:0xff74838b); canvas.drawCircle(24,28,3,p);
         label(canvas,p,s.optString("name",title==null?"Bambu Lab":title),34,33,14,text,true,width-62);
         String primary = spec.optString("primary","progress"), value = metric(s,primary);
-        label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,width-40);
-        if(primary.equals("progress")&&width>=245)printerMark(canvas,p,width-72,65,.95f,accent);
+        label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,!s.optString("model","generic").equals("generic")?width-90:width-40);
+        String model=s.optString("model","generic");
+        if(width>=180)PrinterPortrait.draw(canvas,model,width-72,62,54,accent);
         label(canvas,p,primary.equals("progress")?state(s):primary.equals("remaining")?"TIME REMAINING":primary.equals("temperature")?"ACTIVE NOZZLE":"PRINTER STATUS",23,133,11,accent,false,width-40);
         String secondary = spec.optString("secondary", "remaining");
         label(canvas,p,(secondary.equals("temperature") ? "Nozzle " : "") + metric(s,secondary),23,165,14,MUTED,false,width-42);
@@ -177,13 +173,23 @@ public final class BambuTile {
             LinearLayout header=new LinearLayout(getContext());header.setGravity(Gravity.CENTER_VERTICAL);
             name=txt("Bambu Lab",16,foreground,true);header.addView(name,new LinearLayout.LayoutParams(0,32,1));
             status=txt("LOCAL",11,accent,false);header.addView(status);
-            header.addView(btn("×",muted,this::close),new LinearLayout.LayoutParams(40,32));body.addView(header);
+            body.addView(header);
+            View handle=new View(getContext()){
+                protected void onDraw(Canvas c){Paint p=new Paint(3);p.setColor(muted);c.drawRoundRect(getWidth()/2f-16,3,getWidth()/2f+16,6,2,2,p);}
+            };
+            handle.setContentDescription("Close printer details. Swipe down or activate to close.");
+            handle.setOnClickListener(v->close());
+            FrameLayout.LayoutParams handleParams=new FrameLayout.LayoutParams(64,20);
+            handleParams.leftMargin=(int)(to.centerX()-32);handleParams.topMargin=(int)to.top+1;
+            addView(handle,handleParams);
             LinearLayout middle=new LinearLayout(getContext());middle.setGravity(Gravity.CENTER_VERTICAL);
             hero=new LinearLayout(getContext());hero.setOrientation(LinearLayout.VERTICAL);
             LinearLayout headline=new LinearLayout(getContext());headline.setGravity(Gravity.CENTER_VERTICAL);
             value=txt("—",42,foreground,true);headline.addView(value,new LinearLayout.LayoutParams(0,-2,1));
-            View mark=new View(getContext()){protected void onDraw(Canvas c){printerMark(c,new Paint(3),2,2,.85f,accent);}};headline.addView(mark,new LinearLayout.LayoutParams(54,54));hero.addView(headline);
-            job=txt("No active print",13,foreground,false);hero.addView(job);
+            hero.addView(headline);
+            job=txt("No active print",13,foreground,false);
+            job.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);job.setMarqueeRepeatLimit(-1);job.setSelected(true);
+            hero.addView(job);
             progress=new ProgressBar(getContext(),null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));LinearLayout.LayoutParams progressParams=new LinearLayout.LayoutParams(-1,4);progressParams.setMargins(0,8,18,6);hero.addView(progress,progressParams);
             details=txt("Waiting for printer",12,muted,false);hero.addView(details);
             middle.addView(hero,new LinearLayout.LayoutParams(0,-2,1.15f));
@@ -275,14 +281,14 @@ public final class BambuTile {
                 for (int i = 0; i < Math.min(readings.length(), 16); i++) {
                     JSONObject nozzle = readings.optJSONObject(i);
                     if (nozzle != null && nozzle.has("tool")) {
-                        nozzles.add(new String[]{"NOZZLE T" + nozzle.optInt("tool"), temperature(nozzle, "temperature")});
+                        nozzles.add(new String[]{nozzleLabel(s,nozzle.optInt("tool")), temperature(nozzle, "temperature")});
                     }
                 }
             } else if (live) {
                 // Older Studio versions send a formatted summary, including an extra Â before °.
                 Matcher tools = TOOL_TEMPERATURE.matcher(s.optString("nozzles"));
                 while (nozzles.size() < 2 && tools.find()) {
-                    nozzles.add(new String[]{"NOZZLE " + tools.group(1), tools.group(2) + "°C"});
+                    nozzles.add(new String[]{nozzleLabel(s,Integer.parseInt(tools.group(1).substring(1))), tools.group(2) + "°C"});
                 }
             }
             if (nozzles.isEmpty()) nozzles.add(new String[]{"NOZZLE", live ? temperature(s, "nozzle_temper") : "—"});
@@ -297,9 +303,13 @@ public final class BambuTile {
             temperatureTiles.get(nozzles.size() + 1).show("CHAMBER", live ? temperature(s, "chamber_temper") : "—");
         }
         private Button btn(String s,int color,Runnable action){Button b=new Button(getContext());b.setText(s);b.setTextColor(color);b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,13);b.setAllCaps(false);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(8,0,8,0);GradientDrawable d=new GradientDrawable();d.setColor(0x18ffffff);d.setCornerRadius(14);d.setStroke(1,0x16ffffff);b.setBackground(d);b.setOnClickListener(v->action.run());return b;}
+        private String nozzleLabel(JSONObject s,int tool){
+            return BambuPresentation.nozzleLabel(s.optString("model"),tool);
+        }
         void refresh(){
             JSONObject s=snapshot(spec);name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
-            value.setText(metric(s,"progress"));job.setVisibility(spec.optBoolean("showJob",true)?VISIBLE:GONE);job.setText(metric(s,"job"));
+            value.setText(metric(s,"progress"));job.setVisibility(spec.optBoolean("showJob",true)?VISIBLE:GONE);
+            String filename=metric(s,"job");if(!filename.contentEquals(job.getText()))job.setText(filename);
             progress.setProgress(fresh(s)?Math.max(0,Math.min(100,s.optInt("mc_percent"))):0);
             String summary=spec.optBoolean("showRemaining",true)?metric(s,"remaining")+" left":"";
             if(spec.optBoolean("showLayers",true))summary+=(summary.isEmpty()?"":"  ·  ")+metric(s,"layers");details.setText(fresh(s)?summary:"Waiting for a live printer connection");
@@ -340,8 +350,24 @@ public final class BambuTile {
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.2f);paint.setColor(0x55c5e9ed);c.drawPath(path,paint);paint.setStyle(Paint.Style.FILL);
         }
         protected void dispatchDraw(Canvas c){outline();c.save();c.clipPath(path);super.dispatchDraw(c);c.restore();}
-        public boolean onTouchEvent(android.view.MotionEvent event){if(event.getAction()==MotionEvent.ACTION_UP&&!current.contains(event.getX(),event.getY()))close();return true;}
-        public boolean onInterceptTouchEvent(android.view.MotionEvent event){return closing||(animator!=null&&animator.isRunning());}
+        private float touchX,touchY; private boolean swiping,inside;
+        public boolean onTouchEvent(MotionEvent event){
+            if(event.getActionMasked()==MotionEvent.ACTION_UP){
+                if(swiping&&BambuPresentation.dismiss(event.getY()-touchY,from.height(),ViewConfiguration.get(getContext()).getScaledTouchSlop()))close();
+                else if(!inside&&!current.contains(event.getX(),event.getY()))close();
+                swiping=false;
+            }else if(event.getActionMasked()==MotionEvent.ACTION_CANCEL)swiping=false;
+            return true;
+        }
+        public boolean onInterceptTouchEvent(MotionEvent event){
+            if(closing||(animator!=null&&animator.isRunning()))return true;
+            if(event.getActionMasked()==MotionEvent.ACTION_DOWN){touchX=event.getX();touchY=event.getY();inside=current.contains(touchX,touchY);swiping=false;}
+            else if(event.getActionMasked()==MotionEvent.ACTION_MOVE&&inside){
+                float dy=event.getY()-touchY,dx=Math.abs(event.getX()-touchX);
+                if(BambuPresentation.downward(dx,dy,ViewConfiguration.get(getContext()).getScaledTouchSlop())){swiping=true;getParent().requestDisallowInterceptTouchEvent(true);return true;}
+            }
+            return false;
+        }
         protected void onDetachedFromWindow(){if(animator!=null)animator.cancel();restore();if(expanded==this)expanded=null;super.onDetachedFromWindow();}
     }
 }

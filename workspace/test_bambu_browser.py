@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright,expect
 import server
 from unittest.mock import patch
 import bambu
-from studio_contract import legacy_descriptor
+from studio_contract import legacy_descriptor, PRINTER_MODELS
 import test_action_wizard_browser as fixture
 from bambu_contract import DEFAULTS
 
@@ -43,6 +43,7 @@ class BambuBrowserTests(unittest.TestCase):
     def test_studio_printer_setup_independent_selection_and_no_draft_secrets(self):
         template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.widget',_storeVersion='2.0.0')
         template['_studio']=legacy_descriptor(template)
+        template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in sorted(PRINTER_MODELS)]))
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.route('**/api/studio/integrations/*/*/probe',lambda r:r.fulfill(json=dict(pin='b'*64)))
@@ -53,6 +54,7 @@ class BambuBrowserTests(unittest.TestCase):
             page.get_by_role('button',name='Manage printers',exact=True).click()
             expect(page.locator('#studio-connections')).to_be_visible()
             page.locator('#connection-name').fill('H2D workshop')
+            page.locator('#connection-model').select_option('h2d')
             page.locator('#connection-host').fill('192.168.1.30')
             page.locator('#connection-serial').fill('SYNTHETIC123')
             page.locator('#connection-code').fill('LAN12345')
@@ -60,6 +62,10 @@ class BambuBrowserTests(unittest.TestCase):
             expect(page.locator('.studio-fingerprint')).to_have_text('b'*64)
             page.get_by_role('button',name='Trust certificate & save',exact=True).click()
             expect(page.locator('.studio-connection-row')).to_have_count(1)
+            self.assertEqual(server.bambu.listing()[0]['model'],'h2d')
+            page.locator('.studio-connection-row').get_by_role('button',name='Edit',exact=True).click()
+            expect(page.locator('#connection-model')).to_have_value('h2d')
+            page.get_by_role('button',name='Add printer',exact=True).click()
             expect(page.locator('#connection-code')).to_have_value('')
             page.locator('#connection-name').fill('H3C office')
             page.locator('#connection-host').fill('192.168.1.31')
@@ -74,6 +80,7 @@ class BambuBrowserTests(unittest.TestCase):
             self.assertTrue(page.locator('#studio-connections').evaluate('(d)=>d.scrollWidth<=d.clientWidth+1'))
             page.set_viewport_size(dict(width=1600,height=1000));page.screenshot(path=str(out/'studio-connections-desktop.png'),full_page=True)
             page.locator('#studio-connections').get_by_role('button',name='Close',exact=True).click()
+            expect(page.locator('[data-connection-key=printerId] option')).to_have_count(3)
             ids=page.locator('[data-connection-key=printerId] option').evaluate_all('(items)=>items.map(o=>o.value).filter(Boolean)')
             self.assertEqual(len(ids),2)
             page.locator('[data-connection-key=printerId]').select_option(ids[0])

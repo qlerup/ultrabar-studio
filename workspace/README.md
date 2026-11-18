@@ -1,4 +1,18 @@
-# UltraBar Studio — 0.49.3 Windows
+# UltraBar Studio — 0.50.0 Windows
+
+## 0.50.0 update
+
+Bambu printer connections support a model dropdown supplied by the Bambu package.
+H2D uses Left nozzle and Right nozzle for T0 and T1. A small model-specific printer
+illustration appears on the home widget, replacing the generic printer icon.
+The unfolded view removes its decorative icon and large close button. Swipe down,
+activate the discreet handle, tap outside or use Back to close it. Long job names
+scroll on a single line without restarting every telemetry refresh.
+
+Existing printer connections, access codes, widget IDs and layouts are preserved.
+Select a model in Manage printers; existing connections default to Other. Requires
+the Bambu package update for its model selector. Printer capabilities still come
+from live telemetry; selecting a model does not enable unsupported controls.
 
 ## 0.49.3 update
 

@@ -319,7 +319,7 @@ class Link:
             tools = self.state.data.get('tools', {})
             ordered_tools = sorted(tools.items())
             summary = '  ·  '.join(f'T{i} {v[0]} / {v[1]}°' for i, v in ordered_tools if len(tools) <= 2 or i == self.state.data.get('active_tool', 0))
-            data.update(name=self.profile['name'], connection=self.status, detail=self.detail, fresh=fresh,
+            data.update(name=self.profile['name'], model=self.profile.get('model', 'generic'), connection=self.status, detail=self.detail, fresh=fresh,
                         controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(),
                         nozzles=summary, nozzle_readings=[{'tool': tool, 'temperature': reading[0]} for tool, reading in ordered_tools])
             data['control_reason'] = ('Enable controls in Studio' if not self.profile['controls'] else
@@ -432,8 +432,11 @@ class Printers:
             return []
         try:
             values = json.loads(protect(base64.b64decode(json.loads(path.read_text())['protected']), True))
-            if not isinstance(values, list) or len(values) > 16 or any(not isinstance(p, dict) or set(p) != {'id','name','host','serial','code','pin','controls'} for p in values):
+            if not isinstance(values, list) or len(values) > 16 or any(not isinstance(p, dict) or set(p)-{'model'} != {'id','name','host','serial','code','pin','controls'} for p in values):
                 raise ValueError('Invalid saved connections')
+            from studio_contract import PRINTER_MODELS
+            if any(p.get('model', 'generic') not in PRINTER_MODELS for p in values):
+                raise ValueError('Invalid saved printer model')
             return values
         except (OSError, ValueError, KeyError, TypeError) as exc:
             raise EditError('Could not read saved printer connections. The file has been preserved.') from exc
@@ -444,7 +447,7 @@ class Printers:
 
     def listing(self):
         with self.lock:
-            return [dict(id=p['id'], name=p['name'], host=p['host'], serial=p['serial'], controls=p['controls'],
+            return [dict(id=p['id'], name=p['name'], model=p.get('model', 'generic'), host=p['host'], serial=p['serial'], controls=p['controls'],
                          status=self.links[p['id']].snapshot() if p['id'] in self.links else dict(connection='Not connected', fresh=False)) for p in self.read()]
 
     def validate(self, specs):
@@ -479,7 +482,7 @@ class Printers:
             self.links.clear()
 
     def save(self, body):
-        if not isinstance(body, dict) or set(body) - {'id', 'name', 'host', 'serial', 'code', 'pin', 'controls'}:
+        if not isinstance(body, dict) or set(body) - {'id', 'name', 'host', 'serial', 'code', 'pin', 'controls', 'model'}:
             raise EditError('Invalid printer connection.')
         name, serial, code, pin = (body.get(k, '') for k in ('name', 'serial', 'code', 'pin'))
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 48 or any(ord(c) < 32 for c in name):
@@ -500,7 +503,11 @@ class Printers:
                 raise EditError('This printer is already saved. Edit its existing connection.')
             if old is None and len(profiles) >= 16:
                 raise EditError('A maximum of 16 printers can be saved.')
-            profile = dict(id=old['id'] if old else uuid.uuid4().hex, name=name.strip(), host=host, serial=serial, code=code, pin=pin, controls=body.get('controls', False))
+            from studio_contract import PRINTER_MODELS
+            model = body.get('model', old.get('model', 'generic') if old else 'generic')
+            if not isinstance(model, str) or model not in PRINTER_MODELS:
+                raise EditError('Choose a supported printer model.')
+            profile = dict(id=old['id'] if old else uuid.uuid4().hex, name=name.strip(), host=host, serial=serial, code=code, pin=pin, controls=body.get('controls', False), model=model)
             profiles = [profile if p is old else p for p in profiles] if old else profiles + [profile]
             self.store(profiles)
             if profile['id'] in self.links:
