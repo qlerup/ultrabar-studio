@@ -13,6 +13,7 @@ public abstract class RecyclerView extends ViewGroup {
     public abstract Adapter getAdapter();
     public abstract RecycledViewPool getRecycledViewPool();
     public abstract boolean isComputingLayout();
+    public abstract int getChildAdapterPosition(View view);
     public abstract int getItemDecorationCount();
     public abstract ItemDecoration getItemDecorationAt(int index);
     public abstract void addItemDecoration(ItemDecoration decoration);

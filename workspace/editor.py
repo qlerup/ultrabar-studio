@@ -71,43 +71,81 @@ def compact_profiles_path(server, device):
     return draft_path(server, device).with_suffix('.compact-profiles.json')
 
 
+def widget_layout_parts(layout):
+    if isinstance(layout, dict) and set(layout) == {'small', 'positions'}:
+        return layout['small'], layout['positions']
+    return layout, {}
+
+
 def validate_compact_profiles(value, profiles, records=None):
+    from store import widget_sizes
+
     by_id = {profile['id']: profile for profile in profiles}
     if not isinstance(value, dict) or set(value) - set(by_id):
         raise EditError('Choose widget sizes for an existing profile.')
-    for key, ids in value.items():
+    result = {}
+    for key, profile in by_id.items():
+        layout = value.get(key, [])
+        ids, positions = widget_layout_parts(layout)
         if not isinstance(ids, list) or len(ids) > 128 or any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids)):
             raise EditError('Invalid small widget selection.')
-        widgets = {widget['id']: widget for widget in by_id[key]['homeData']}
-        if set(ids) - set(widgets):
+        widgets = {widget['id']: widget for widget in profile['homeData']}
+        selected = set(ids)
+        if selected - set(widgets):
             raise EditError('Small widgets must be on the Core layout.')
-    if records is not None:
-        from store import widget_sizes
-        for profile in profiles:
-            selected = set(value.get(profile['id'], []))
-            for widget in profile['homeData']:
-                size = 'small' if widget['id'] in selected else 'large'
-                if size not in widget_sizes(widget, records):
-                    raise EditError(f"{widget.get('name') or widget['id']} does not support the {size} size.")
-    return {key: ids for key, ids in value.items() if ids}
+        if not isinstance(positions, dict) or (positions and set(positions) != set(widgets)):
+            raise EditError('Assign a position to each placed widget.')
+        occupied = set()
+        for ident, widget in widgets.items():
+            small = ident in selected
+            size = 'small' if small else 'large'
+            if records is not None and size not in widget_sizes(widget, records):
+                raise EditError(f"{widget.get('name') or ident} does not support the {size} size.")
+            if not positions:
+                continue
+            cell = positions[ident]
+            if (not isinstance(cell, list) or len(cell) != 2 or any(type(n) is not int for n in cell)
+                    or not 0 <= cell[0] < 512 or cell[1] not in ((0, 1) if small else (0,))):
+                raise EditError('Invalid widget grid position.')
+            col, row = cell
+            width = 1 if small else 4 if widget['type'] == 'TIME' else 2
+            footprint = {(x, y) for x in range(col, col + width) for y in ((row,) if small else (0, 1))}
+            if occupied & footprint:
+                raise EditError('Widget positions overlap.')
+            occupied.update(footprint)
+        if positions and list(widgets) != sorted(widgets, key=positions.get):
+            raise EditError('Widget positions must follow the Core layout order.')
+        if positions:
+            result[key] = dict(small=ids, positions=positions)
+        elif ids:
+            result[key] = ids
+    return result
 
 
 def saved_compact_profiles(server, snapshot):
     try:
         value = json.loads(compact_profiles_path(server, snapshot['device_id']).read_text(encoding='utf-8'))
-        if not isinstance(value, dict) or any(not isinstance(ids, list) or any(not isinstance(i, str) for i in ids) for ids in value.values()):
+        if not isinstance(value, dict):
             raise ValueError()
+        result = {}
+        for profile in snapshot['profiles']:
+            keys = [widget['id'] for widget in profile['homeData']]
+            selected, positions = widget_layout_parts(value.get(profile['id'], []))
+            if not isinstance(selected, list) or any(not isinstance(i, str) for i in selected) or not isinstance(positions, dict):
+                raise ValueError()
+            selected = [key for key in selected if key in keys]
+            if positions and all(key in positions for key in keys):
+                cells = {key: positions[key] for key in keys}
+                if keys == sorted(keys, key=cells.get):
+                    result[profile['id']] = dict(small=selected, positions=cells)
+                    continue
+            if selected:
+                result[profile['id']] = selected
+        return validate_compact_profiles(result, snapshot['profiles'])
     except FileNotFoundError:
         return {}
-    except (OSError, ValueError) as exc:
+    except (OSError, TypeError, ValueError) as exc:
         raise EditError('Could not read saved widget layouts. Existing settings were preserved.') from exc
-    result = {}
-    for profile in snapshot['profiles']:
-        ids = {widget['id'] for widget in profile['homeData']}
-        selected = [key for key in value.get(profile['id'], []) if key in ids]
-        if selected:
-            result[profile['id']] = selected
-    return result
 
 
 def saved_vivo(server,device):

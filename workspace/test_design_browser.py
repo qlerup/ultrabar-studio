@@ -130,6 +130,21 @@ class DesignTests(unittest.TestCase):
        assert 'small-widget' in canvas.get_by_role('button',name=title,exact=True).get_attribute('class').split()
       rects=canvas.locator('.small-widget').evaluate_all('(cards)=>cards.map(card=>card.getBoundingClientRect().toJSON())')
       assert rects[0]['height'] < canvas.locator('.clock-preview').bounding_box()['height']
+      clock=canvas.get_by_role('button',name='Existing Store Clock',exact=True)
+      clock.scroll_into_view_if_needed()
+      before=clock.bounding_box();scale=canvas.bounding_box()['width']/1424
+      x=before['x']+before['width']/2;y=before['y']+before['height']/2
+      page.mouse.move(x,y);page.mouse.down();page.mouse.move(x,y+130*scale,steps=12)
+      expect(page.locator('.grid-marker')).to_be_visible()
+      page.mouse.up()
+      after=clock.bounding_box()
+      assert abs(after['x']-before['x'])<1 and abs(after['y']-before['y']-130*scale)<1
+      with page.expect_response(lambda r:r.url.endswith('/api/editor/draft') and r.request.method=='POST') as saved:
+       page.locator('#draft-save').click()
+      config=saved.value.json()['draft']['compact_profiles']['p1']
+      assert config['positions']['studio_native_0123456789abcdef0123456789abcdef'][1]==1
+      page.locator('#widget-undo').click()
+      expect(canvas.locator('.small-widget')).to_have_count(2)
       page.locator('#widget-undo').click()
       expect(canvas.locator('.small-widget')).to_have_count(1)
       page.locator('#widget-undo').click()

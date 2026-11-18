@@ -70,12 +70,81 @@
     });
     return template?._sizes||['large','small'];
   }
-  function isSmall(widget){return draft.compact_profiles?.[current().id]?.includes(widget.id)||false;}
+  const cellPitch = 140.4, rowPitch = 130, gridMargin = 20;
+  function layoutParts(profile=current()){
+    const layouts=draft?.compact_profiles||{};
+    const value=Object.hasOwn(layouts,profile.id)?layouts[profile.id]:null;
+    return Array.isArray(value)?{small:value,positions:null}:value||{small:[],positions:null};
+  }
+  function hasGrid(){const layout=layoutParts();return !!(layout.small.length||layout.positions);}
+  function isSmall(widget){return layoutParts().small.includes(widget.id);}
+  function footprintWidth(widget,small){return small?1:widget.type==='TIME'?4:2;}
+  function storeLayout(profile,small,positions){
+    if(positions&&Object.keys(positions).length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:{small,positions}};
+    else if(small.length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:small};
+    else delete draft.compact_profiles[profile.id];
+  }
+  function automaticPositions(){
+    const positions=Object.create(null);let column=0,row=0;
+    for(const widget of current().homeData){
+      if(isSmall(widget)){
+        positions[widget.id]=[column,row];
+        if(row===1)column++;
+        row=1-row;
+      }else{
+        if(row===1){column++;row=0;}
+        positions[widget.id]=[column,0];column+=footprintWidth(widget,false);
+      }
+    }
+    return positions;
+  }
+  function positionsForCurrent(){return layoutParts().positions||automaticPositions();}
+  function findOverlaps(widget,small,cell,positions){
+    const [column,row]=cell;
+    return current().homeData.filter(other=>{
+      if(other.id===widget.id||!Object.hasOwn(positions,other.id))return false;
+      const [x,y]=positions[other.id], otherSmall=isSmall(other);
+      return column<x+footprintWidth(other,otherSmall)&&x<column+footprintWidth(widget,small)&&(!small||!otherSmall||row===y);
+    });
+  }
+  function nextFreeColumn(positions){
+    return Math.max(0,...current().homeData.filter(w=>Object.hasOwn(positions,w.id)).map(w=>positions[w.id][0]+footprintWidth(w,isSmall(w))));
+  }
+  function proposePosition(widget,small,cell){
+    const positions={...positionsForCurrent()}, from=positions[widget.id], overlaps=findOverlaps(widget,small,cell,positions);
+    delete positions[widget.id];
+    if(overlaps.length){
+      if(!from||overlaps.length!==1)return null;
+      const other=overlaps[0], otherSmall=isSmall(other), destination=[from[0],otherSmall?from[1]:0];
+      positions[widget.id]=cell;
+      if(findOverlaps(other,otherSmall,destination,positions).length)return null;
+      positions[other.id]=destination;
+    }
+    return positions;
+  }
+  function applyPositions(widget,cell,positions){
+    const layout=layoutParts();
+    const selected={...positions,[widget.id]:cell};
+    current().homeData.sort((a,b)=>selected[a.id][0]-selected[b.id][0]||selected[a.id][1]-selected[b.id][1]);
+    storeLayout(current(),layout.small,selected);
+    widgetIndex=current().homeData.indexOf(widget);
+    backgroundIndex=-1;
+  }
   function setWidgetSize(widget,size){
-    const ids=(draft.compact_profiles[current().id]||[]).filter(id=>id!==widget.id);
-    if(size==='small')ids.push(widget.id);
-    if(ids.length)draft.compact_profiles[current().id]=ids;
-    else delete draft.compact_profiles[current().id];
+    const layout=layoutParts(),small=layout.small.filter(id=>id!==widget.id);
+    if(size==='small')small.push(widget.id);
+    if(!layout.positions){storeLayout(current(),small,null);return;}
+    const positions={...layout.positions}, old=positions[widget.id];
+    delete positions[widget.id];
+    storeLayout(current(),small,positions);
+    let cell=old?[old[0],size==='small'?old[1]:0]:[nextFreeColumn(positions),0];
+    if(findOverlaps(widget,size==='small',cell,positions).length)cell=[nextFreeColumn(positions),0];
+    applyPositions(widget,cell,positions);
+  }
+  function removePlacement(profile,widgetId){
+    const layout=layoutParts(profile),positions=layout.positions?{...layout.positions}:null;
+    if(positions)delete positions[widgetId];
+    storeLayout(profile,layout.small.filter(id=>id!==widgetId),positions);
   }
   function nativeTemplate(kind,name,drive='all'){return {type:'PC_CONTROL',name,bgColor:'#192325',iconScale:0,_new:true,_native:true,param:{output:10,payload:{action:'studioNative',params:{kind,accent:'#94d9bb',textColor:'#eef6f2',...(kind==='disk'?{drive}:{})}}}};}
   async function loadStorePresets(){
@@ -126,16 +195,20 @@
     const screen=$('core-screen').getBoundingClientRect();
     if(x<screen.left||x>screen.right||y<screen.top||y>screen.bottom)return null;
     const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
-    const hit=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;});
-    if(hit>=0&&$('core-canvas').classList.contains('mixed-widgets')){
-      const r=cards[hit].getBoundingClientRect();
-      return hit+(cards[hit].classList.contains('small-widget')?y>(r.top+r.bottom)/2:x>(r.left+r.right)/2);
-    }
     const next=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x<r.left+r.width/2;});
     return next<0?cards.length:next;
   }
   function overBackground(x,y){const r=$('background-drop').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
   function dragApp(payload){return payload.widget||(payload.kind==='widget-move'?current().homeData[payload.index]:null);}
+  function gridDrop(d){
+    const widget=dragApp(d.payload);
+    const small=d.payload.kind==='widget-new'?!widgetSizes(widget).includes('large'):isSmall(widget);
+    if(!hasGrid()&&!small)return null;
+    const canvas=$('core-canvas'),rect=canvas.getBoundingClientRect(),scale=rect.width/1424;
+    const col=Math.max(0,Math.min(511,Math.floor(((d.x-rect.left)/scale+canvas.scrollLeft-gridMargin+10)/cellPitch)));
+    const row=small&&(d.y-rect.top)/scale>=140?1:0, cell=[col,row];
+    return {cell,positions:proposePosition(widget,small,cell),small,span:footprintWidth(widget,small),rect,scale};
+  }
   function paintWidgetDrag(){
     const d=widgetPointer;if(!d?.active)return;
     $('background-drop').classList.toggle('is-drop-target',overBackground(d.x,d.y)&&dragApp(d.payload)?.type==='APPS');
@@ -146,11 +219,25 @@
       if(d.x<screen.left+40)$('core-canvas').scrollLeft-=12;
       if(d.x>screen.right-40)$('core-canvas').scrollLeft+=12;
       at=widgetDropIndex(d.x,d.y);
+      const grid=gridDrop(d);
+      $('core-canvas').classList.toggle('grid-drag',!!grid);
+      d.marker.classList.toggle('grid-marker',!!grid);
+      d.marker.classList.toggle('invalid-grid-marker',!!grid&&!grid.positions);
+      if(grid){
+        const {cell:[col,row],rect,scale,span,small}=grid,canvas=$('core-canvas');
+        const x=rect.left+(gridMargin+col*cellPitch-canvas.scrollLeft)*scale;
+        const left=Math.max(screen.left,x),right=Math.min(screen.right,x+(span*cellPitch-20)*scale);
+        d.marker.hidden=right<=left;
+        d.marker.style.left=left+'px';d.marker.style.top=(rect.top+(gridMargin+row*rowPitch)*scale)+'px';
+        d.marker.style.width=Math.max(0,right-left)+'px';d.marker.style.height=((small?110:240)*scale)+'px';
+        d.frame=requestAnimationFrame(paintWidgetDrag);return;
+      }
+      d.marker.style.width='';
       const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
       const x=cards[at]?.getBoundingClientRect().left??cards.at(-1)?.getBoundingClientRect().right??screen.left+12;
       d.marker.hidden=false;d.marker.style.left=Math.max(screen.left+2,Math.min(screen.right-4,x))+'px';d.marker.style.top=(screen.top+8)+'px';d.marker.style.height=Math.max(10,screen.height-16)+'px';
-    }else d.marker.hidden=true;
-    d.index=at;d.frame=requestAnimationFrame(paintWidgetDrag);
+    }else{d.marker.hidden=true;$('core-canvas').classList.remove('grid-drag');}
+    d.frame=requestAnimationFrame(paintWidgetDrag);
   }
   function endWidgetDrag(cancel=false){
     const d=widgetPointer;if(!d)return;widgetPointer=null;
@@ -158,12 +245,26 @@
     if(!d.active)return;
     cancelAnimationFrame(d.frame);d.ghost.remove();d.marker.remove();d.node.classList.remove('dragging');
     $('background-drop').classList.remove('is-drop-target');
+    $('core-canvas').classList.remove('grid-drag');
     const at=widgetDropIndex(d.x,d.y);drag=null;suppressWidgetClickUntil=Date.now()+400;
     if(!cancel&&overBackground(d.x,d.y)){addBackground(dragApp(d.payload));return;}
     if(cancel||at===null){message('Move cancelled.');return;}
-    if(d.payload.kind==='widget-new')addWidget(d.payload.widget,at);
-    else if(d.payload.kind==='widget-background'){const app=d.payload.widget;change(()=>{draft.background_apps.splice(d.payload.index,1);backgroundIndex=-1;current().homeData.splice(at,0,{id:app.id,type:'APPS',name:app.name,iconScale:100});widgetIndex=at;});}
-    else moveWidget(d.payload.index,at);
+    const grid=gridDrop(d);
+    if(grid&&!grid.positions){message('Choose an empty position or drop onto a widget that can swap places.',true);return;}
+    if(d.payload.kind==='widget-new')addWidget(d.payload.widget,at,grid);
+    else if(d.payload.kind==='widget-background'){
+      const app=d.payload.widget;
+      change(()=>{
+        draft.background_apps.splice(d.payload.index,1);backgroundIndex=-1;
+        const widget={id:app.id,type:'APPS',name:app.name,iconScale:100};
+        current().homeData.splice(at,0,widget);
+        if(grid)applyPositions(widget,grid.cell,grid.positions);
+        else widgetIndex=at;
+      });
+    }else if(grid){
+      const widget=current().homeData[d.payload.index];
+      change(()=>applyPositions(widget,grid.cell,grid.positions));
+    }else moveWidget(d.payload.index,at);
   }
   document.addEventListener('pointermove',event=>{
     const d=widgetPointer;if(!d||event.pointerId!==d.pointerId)return;
@@ -234,18 +335,24 @@
     }
     if(!container.children.length)container.append(el('p','muted','No matching widgets.'));
   }
-  function addWidget(template,at=current().homeData.length){
+  function addWidget(template,at=current().homeData.length,target=null){
     backgroundIndex=-1;
     const widget=clone(template),companion=widget._bundledApp,sizes=widgetSizes(template);delete widget._sizes;delete widget._bundledApp;delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
-    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});current().homeData.splice(at,0,widget);if(!sizes.includes('large'))setWidgetSize(widget,'small');widgetIndex=at;});
+    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});const layout=layoutParts();
+      current().homeData.splice(at,0,widget);
+      const small=!sizes.includes('large'),selected=small?[...layout.small,widget.id]:layout.small;
+      storeLayout(current(),selected,layout.positions);
+      if(target)applyPositions(widget,target.cell,target.positions);
+      else if(layout.positions)applyPositions(widget,[nextFreeColumn(layout.positions),0],layout.positions);
+      else widgetIndex=at;});
   }
   function addBackground(w){
     if(!w||w.type!=='APPS'){message('Background apps supports Core apps. Display widgets belong on the bar.',true);return;}
     if(/^(android\.|com\.android\.|com\.ultrabar\.)/.test(w.id)){message('System apps cannot be added to Background apps.',true);return;}
     const existing=draft.background_apps.findIndex(a=>a.id===w.id);
     if(existing>=0){backgroundIndex=existing;renderBackground();renderProperties();return;}
-    change(()=>{for(const p of draft.profiles)p.homeData=p.homeData.filter(a=>a.type!=='APPS'||a.id!==w.id);draft.background_apps.push({id:w.id,name:w.name||w.id,settings:w.id===screenSyncId?{enabled:true,wakeDelayMs:1000}:{launch:true}});backgroundIndex=draft.background_apps.length-1;});
+    change(()=>{for(const p of draft.profiles){p.homeData=p.homeData.filter(a=>a.type!=='APPS'||a.id!==w.id);removePlacement(p,w.id);}draft.background_apps.push({id:w.id,name:w.name||w.id,settings:w.id===screenSyncId?{enabled:true,wakeDelayMs:1000}:{launch:true}});backgroundIndex=draft.background_apps.length-1;});
   }
   function renderBackground(){
     const list=$('background-apps');list.replaceChildren();
@@ -462,8 +569,10 @@
   $('core-next').onclick=()=>{$('core-canvas').scrollLeft+=1424;};
   function renderCanvas(){
     const canvas=$('core-canvas'),position=canvas.scrollLeft;canvas.replaceChildren();
-    canvas.classList.toggle('mixed-widgets',current().homeData.some(isSmall));
-    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
+    const grid=hasGrid(),positions=grid?positionsForCurrent():null;
+    canvas.classList.toggle('mixed-widgets',grid);
+    if(grid)canvas.style.setProperty('--layout-right',gridMargin+nextFreeColumn(positions)*cellPitch+'px');
+    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
     if(!current().homeData.length)canvas.append(el('p','canvas-empty','Drop widgets here to build your Core screen'));
     canvas.scrollLeft=position;requestAnimationFrame(syncCoreScroll);
@@ -496,8 +605,18 @@
     if(shortcut)renderPcWidgetSettings(w,panel);
     if(w.type==='APPS')renderAppSettings(w.id,panel);
     if(w.type==='APPS'&&draft.app_settings?.[w.id])panel.append(button('Forget draft app settings',()=>change(()=>delete draft.app_settings[w.id]),'danger-quiet'));
-    const moves=el('div','property-moves');moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));panel.append(moves);
-    panel.append(button('Remove from Core',()=>change(()=>{setWidgetSize(w,'large');current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
+    const moves=el('div','property-moves');
+    if(hasGrid()){
+      const directions=isSmall(w)?[['←',-1,0],['→',1,0],['↑',0,-1],['↓',0,1]]:[['←',-1,0],['→',1,0]];
+      for(const [label,dx,dy] of directions)moves.append(button(label,()=>{
+        const [column,row]=positionsForCurrent()[w.id],cell=[column+dx,row+dy];
+        if(cell[0]<0||cell[0]>511||cell[1]<0||cell[1]>1)return;
+        const positions=proposePosition(w,isSmall(w),cell);
+        if(positions)change(()=>applyPositions(w,cell,positions));
+      }));
+    }else moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));
+    panel.append(moves);
+    panel.append(button('Remove from Core',()=>change(()=>{removePlacement(current(),w.id);current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
     if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));
   }

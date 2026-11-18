@@ -3,8 +3,9 @@
 ## 0.52.0 update
 
 Choose Large or Small in Widget settings for each supported card. Four small
-widgets fit in the space of one large standard card. Consecutive small widgets
-fill each column from top to bottom and the layout still scrolls horizontally.
+widgets fit in the space of one large standard card. In the CoreBAR preview,
+drag a small widget to either row or move large cards between columns. Widgets
+from different packages can share the same grid. Empty positions are preserved.
 Use Save and Deploy to apply the sizes. Keep Studio connected to CoreBAR.
 Mixed sizes require root-enabled CB01 with LineOS 1.0.9.
 

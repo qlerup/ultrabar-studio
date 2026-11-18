@@ -64,7 +64,7 @@ class EditorTests(unittest.TestCase):
         key = 'studio_native_' + 'a' * 32
         rows[0]['homeData'].append(dict(id=key, type='PC_CONTROL', name='Store Clock', param=dict(
             payload=dict(action='studioNative', params=dict(kind='clock', accent='#94d9bb')))))
-        sizes = {'p1': [key]}
+        sizes = {'p1': dict(small=[key], positions={'clock': [0, 0], key: [6, 1]})}
         saved = self.post('/api/editor/draft', dict(device_id='core1', revision=self.draft['revision'],
                                                   profiles=rows, compact_profiles=sizes))
         self.assertEqual(saved.status_code, 200)

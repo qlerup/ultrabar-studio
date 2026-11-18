@@ -23,7 +23,9 @@ Java.perform(function () {
         let home = null;
         for (let i = 0; i < activities.size(); i++) {
             const activity = Java.cast(activities.valueAt(i), Record).activity.value;
-            if (Home.class.isInstance(activity)) { home = activity; break; }
+            if (!Home.class.isInstance(activity) || activity.isFinishing() || activity.isDestroyed()) continue;
+            if (activity.hasWindowFocus()) { home = activity; break; }
+            if (activity.getWindow().getDecorView().isShown()) home = activity;
         }
         return mixedLayout.apply(home, JSON.stringify(profiles));
     }

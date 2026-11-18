@@ -42,9 +42,14 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .studio-certificate{border:1px solid #86e4c3;border-radius:8px;padding:16px;margin:16px 0}
 .studio-fingerprint{display:block;overflow-wrap:anywhere;font-size:13px}
 
-.core-screen .core-canvas.mixed-widgets{display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,110px);grid-auto-columns:max-content;align-items:start;justify-items:start}
-.mixed-widgets .canvas-widget{grid-row:span 2}
-.core-canvas .canvas-widget.small-widget{grid-row:span 1;width:120.4px;height:110px;border-radius:15px;padding:10px;gap:5px;justify-content:center}
+.core-screen .core-canvas.mixed-widgets{display:block;position:relative}
+.mixed-widgets::after{content:"";position:absolute;width:var(--layout-right);height:1px;left:0;top:0;pointer-events:none}
+.mixed-widgets.grid-drag::after{width:calc(var(--layout-right) + 1424px)}
+.mixed-widgets .canvas-widget{position:absolute}
+.core-canvas.grid-drag{background-image:repeating-linear-gradient(to right,#625980 0 1px,transparent 1px 140.4px),linear-gradient(transparent 139px,#625980 139px 140px,transparent 140px);background-position:10px 0,0 0;background-attachment:local}
+.widget-insert-marker.grid-marker{border:2px solid #b9a9ff;border-radius:10px;background:#b9a93b21;box-shadow:none}
+.widget-insert-marker.invalid-grid-marker{border-color:#e38484;background:#bc4d4d25}
+.core-canvas .canvas-widget.small-widget{width:120.4px;height:110px;border-radius:15px;padding:10px;gap:5px;justify-content:center}
 .small-widget .native-title{font-size:13px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .small-widget .compact-reading{font-size:22px;font-weight:650;line-height:1.2;white-space:nowrap}
 .small-widget .compact-detail{font-size:11px}

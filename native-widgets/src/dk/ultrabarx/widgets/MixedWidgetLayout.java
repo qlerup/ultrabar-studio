@@ -10,7 +10,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -32,20 +31,18 @@ public final class MixedWidgetLayout {
         final List<RecyclerView.ItemDecoration> removed = new ArrayList<>();
         final RecyclerView.ItemDecoration decoration;
         final int leftPadding, gap, width, height;
-        final Set<String> ids;
-        final int[] positions;
+        final int[][] cells;
 
-        State(RecyclerView list, Set<String> ids, int[] positions) {
+        State(RecyclerView list, int[][] cells) {
             this.list = list;
-            this.ids = ids;
-            this.positions = positions;
+            this.cells = cells;
             manager = list.getLayoutManager();
             leftPadding = list.getPaddingLeft();
             int gapId = list.getResources().getIdentifier("dp_20", "dimen", "com.ultrabar.launch");
             gap = list.getResources().getDimensionPixelSize(gapId);
             width = (int) (((list.getWidth() - gap * 6) / 5f - gap) / 2f);
             height = list.getHeight() / 2 - gap * 3 / 2;
-            decoration = spacing(gap, width, height);
+            decoration = spacing(gap, width, height, list.getHeight(), cells);
         }
     }
 
@@ -57,15 +54,18 @@ public final class MixedWidgetLayout {
         Class<?> preferences = home.getClassLoader().loadClass("com.ultrabar.launch.common.utils.SharedPreferencesUtils");
         Object instance = preferences.getMethod("getIns").invoke(null);
         Object profile = preferences.getMethod("getProfile").invoke(instance);
-        JSONArray ids = profiles.optJSONArray((String) profile.getClass().getMethod("getId").invoke(profile));
-        if (ids == null || ids.length() == 0) { restore(); return true; }
+        String profileId = (String) profile.getClass().getMethod("getId").invoke(profile);
+        JSONObject layout = profiles.optJSONObject(profileId);
+        JSONArray ids = layout == null ? profiles.optJSONArray(profileId) : layout.getJSONArray("small");
+        JSONObject coordinates = layout == null ? null : layout.getJSONObject("positions");
+        if (ids == null || (ids.length() == 0 && coordinates == null)) { restore(); return true; }
         Set<String> selected = new HashSet<>();
         for (int i = 0; i < ids.length(); i++) selected.add(ids.getString(i));
-        return apply(home, selected);
+        return apply(home, selected, coordinates);
     }
 
-    private static boolean apply(Activity home, Set<String> selected) throws ReflectiveOperationException {
-        if (active != null && active.list.isComputingLayout()) return false;
+    private static boolean apply(Activity home, Set<String> selected, JSONObject coordinates)
+            throws ReflectiveOperationException, JSONException {
         int listId = home.getResources().getIdentifier("recycle_view", "id", "com.ultrabar.launch");
         View view = home.findViewById(listId);
         if (!(view instanceof RecyclerView)) return false;
@@ -75,20 +75,18 @@ public final class MixedWidgetLayout {
         Field data = home.getClass().getDeclaredField("mData");
         data.setAccessible(true);
         List<?> widgets = (List<?>) data.get(home);
-        int[] matches = new int[widgets.size()];
-        int count = 0;
-        for (int index = 0; index < widgets.size(); index++) {
-            Object widget = widgets.get(index);
-            if (selected.contains(widget.getClass().getMethod("getId").invoke(widget))) matches[count++] = index;
-        }
-        if (count == 0) { restore(); return false; }
-        int[] positions = Arrays.copyOf(matches, count);
-        if (active != null && active.list == list && active.ids.equals(selected) && Arrays.equals(active.positions, positions)) return true;
+        if (widgets.isEmpty()) { restore(); return false; }
+        int[][] cells = cells(widgets, selected, coordinates);
+        if (active != null && active.list == list && Arrays.deepEquals(active.cells, cells)) return true;
         restore();
         if (list.getLayoutManager() == null || list.getAdapter() == null) return false;
-        State next = new State(list, selected, positions);
+        State next = new State(list, cells);
         GridLayoutManager grid = new GridLayoutManager(list.getContext(), 2, 0, false);
-        grid.setSpanSizeLookup(spans(positions));
+        grid.setSpanSizeLookup(new GridLayoutManager.SpanSizeLookup() {
+            @Override public int getSpanSize(int position) {
+                return position >= 0 && position < cells.length && cells[position][3] == 1 ? 1 : 2;
+            }
+        });
         while (list.getItemDecorationCount() > 0) {
             RecyclerView.ItemDecoration old = list.getItemDecorationAt(0);
             next.removed.add(old);
@@ -131,21 +129,50 @@ public final class MixedWidgetLayout {
         params.height = size.y;
     }
 
-    public static GridLayoutManager.SpanSizeLookup spans(int[] smallPositions) {
-        BitSet small = new BitSet();
-        for (int position : smallPositions) small.set(position);
-        return new GridLayoutManager.SpanSizeLookup() {
-            @Override public int getSpanSize(int position) {
-                return position >= 0 && small.get(position) ? 1 : 2;
+    // Each entry stores the column, row, width in cells, span size and skipped columns.
+    private static int[][] cells(List<?> widgets, Set<String> small, JSONObject coordinates)
+            throws ReflectiveOperationException, JSONException {
+        int[][] cells = new int[widgets.size()][5];
+        int column = 0, row = 0;
+        for (int i = 0; i < widgets.size(); i++) {
+            Object widget = widgets.get(i);
+            String id = (String) widget.getClass().getMethod("getId").invoke(widget);
+            boolean compact = small.contains(id);
+            Object type = widget.getClass().getMethod("getType").invoke(widget);
+            int width = compact ? 1 : "TIME".equals(String.valueOf(type)) ? 4 : 2;
+            if (!compact && row == 1) { column++; row = 0; }
+            JSONArray explicit = coordinates == null ? null : coordinates.optJSONArray(id);
+            cells[i][0] = explicit == null ? column : explicit.getInt(0);
+            cells[i][1] = explicit == null ? row : explicit.getInt(1);
+            cells[i][2] = width;
+            if (!compact) column += width;
+            else { if (row == 1) column++; row = 1 - row; }
+        }
+        int previousEnd = 0;
+        for (int i = 0; i < cells.length; i++) {
+            int[] cell = cells[i];
+            int missing = Math.max(0, cell[0] - previousEnd);
+            cell[3] = 2;
+            cell[4] = missing;
+            if (cell[2] == 1 && i + 1 < cells.length && cells[i + 1][0] == cell[0]) {
+                cell[3] = 1;
+                cells[i + 1][3] = 1;
+                cells[i + 1][4] = missing;
+                i++;
             }
-        };
+            previousEnd = cell[0] + cell[2];
+        }
+        return cells;
     }
 
-    private static RecyclerView.ItemDecoration spacing(int gap, int width, int height) {
+    private static RecyclerView.ItemDecoration spacing(int gap, int width, int height, int viewportHeight, int[][] cells) {
         return new RecyclerView.ItemDecoration() {
             @Override public void getItemOffsets(Rect out, View item, RecyclerView parent, RecyclerView.State state) {
                 GridLayoutManager.LayoutParams params = (GridLayoutManager.LayoutParams) item.getLayoutParams();
-                boolean small = params.getSpanSize() == 1;
+                int position = parent.getChildAdapterPosition(item);
+                if (position < 0 || position >= cells.length) return;
+                int[] cell = cells[position];
+                boolean small = cell[2] == 1;
                 // GridLayoutManager asks for decoration offsets after assigning spans and before measuring.
                 if (small) {
                     if (!originalSizes.containsKey(item)) originalSizes.put(item, new Point(params.width, params.height));
@@ -155,9 +182,15 @@ public final class MixedWidgetLayout {
                     Point previous = originalSizes.remove(item);
                     if (previous != null) restoreSize(params, previous);
                 }
-                boolean lower = params.getSpanIndex() == 1;
-                int half = gap / 2;
-                out.set(0, small && lower ? half : gap, gap, small && !lower ? gap - half : gap);
+                int half = gap / 2, top = gap, bottom = gap;
+                if (small && cell[3] == 1) {
+                    if (cell[1] == 1) top = half;
+                    else bottom = gap - half;
+                } else if (small) {
+                    if (cell[1] == 1) top = viewportHeight - gap - height;
+                    bottom = viewportHeight - top - height;
+                }
+                out.set(cell[4] * (width + gap), top, gap, bottom);
             }
         };
     }
