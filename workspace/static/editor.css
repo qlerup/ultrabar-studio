@@ -23,6 +23,11 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .core-scroll-controls input::-webkit-slider-thumb{appearance:none;width:12px;height:12px;margin-top:-5px;border:0;border-radius:50%;background:var(--mint)}
 .core-scroll-controls input::-moz-range-thumb{width:12px;height:12px;border:0;border-radius:50%;background:var(--mint)}
 .core-scroll-controls input:disabled{opacity:.45;cursor:default}
+@media(forced-colors:none){
+  .core-scroll-controls input:focus-visible{outline:none}
+  .core-scroll-controls input:focus-visible::-webkit-slider-thumb{outline:2px solid var(--mint);outline-offset:3px}
+  .core-scroll-controls input:focus-visible::-moz-range-thumb{outline:2px solid var(--mint);outline-offset:3px}
+}
 @media(forced-colors:active){.core-scroll-controls input{appearance:auto}}
 .stock-preview .stock-title{font-size:19px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .stock-preview small{font-size:12px}
