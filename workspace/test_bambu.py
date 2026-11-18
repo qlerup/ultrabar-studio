@@ -118,7 +118,7 @@ class PrinterTests(unittest.TestCase):
         self.assertEqual(self.manager.links[old['id']].snapshot()['model'],'h2d')
         self.manager.save(dict(old,code=''))
         self.assertEqual(self.manager.read()[0]['model'],'h2d')
-        for model in ('injected', {}, None):
+        for model in ('not/a/model', {}, None):
             with self.subTest(model=model),self.assertRaises(EditError):self.manager.save(dict(old,model=model))
         self.assertEqual(self.manager.read()[0]['model'],'h2d')
 

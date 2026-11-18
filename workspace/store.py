@@ -185,7 +185,7 @@ def widget_package(raw):
     if not isinstance(widgets,list) or not 1<=len(widgets)<=32:raise StoreError('A package must contain 1-32 widgets.')
     result=[];ids=set()
     for w in widgets:
-        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions','studio'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
+        if not isinstance(w,dict) or set(w)-({'id','name','kind','background','textColor','accent','hourFormat','showSeconds','showDate','kindOptions','studio','preset'}|BAMBU_FIELDS):raise StoreError('Unsupported widget field. Executable code is not supported.')
         key=w.get('id')
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
@@ -215,6 +215,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any('presentation' in w.get('studio',{}) or any(f['key']=='preset' for f in w.get('studio',{}).get('settings',{}).get('fields',[])) for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,51,0):
+        raise StoreError('Package-owned presentation presets require Studio 0.51.0 or newer.')
     if any(f.get('key')=='model' for w in widgets for f in w.get('studio',{}).get('connection',{}).get('fields',[])) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,50,0):
         raise StoreError('Printer model presets require Studio 0.50.0 or newer.')
     if any('studio' in w for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<studio_contract.MIN_VERSION:

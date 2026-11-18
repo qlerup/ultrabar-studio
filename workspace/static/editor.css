@@ -32,6 +32,7 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 
 .studio-connections-dialog{width:min(680px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow:auto;border:1px solid #42534e;border-radius:16px;background:#17211f;color:#eef6f2;padding:24px}
 .studio-connections-dialog::backdrop{background:#0009}
+.native-preview{position:relative}.package-artwork{position:absolute;right:8%;top:23%;width:24%;height:27%;pointer-events:none}.native-preview:has(.package-artwork) .native-value{max-width:68%;overflow:hidden;text-overflow:ellipsis}
 .studio-connections-heading{display:flex;justify-content:space-between;align-items:center;gap:16px}
 .studio-connection-row{padding:16px 0;border-bottom:1px solid #42534e}
 .studio-connection-row p{margin:6px 0}

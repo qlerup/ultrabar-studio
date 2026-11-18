@@ -434,8 +434,8 @@ class Printers:
             values = json.loads(protect(base64.b64decode(json.loads(path.read_text())['protected']), True))
             if not isinstance(values, list) or len(values) > 16 or any(not isinstance(p, dict) or set(p)-{'model'} != {'id','name','host','serial','code','pin','controls'} for p in values):
                 raise ValueError('Invalid saved connections')
-            from studio_contract import PRINTER_MODELS
-            if any(p.get('model', 'generic') not in PRINTER_MODELS for p in values):
+            from widget_presentation import identifier
+            if any(not identifier(p.get('model', 'generic')) for p in values):
                 raise ValueError('Invalid saved printer model')
             return values
         except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -503,9 +503,9 @@ class Printers:
                 raise EditError('This printer is already saved. Edit its existing connection.')
             if old is None and len(profiles) >= 16:
                 raise EditError('A maximum of 16 printers can be saved.')
-            from studio_contract import PRINTER_MODELS
+            from widget_presentation import identifier
             model = body.get('model', old.get('model', 'generic') if old else 'generic')
-            if not isinstance(model, str) or model not in PRINTER_MODELS:
+            if not identifier(model):
                 raise EditError('Choose a supported printer model.')
             profile = dict(id=old['id'] if old else uuid.uuid4().hex, name=name.strip(), host=host, serial=serial, code=code, pin=pin, controls=body.get('controls', False), model=model)
             profiles = [profile if p is old else p for p in profiles] if old else profiles + [profile]

@@ -8,6 +8,30 @@ import test_action_wizard_browser as fixture
 
 
 class StudioPanelBrowserTests(unittest.TestCase):
+    def test_other_publisher_owns_presets_artwork_and_labels_without_device_logic(self):
+        from test_widget_presentation import panel
+        descriptor=panel()
+        template=dict(id='clock',name='Independent clock',kind='clock',_widgetPackage=True,_storePackage='someone.clock',_storeVersion='1.0.0',_studio=descriptor)
+        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy):
+            errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+            page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
+            page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
+            page.locator('#mode-layout').click()
+            item=page.locator('#widget-library').get_by_role('button',name='Independent clock',exact=True)
+            expect(item).to_be_visible();item.drag_to(page.locator('#core-screen'))
+            card=page.locator('#core-canvas .canvas-widget').filter(has_text='Morning clock')
+            expect(card.locator('.package-artwork ellipse')).to_have_count(1)
+            page.locator('#widget-setting-preset').select_option('night')
+            expect(page.locator('#core-canvas')).to_contain_text('Night clock')
+            expect(page.locator('#core-canvas .package-artwork')).to_have_count(0)
+            page.locator('#widget-undo').click()
+            expect(page.locator('#core-canvas')).to_contain_text('Morning clock')
+            page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')
+            saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
+            spec=next(w['param']['payload']['params'] for w in saved['profiles'][0]['homeData'] if w.get('param',{}).get('payload',{}).get('params',{}).get('packageId')=='someone.clock')
+            self.assertEqual(spec['preset'],'morning');self.assertNotIn('_presentation',spec)
+            self.assertEqual(errors,[])
+
     def test_two_packages_own_their_fields_without_studio_specific_ui(self):
         templates=[]
         for package, name, label, default in [('example.first','First clock','First ticking',False),('example.second','Second clock','Second ticking',True)]:

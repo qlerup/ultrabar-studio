@@ -70,7 +70,7 @@ public final class StudioCard extends View {
                     File file=new File("/data/local/tmp/ultrabar-studio-metrics.json");
                     if(file.length()>0 && file.length()<262144){
                         String text=new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8);
-                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
+                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;BambuTile.updateSpecs(next.optJSONObject("widgets"));previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
                     }
                 } catch(Exception ignored) { /* Last sample expires visibly below. */ }
                 BambuTile.update(state.optJSONObject("printers"),received);
@@ -106,8 +106,9 @@ public final class StudioCard extends View {
         muted=blend(white,background,.62f);
         paint.setColor(background);c.drawRoundRect(0,0,width,240,16,16,paint);
         if(spec!=null)try{accent=Color.parseColor(spec.optString("accent","#94d9bb"));}catch(Exception ignored){}
-        String label=title==null?"Studio":title;
+        String label=WidgetPresentation.label(spec,"title",title==null?"Studio":title);
         text(c,label.length()>26?label.substring(0,25)+"…":label,22,34,15,white,true);
+        WidgetPresentation.draw(c,spec,width-62,40,40,accent);
         boolean online=received>0 && SystemClock.elapsedRealtime()-received<10000;
         JSONObject metrics=state.optJSONObject("metrics");
         if(spec!=null && spec.optString("kind").equals("clock")){

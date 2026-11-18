@@ -1,4 +1,17 @@
-# UltraBar Studio — 0.50.0 Windows
+# UltraBar Studio — 0.51.0 Windows
+
+## 0.51.0 update
+
+Packages own their choice lists, text labels and printer illustrations. Studio
+provides a shared, data-only presentation API for all supported native widget
+kinds. Presets can follow an app-defined choice setting or a declared connection
+choice. A third-party clock package can use this same API without Bambu logic.
+New Bambu models, nozzle labels and vector artwork no longer require changing
+Studio; they are updates to the Bambu package. Existing connections and layouts
+are preserved. Protocol adapters remain trusted Studio components.
+
+Includes the 0.50.0 swipe-to-close and scrolling filenames improvements. Update
+Bambu to 2.2.1 for its package-owned printer presets. Then Save and Deploy.
 
 ## 0.50.0 update
 

@@ -19,6 +19,7 @@ import java.util.regex.Pattern;
 public final class BambuTile {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static volatile JSONObject printers = new JSONObject();
+    private static volatile JSONObject widgetSpecs = new JSONObject();
     private static volatile long received;
     private static WaterLayer expanded;
     private static final java.util.ArrayDeque<JSONObject> commands = new java.util.ArrayDeque<>();
@@ -28,6 +29,7 @@ public final class BambuTile {
         printers = data == null ? new JSONObject() : data; received = timestamp;
         main.post(() -> { if (expanded != null) expanded.refresh(); });
     }
+    public static void updateSpecs(JSONObject specs){widgetSpecs=specs==null?new JSONObject():specs;}
     private static JSONObject snapshot(JSONObject spec) {
         JSONObject value = printers.optJSONObject(spec.optString("printerId"));
         return value == null ? new JSONObject() : value;
@@ -90,9 +92,8 @@ public final class BambuTile {
         p.setColor(fresh(s)?accent:0xff74838b); canvas.drawCircle(24,28,3,p);
         label(canvas,p,s.optString("name",title==null?"Bambu Lab":title),34,33,14,text,true,width-62);
         String primary = spec.optString("primary","progress"), value = metric(s,primary);
-        label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,!s.optString("model","generic").equals("generic")?width-90:width-40);
-        String model=s.optString("model","generic");
-        if(width>=180)PrinterPortrait.draw(canvas,model,width-72,62,54,accent);
+        label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,WidgetPresentation.hasArtwork(spec)?width-90:width-40);
+        if(width>=180)WidgetPresentation.draw(canvas,spec,width-72,62,54,accent);
         label(canvas,p,primary.equals("progress")?state(s):primary.equals("remaining")?"TIME REMAINING":primary.equals("temperature")?"ACTIVE NOZZLE":"PRINTER STATUS",23,133,11,accent,false,width-40);
         String secondary = spec.optString("secondary", "remaining");
         label(canvas,p,(secondary.equals("temperature") ? "Nozzle " : "") + metric(s,secondary),23,165,14,MUTED,false,width-42);
@@ -304,7 +305,8 @@ public final class BambuTile {
         }
         private Button btn(String s,int color,Runnable action){Button b=new Button(getContext());b.setText(s);b.setTextColor(color);b.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,13);b.setAllCaps(false);b.setMinHeight(0);b.setMinimumHeight(0);b.setPadding(8,0,8,0);GradientDrawable d=new GradientDrawable();d.setColor(0x18ffffff);d.setCornerRadius(14);d.setStroke(1,0x16ffffff);b.setBackground(d);b.setOnClickListener(v->action.run());return b;}
         private String nozzleLabel(JSONObject s,int tool){
-            return BambuPresentation.nozzleLabel(s.optString("model"),tool);
+            JSONObject currentSpec=widgetSpecs.optJSONObject(spec.optString("_widgetId"));
+            return WidgetPresentation.label(currentSpec==null?spec:currentSpec,"nozzle."+tool,"NOZZLE T"+tool);
         }
         void refresh(){
             JSONObject s=snapshot(spec);name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);

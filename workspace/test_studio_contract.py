@@ -21,7 +21,7 @@ class StudioContractTests(unittest.TestCase):
         widget=dict(kind='bambu',studio=descriptor)
         with self.assertRaises(StoreError):require_widget_version([widget],dict(compatibility=dict(minStudioVersion='0.49.3')))
         require_widget_version([widget],dict(compatibility=dict(minStudioVersion='0.50.0')))
-        for options in ([dict(value='shell',label='Wrong')], [dict(value='generic',label='Other')]*2, []):
+        for options in ([dict(value='not/a/model',label='Wrong')], [dict(value='generic',label='Other')]*2, []):
             field['options']=options
             with self.assertRaises(ValueError):validate(descriptor,'bambu')
 

@@ -9,7 +9,7 @@
   const pcWidgetForms=new Map();
   const appSettingsDefs=new Map();
   const studioBindings=new Map();
-  const packageUI=window.studioPackageUI.create({api,onConnectionsChange:()=>{if(draft)renderProperties();},onError:text=>message(text,true)});
+  const packageUI=window.studioPackageUI.create({api,onConnectionsChange:()=>{if(draft){renderCanvas();renderProperties();}},onError:text=>message(text,true)});
   const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
   const clone=v=>structuredClone(v);
@@ -282,7 +282,9 @@
   function moveWidget(from,to){backgroundIndex=-1;if(from===to)return;change(()=>{const list=current().homeData;const [w]=list.splice(from,1);list.splice(to>from?to-1:to,0,w);widgetIndex=list.indexOf(w);});}
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
-    card.replaceChildren(el('strong','native-title',w.name||'Studio'));
+    const presentation=packageUI.presentation(studioBinding(spec),spec);
+    card.replaceChildren(el('strong','native-title',presentation.labels?.title||w.name||'Studio'));
+    window.studioPackageUI.artwork(card,presentation.artwork);
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
     if(spec.kind==='bambu'){

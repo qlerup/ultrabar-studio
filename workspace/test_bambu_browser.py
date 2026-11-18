@@ -5,7 +5,7 @@ from playwright.sync_api import sync_playwright,expect
 import server
 from unittest.mock import patch
 import bambu
-from studio_contract import legacy_descriptor, PRINTER_MODELS
+from studio_contract import legacy_descriptor
 import test_action_wizard_browser as fixture
 from bambu_contract import DEFAULTS
 
@@ -43,7 +43,7 @@ class BambuBrowserTests(unittest.TestCase):
     def test_studio_printer_setup_independent_selection_and_no_draft_secrets(self):
         template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.widget',_storeVersion='2.0.0')
         template['_studio']=legacy_descriptor(template)
-        template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in sorted(PRINTER_MODELS)]))
+        template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in ('generic','h2d','h3c')]))
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.route('**/api/studio/integrations/*/*/probe',lambda r:r.fulfill(json=dict(pin='b'*64)))

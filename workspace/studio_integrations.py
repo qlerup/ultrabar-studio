@@ -80,4 +80,8 @@ def register(server):
         body = {} if request.method == 'GET' else request.get_json(silent=True)
         if not isinstance(body, dict):
             raise EditError('App connection parameters must be an object.')
+        if operation == 'save':
+            for field in connection['fields']:
+                if field['type'] == 'choice' and field['key'] in body and body[field['key']] not in [option['value'] for option in field['options']]:
+                    raise EditError('Choose one of this package\'s '+field['label']+' options.')
         return jsonify(PROVIDERS[connection['provider']](server).invoke(operation, body))

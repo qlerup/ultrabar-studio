@@ -87,6 +87,7 @@ class NativeWidgets:
         self.last_error = None
         self.token = None
         self.printer_actions = {}
+        self.presentations = {}
 
     def printer_action(self, event):
         # Transient events only: no file queue, retry or command replay on reconnect.
@@ -146,6 +147,8 @@ class NativeWidgets:
 
     def configure(self, profiles, target):
         specs = specifications(profiles)
+        import widget_presentation
+        presentations = widget_presentation.bindings(specs, self.server.store.records()) if specs else {}
         with self.lock:
             if self.thread and self.thread.is_alive() and (target != self.target or self.stop.is_set()):
                 self.stop.set()
@@ -153,6 +156,7 @@ class NativeWidgets:
                 if self.thread.is_alive():
                     raise EditError('Previous native widget connection is still closing.')
             self.specs = specs
+            self.presentations = presentations
             self.server.bambu.configure(specs)
             if not specs:
                 self.stop.set()
@@ -213,10 +217,18 @@ class NativeWidgets:
                         script.on('message', message)
                         script.load()
                         pid = new_pid
-                    state = dict(sequence=uuid.uuid4().hex, widgets=self.specs, metrics=self.server.companion.metrics.sample(), printers=self.server.bambu.sample())
+                    import widget_presentation
+                    printers = self.server.bambu.sample()
+                    with self.lock:
+                        specs, presentations = self.specs, self.presentations
+                    widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
+                    state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=self.server.companion.metrics.sample(), printers=printers)
+                    payload = json.dumps(state,allow_nan=False).encode()
+                    if len(payload) >= 262144:
+                        raise EditError('Widget data exceeds the Core runtime limit. Reduce the number or size of package artwork presets.')
                     adb('-s', target, 'shell',
                         "cat > /data/local/tmp/ultrabar-studio-metrics.tmp && chmod 644 /data/local/tmp/ultrabar-studio-metrics.tmp && mv /data/local/tmp/ultrabar-studio-metrics.tmp /data/local/tmp/ultrabar-studio-metrics.json",
-                        input_data=json.dumps(state,allow_nan=False).encode())
+                        input_data=payload)
                     self.stop.wait(2)
                 except Exception as exc:
                     self.ready.clear()

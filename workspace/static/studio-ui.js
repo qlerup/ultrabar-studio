@@ -79,7 +79,7 @@ window.studioPackageUI=(()=>{
           const wrap=node('label','property-field',field.label),input=node(field.type==='choice'?'select':'input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
           if(field.type==='choice')for(const option of field.options){const o=node('option','',option.label);o.value=option.value;input.append(o);}
           else input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
-          if(field.type==='boolean')input.checked=!!item?.[field.key];else input.value=field.type==='secret'?'':item?.[field.key]||(field.type==='choice'?'generic':'');
+          if(field.type==='boolean')input.checked=!!item?.[field.key];else input.value=field.type==='secret'?'':field.type==='choice'?(field.options.some(o=>o.value===item?.[field.key])?item[field.key]:field.options[0].value):item?.[field.key]||'';
           input.required=!!field.required&&!(field.type==='secret'&&item);input.autocomplete='off';if(field.maxLength)input.maxLength=field.maxLength;
           wrap.append(input);if(field.type==='secret'&&item)wrap.append(node('small','muted','Leave blank to keep the saved value.'));if(field.help)wrap.append(node('small','muted',field.help));form.append(wrap);inputs[field.key]=input;
         }
@@ -116,7 +116,22 @@ window.studioPackageUI=(()=>{
       renderList();edit(null);document.body.append(dialog);
       dialog.addEventListener('close',()=>{clearTimeout(timer);pending=null;form.replaceChildren();dialog.remove();onConnectionsChange();});dialog.showModal();poll();
     }
-    return {picker,clear:()=>cache.clear()};
+    function presentation(binding,values){
+      const config=binding?.descriptor?.presentation;if(!config)return {};
+      const source=config.source,connection=binding.descriptor.connection;
+      const data=source.scope==='setting'?values:(cache.get(connection?.provider)||[]).find(item=>item.id===values[connection.key]);
+      return config.presets.find(preset=>preset.value===data?.[source.key])||{};
+    }
+    return {picker,presentation,clear:()=>cache.clear()};
   }
-  return {fields,create};
+  function artwork(parent,shapes){
+    if(!shapes?.length)return;
+    const ns='http://www.w3.org/2000/svg',svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 100 100');svg.setAttribute('aria-hidden','true');svg.classList.add('package-artwork');
+    for(const shape of shapes){const p=shape.points,node=document.createElementNS(ns,shape.type==='polygon'?'polygon':shape.type==='oval'?'ellipse':'rect');
+      node.setAttribute('fill',shape.fill==='accent'?'var(--widget-accent)':shape.fill);
+      const attrs=shape.type==='polygon'?{points:p.reduce((s,v,i)=>s+(i?' ':'')+v,'')}:shape.type==='oval'?{cx:(p[0]+p[2])/2,cy:(p[1]+p[3])/2,rx:(p[2]-p[0])/2,ry:(p[3]-p[1])/2}:{x:p[0],y:p[1],width:p[2]-p[0],height:p[3]-p[1],...(shape.type==='roundRect'?{rx:p[4],ry:p[5]}:{})};
+      for(const [key,value] of Object.entries(attrs))node.setAttribute(key,String(value));svg.append(node);
+    }parent.append(svg);
+  }
+  return {fields,create,artwork};
 })();

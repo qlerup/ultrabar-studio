@@ -43,6 +43,15 @@ class StudioIntegrationTests(unittest.TestCase):
             self.assertNotIn('LAN12345', response.get_data(as_text=True))
         self.assertEqual(self.client.post(self.url+'save', headers=self.headers, json=[]).status_code, 400)
 
+    def test_choice_values_are_owned_by_the_package_not_a_studio_model_list(self):
+        self.widget['studio']['connection']['fields'].append(dict(key='model',label='Device edition',type='choice',options=[dict(value='future-device',label='Future device')]))
+        with patch.object(server.bambu,'save',return_value='a'*32) as save,patch.object(server.bambu,'listing',return_value=[]):
+            response=self.client.post(self.url+'save',headers=self.headers,json=dict(model='future-device'))
+            self.assertEqual(response.status_code,200);save.assert_called_once_with(dict(model='future-device'))
+            save.reset_mock()
+            self.assertEqual(self.client.post(self.url+'save',headers=self.headers,json=dict(model='unlisted-device')).status_code,400)
+            save.assert_not_called()
+
     def test_probe_discovery_and_remove_use_fixed_provider_functions(self):
         stream = Mock()
         with patch.object(bambu, 'tls', return_value=(stream, 'b'*64)) as tls:
