@@ -55,6 +55,7 @@
     draft.app_settings??={};
     draft.vivo_screens??={};
     draft.compact_profiles??={};
+    widgetIndex=Math.min(widgetIndex,Math.max(0,current().homeData.length-1));
     if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
     const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
@@ -74,13 +75,14 @@
   function layoutParts(profile=current()){
     const layouts=draft?.compact_profiles||{};
     const value=Object.hasOwn(layouts,profile.id)?layouts[profile.id]:null;
-    return Array.isArray(value)?{small:value,positions:null}:value||{small:[],positions:null};
+    return Array.isArray(value)?{small:value,positions:null,splits:[]}:{small:[],positions:null,splits:[],...value};
   }
-  function hasGrid(){const layout=layoutParts();return !!(layout.small.length||layout.positions);}
+  function hasGrid(){const layout=layoutParts();return !!(layout.small.length||layout.splits.length||Object.keys(layout.positions||{}).length);}
   function isSmall(widget){return layoutParts().small.includes(widget.id);}
   function footprintWidth(widget,small){return small?1:widget.type==='TIME'?4:2;}
-  function storeLayout(profile,small,positions){
-    if(positions&&Object.keys(positions).length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:{small,positions}};
+  function storeLayout(profile,small,positions,splits=layoutParts(profile).splits){
+    if(splits.length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:{small,positions:positions||{},splits}};
+    else if(positions&&Object.keys(positions).length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:{small,positions}};
     else if(small.length)draft.compact_profiles={...draft.compact_profiles,[profile.id]:small};
     else delete draft.compact_profiles[profile.id];
   }
@@ -98,7 +100,13 @@
     }
     return positions;
   }
-  function positionsForCurrent(){return layoutParts().positions||automaticPositions();}
+  function positionsForCurrent(){
+    const {positions}=layoutParts();
+    return positions&&Object.keys(positions).length?positions:automaticPositions();
+  }
+  function splitOverlaps(column,width){
+    return layoutParts().splits.some(split=>column<split+2&&split<column+width);
+  }
   function findOverlaps(widget,small,cell,positions){
     const [column,row]=cell;
     return current().homeData.filter(other=>{
@@ -108,16 +116,17 @@
     });
   }
   function nextFreeColumn(positions){
-    return Math.max(0,...current().homeData.filter(w=>Object.hasOwn(positions,w.id)).map(w=>positions[w.id][0]+footprintWidth(w,isSmall(w))));
+    return Math.max(0,...layoutParts().splits.map(col=>col+2),...current().homeData.filter(w=>Object.hasOwn(positions,w.id)).map(w=>positions[w.id][0]+footprintWidth(w,isSmall(w))));
   }
   function proposePosition(widget,small,cell){
+    if(!small&&splitOverlaps(cell[0],footprintWidth(widget,false)))return null;
     const positions={...positionsForCurrent()}, from=positions[widget.id], overlaps=findOverlaps(widget,small,cell,positions);
     delete positions[widget.id];
     if(overlaps.length){
       if(!from||overlaps.length!==1)return null;
       const other=overlaps[0], otherSmall=isSmall(other), destination=[from[0],otherSmall?from[1]:0];
       positions[widget.id]=cell;
-      if(findOverlaps(other,otherSmall,destination,positions).length)return null;
+      if((!otherSmall&&splitOverlaps(destination[0],footprintWidth(other,false)))||findOverlaps(other,otherSmall,destination,positions).length)return null;
       positions[other.id]=destination;
     }
     return positions;
@@ -133,12 +142,12 @@
   function setWidgetSize(widget,size){
     const layout=layoutParts(),small=layout.small.filter(id=>id!==widget.id);
     if(size==='small')small.push(widget.id);
-    if(!layout.positions){storeLayout(current(),small,null);return;}
-    const positions={...layout.positions}, old=positions[widget.id];
+    if(!layout.positions&&!layout.splits.length){storeLayout(current(),small,null);return;}
+    const positions={...positionsForCurrent()}, old=positions[widget.id];
     delete positions[widget.id];
     storeLayout(current(),small,positions);
     let cell=old?[old[0],size==='small'?old[1]:0]:[nextFreeColumn(positions),0];
-    if(findOverlaps(widget,size==='small',cell,positions).length)cell=[nextFreeColumn(positions),0];
+    if((size!=='small'&&splitOverlaps(cell[0],footprintWidth(widget,false)))||findOverlaps(widget,size==='small',cell,positions).length)cell=[nextFreeColumn(positions),0];
     applyPositions(widget,cell,positions);
   }
   function removePlacement(profile,widgetId){
@@ -202,10 +211,12 @@
   function dragApp(payload){return payload.widget||(payload.kind==='widget-move'?current().homeData[payload.index]:null);}
   function gridDrop(d){
     const widget=dragApp(d.payload);
-    const small=d.payload.kind==='widget-new'?!widgetSizes(widget).includes('large'):isSmall(widget);
-    if(!hasGrid()&&!small)return null;
+    const sizes=widgetSizes(widget);
+    const currentSmall=d.payload.kind==='widget-move'&&isSmall(widget);
+    if(!hasGrid()&&!currentSmall&&sizes.includes('large'))return null;
     const canvas=$('core-canvas'),rect=canvas.getBoundingClientRect(),scale=rect.width/1424;
     const col=Math.max(0,Math.min(511,Math.floor(((d.x-rect.left)/scale+canvas.scrollLeft-gridMargin+10)/cellPitch)));
+    const small=currentSmall||!sizes.includes('large')||(sizes.includes('small')&&splitOverlaps(col,1));
     const row=small&&(d.y-rect.top)/scale>=140?1:0, cell=[col,row];
     return {cell,positions:proposePosition(widget,small,cell),small,span:footprintWidth(widget,small),rect,scale};
   }
@@ -263,7 +274,13 @@
       });
     }else if(grid){
       const widget=current().homeData[d.payload.index];
-      change(()=>applyPositions(widget,grid.cell,grid.positions));
+      change(()=>{
+        if(grid.small&&!isSmall(widget)){
+          const {small,positions}=layoutParts();
+          storeLayout(current(),[...small,widget.id],positions);
+        }
+        applyPositions(widget,grid.cell,grid.positions);
+      });
     }else moveWidget(d.payload.index,at);
   }
   document.addEventListener('pointermove',event=>{
@@ -340,11 +357,12 @@
     const widget=clone(template),companion=widget._bundledApp,sizes=widgetSizes(template);delete widget._sizes;delete widget._bundledApp;delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
     change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});const layout=layoutParts();
+      const previous=hasGrid()?positionsForCurrent():null;
       current().homeData.splice(at,0,widget);
-      const small=!sizes.includes('large'),selected=small?[...layout.small,widget.id]:layout.small;
+      const small=target?.small||!sizes.includes('large'),selected=small?[...layout.small,widget.id]:layout.small;
       storeLayout(current(),selected,layout.positions);
       if(target)applyPositions(widget,target.cell,target.positions);
-      else if(layout.positions)applyPositions(widget,[nextFreeColumn(layout.positions),0],layout.positions);
+      else if(previous)applyPositions(widget,[nextFreeColumn(previous),0],previous);
       else widgetIndex=at;});
   }
   function addBackground(w){
@@ -567,14 +585,77 @@
   $('core-canvas').addEventListener('scroll',syncCoreScroll);
   $('core-previous').onclick=()=>{$('core-canvas').scrollLeft-=1424;};
   $('core-next').onclick=()=>{$('core-canvas').scrollLeft+=1424;};
+  function chooseSlotSize(column,split){
+    if(working||actionSaving)return;
+    const dialog=el('dialog','core-slot-dialog');
+    const title=el('h3','','Slot layout');title.id='core-slot-dialog-title';
+    dialog.setAttribute('aria-labelledby',title.id);
+    const options=el('div','core-slot-options');
+    const update=next=>{
+      dialog.close();
+      if(next===split)return;
+      change(()=>{
+        const {small,positions,splits}=layoutParts();
+        const updated=next?[...splits,column].sort((a,b)=>a-b):splits.filter(value=>value!==column);
+        storeLayout(current(),small,positions,updated);
+      });
+      $('core-canvas').querySelector(`[data-slot-column="${column}"] button`)?.focus({preventScroll:true});
+    };
+    const large=button('One large slot',()=>update(false));
+    const grid=button('2×2 grid',()=>update(true));
+    large.setAttribute('aria-pressed',String(!split));grid.setAttribute('aria-pressed',String(split));
+    options.append(large,grid);
+    dialog.append(title,options,button('Cancel',()=>dialog.close(),'core-slot-cancel'));
+    dialog.addEventListener('close',()=>dialog.remove(),{once:true});
+    document.body.append(dialog);dialog.showModal();
+  }
+  function renderEmptySlots(canvas,positions){
+    const occupied=new Set();
+    const key=(column,row)=>column*2+row;
+    for(const widget of current().homeData){
+      const [column,row]=positions[widget.id],small=isSmall(widget);
+      for(let offset=0;offset<footprintWidth(widget,small);offset++){
+        occupied.add(key(column+offset,row));
+        if(!small)occupied.add(key(column+offset,1));
+      }
+    }
+    const {splits}=layoutParts(),end=Math.min(512,Math.max(10,nextFreeColumn(positions)+2));
+    function addSlot(column,split){
+      const slot=el('div',split?'core-slot core-slot-split':'core-slot');
+      slot.dataset.slotColumn=column;
+      slot.style.left=gridMargin+column*cellPitch+'px';
+      let empty=0;
+      for(let offset=0;offset<2;offset++)for(let row=0;row<2;row++){
+        if(occupied.has(key(column+offset,row)))continue;
+        empty++;
+        if(split){
+          const cell=el('span','core-slot-cell');
+          cell.style.left=offset*cellPitch+'px';cell.style.top=row*rowPitch+'px';
+          slot.append(cell);
+        }
+      }
+      if(empty===4){
+        const trigger=button(split?'⋯':'+',()=>chooseSlotSize(column,split),'core-slot-trigger');
+        trigger.setAttribute('aria-label',split?'Change empty 2×2 grid':'Choose layout for empty slot');
+        trigger.setAttribute('aria-haspopup','dialog');
+        slot.append(trigger);
+      }
+      if(empty)canvas.append(slot);
+    }
+    for(const column of splits)addSlot(column,true);
+    for(let column=0;column+1<end;column++){
+      if(splitOverlaps(column,2)||[0,1,2,3].some(offset=>occupied.has(key(column,0)+offset)))continue;
+      addSlot(column,false);column++;
+    }
+  }
   function renderCanvas(){
     const canvas=$('core-canvas'),position=canvas.scrollLeft;canvas.replaceChildren();
-    const grid=hasGrid(),positions=grid?positionsForCurrent():null;
+    const grid=hasGrid(),positions=positionsForCurrent();
     canvas.classList.toggle('mixed-widgets',grid);
     if(grid)canvas.style.setProperty('--layout-right',gridMargin+nextFreeColumn(positions)*cellPitch+'px');
     current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
-    if(!current().homeData.length)canvas.append(el('p','canvas-empty','Drop widgets here to build your Core screen'));
+    renderEmptySlots(canvas,positions);
     canvas.scrollLeft=position;requestAnimationFrame(syncCoreScroll);
   }
   dropzone($('core-canvas'),data=>{if(data.kind==='widget-new')addWidget(data.widget);if(data.kind==='widget-move')moveWidget(data.index,current().homeData.length);});
@@ -903,5 +984,5 @@
     try{await save();}finally{working=false;busy=false;controls();updateControls();}
   },snapshotChanged(){ $('nav-editor').disabled=!snapshot;if(draft&&draft.device_id!==snapshot?.device_id){editorGeneration++;draft=null;dirty=false;apps=[];pcActions=[];overview();}if(snapshot)api('/api/pc/connect',{method:'POST',body:'{}'}).catch(error=>message(error.message,true));},hasUnsaved(){return dirty;}};
   setInterval(()=>{if(snapshot&&!document.hidden&&mode==='pc'&&!$('editor-content').hidden&&!working)refreshPc();},5000);
-setInterval(()=>{if(!working&&!drag&&draft&&document.body.classList.contains('editing')){[...$('core-canvas').children].forEach((card,i)=>{const w=current().homeData[i];if(w&&nativeSpec(w)?.kind==='clock')renderNativePreview(w,card);});}},1000);
+setInterval(()=>{if(!working&&!drag&&draft&&document.body.classList.contains('editing')){$('core-canvas').querySelectorAll('.canvas-widget').forEach((card,i)=>{const w=current().homeData[i];if(w&&nativeSpec(w)?.kind==='clock')renderNativePreview(w,card);});}},1000);
 })();

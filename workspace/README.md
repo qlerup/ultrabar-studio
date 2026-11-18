@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.51.0 Windows
+# UltraBar Studio — 0.52.1 Windows
+
+## 0.52.1 update
+
+Empty slots start large. Hover over an empty slot in the CoreBAR preview and
+choose the plus to split it into a 2×2 grid. Drop a widget that supports Small
+into any of the four cells. An empty grid can be changed back to one large slot.
 
 ## 0.52.0 update
 

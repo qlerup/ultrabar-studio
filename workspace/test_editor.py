@@ -96,6 +96,19 @@ class EditorTests(unittest.TestCase):
         with self.assertRaisesRegex(editor.EditError, 'does not support the small size'):
             editor.validate_compact_profiles({'p1': ['clock', key]}, rows, records)
 
+    def test_empty_split_slots_survive_save_without_enabling_core_runtime(self):
+        splits = {'p1': dict(small=[], positions={}, splits=[4, 8])}
+        response = self.post('/api/editor/draft', dict(device_id='core1', revision=self.draft['revision'],
+                                                      profiles=profiles(), compact_profiles=splits))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.client.get('/api/editor', headers=self.headers).json['draft']['compact_profiles'], splits)
+        editor.atomic_json(editor.compact_profiles_path(server, 'core1'), splits)
+        self.assertEqual(editor.saved_compact_profiles(server, self.snapshot), splits)
+        self.assertEqual(editor.core_widget_layouts(splits), {})
+        invalid = {'p1': dict(small=[], positions={}, splits=[4, 5])}
+        with self.assertRaisesRegex(editor.EditError, 'separate positions'):
+            editor.validate_compact_profiles(invalid, profiles())
+
     def test_stale_draft_and_wrong_device_rejected(self):
         self.assertEqual(self.save(profiles()).status_code,200)
         self.assertEqual(self.save(profiles()).status_code,409)

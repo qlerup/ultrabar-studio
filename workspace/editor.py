@@ -72,9 +72,20 @@ def compact_profiles_path(server, device):
 
 
 def widget_layout_parts(layout):
-    if isinstance(layout, dict) and set(layout) == {'small', 'positions'}:
-        return layout['small'], layout['positions']
-    return layout, {}
+    if isinstance(layout, dict) and {'small', 'positions'} <= set(layout) <= {'small', 'positions', 'splits'}:
+        return layout['small'], layout['positions'], layout.get('splits', [])
+    return layout, {}, []
+
+
+def core_widget_layouts(layouts):
+    result = {}
+    for profile, layout in layouts.items():
+        small, positions, _ = widget_layout_parts(layout)
+        if positions:
+            result[profile] = dict(small=small, positions=positions)
+        elif small:
+            result[profile] = small
+    return result
 
 
 def validate_compact_profiles(value, profiles, records=None):
@@ -86,7 +97,11 @@ def validate_compact_profiles(value, profiles, records=None):
     result = {}
     for key, profile in by_id.items():
         layout = value.get(key, [])
-        ids, positions = widget_layout_parts(layout)
+        ids, positions, splits = widget_layout_parts(layout)
+        if (not isinstance(splits, list) or len(splits) > 256
+                or any(type(column) is not int or not 0 <= column < 511 for column in splits)
+                or any(right - left < 2 for left, right in zip(splits, splits[1:]))):
+            raise EditError('Choose separate positions for each 2×2 group.')
         if not isinstance(ids, list) or len(ids) > 128 or any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids)):
             raise EditError('Invalid small widget selection.')
         widgets = {widget['id']: widget for widget in profile['homeData']}
@@ -109,13 +124,17 @@ def validate_compact_profiles(value, profiles, records=None):
                 raise EditError('Invalid widget grid position.')
             col, row = cell
             width = 1 if small else 4 if widget['type'] == 'TIME' else 2
+            if not small and any(col < split + 2 and split < col + width for split in splits):
+                raise EditError('Large widgets need a slot outside a 2×2 group.')
             footprint = {(x, y) for x in range(col, col + width) for y in ((row,) if small else (0, 1))}
             if occupied & footprint:
                 raise EditError('Widget positions overlap.')
             occupied.update(footprint)
         if positions and list(widgets) != sorted(widgets, key=positions.get):
             raise EditError('Widget positions must follow the Core layout order.')
-        if positions:
+        if splits:
+            result[key] = dict(small=ids, positions=positions, splits=splits)
+        elif positions:
             result[key] = dict(small=ids, positions=positions)
         elif ids:
             result[key] = ids
@@ -130,7 +149,7 @@ def saved_compact_profiles(server, snapshot):
         result = {}
         for profile in snapshot['profiles']:
             keys = [widget['id'] for widget in profile['homeData']]
-            selected, positions = widget_layout_parts(value.get(profile['id'], []))
+            selected, positions, splits = widget_layout_parts(value.get(profile['id'], []))
             if not isinstance(selected, list) or any(not isinstance(i, str) for i in selected) or not isinstance(positions, dict):
                 raise ValueError()
             selected = [key for key in selected if key in keys]
@@ -138,8 +157,12 @@ def saved_compact_profiles(server, snapshot):
                 cells = {key: positions[key] for key in keys}
                 if keys == sorted(keys, key=cells.get):
                     result[profile['id']] = dict(small=selected, positions=cells)
+                    if splits:
+                        result[profile['id']]['splits'] = splits
                     continue
-            if selected:
+            if splits:
+                result[profile['id']] = dict(small=selected, positions={}, splits=splits)
+            elif selected:
                 result[profile['id']] = selected
         return validate_compact_profiles(result, snapshot['profiles'])
     except FileNotFoundError:
@@ -495,6 +518,7 @@ def register_editor(server):
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
             validate(draft['profiles'], draft['base_profiles'])
             compact_profiles = validate_compact_profiles(draft['compact_profiles'], draft['profiles'], server.store.records())
+            core_layouts = core_widget_layouts(compact_profiles)
             from native_widgets import specifications
             server.bambu.validate(specifications(draft['profiles']))
             validate_background(draft.get('background_apps',[]))
@@ -525,7 +549,7 @@ def register_editor(server):
             app_settings.deploy(server,{k:v for k,v in draft.get('app_settings',{}).items() if k in requested})
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
-            server.native_widgets.prepare(draft['profiles'], server.connection['target'], compact_profiles)
+            server.native_widgets.prepare(draft['profiles'], server.connection['target'], core_layouts)
             # A timeout is ambiguous: always read back, and never blindly resend a write.
             stage('Sending the layout and settings to Core…')
             acknowledged = True
@@ -572,8 +596,8 @@ def register_editor(server):
             except server.DeviceError:
                 pass
             stage('Waiting for widgets to become ready…')
-            server.native_widgets.configure(verified, server.connection['target'], compact_profiles)
-            needs_runtime = bool(server.native_widgets.specs or compact_profiles)
+            server.native_widgets.configure(verified, server.connection['target'], core_layouts)
+            needs_runtime = bool(server.native_widgets.specs or core_layouts)
             if needs_runtime:
                 server.native_widgets.ready.wait(8)
             native_note = '' if not needs_runtime or server.native_widgets.ready.is_set() else ' Studio is waiting for Core home to apply the widget layout; keep Studio connected.'

@@ -218,8 +218,8 @@ def register_pc(server):
             if not snapshot:
                 raise EditError('Connect to CoreBAR first.')
             companion.start(server.connection['target'], snapshot['device_id'])
-            from editor import saved_compact_profiles
-            compact_profiles = saved_compact_profiles(server, snapshot)
+            from editor import core_widget_layouts, saved_compact_profiles
+            compact_profiles = core_widget_layouts(saved_compact_profiles(server, snapshot))
             server.native_widgets.prepare(snapshot['profiles'], server.connection['target'], compact_profiles)
             server.native_widgets.configure(snapshot['profiles'], server.connection['target'], compact_profiles)
         return jsonify(status=companion.status)
