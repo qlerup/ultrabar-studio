@@ -341,12 +341,12 @@ function showUpdateJob(job){
     $('updates-download').hidden=!['error'].includes(job.state);
   }
 }
-function checkUpdates(startup=false){
+function checkUpdates(startup=false,force=false){
   if(updateCheck)return updateCheck;
-  updateCheck=runUpdateCheck(startup).finally(()=>{updateCheck=null;});
+  updateCheck=runUpdateCheck(startup,force).finally(()=>{updateCheck=null;});
   return updateCheck;
 }
-async function runUpdateCheck(startup){
+async function runUpdateCheck(startup,force){
   $('updates-check').disabled=true;$('updates-download').hidden=true;$('updates-install').hidden=true;
   $('updates-status').textContent='Checking for updates...';
   $('updates-notes').hidden=true;
@@ -354,7 +354,7 @@ async function runUpdateCheck(startup){
     const job=await(await api('/api/updates/status')).json();
     const active=['downloading','ready','launched'].includes(job.state);
     if(active)showUpdateJob(job);
-    const data=await(await api('/api/updates')).json();
+    const data=await(await api('/api/updates',force?{method:'POST'}:{})).json();
     const button=$('updates-open');
     button.textContent=data.update_available?`Update available: ${data.latest_version}`:'Check for updates';
     button.classList.toggle('update-available',data.update_available);
@@ -372,8 +372,8 @@ async function runUpdateCheck(startup){
   }catch(error){$('updates-status').textContent=error.message;}
   finally{$('updates-check').disabled=updateJob.state==='downloading';}
 }
-$('updates-open').onclick=()=>{startupUpdatePending=false;if(!$('updates-dialog').open)$('updates-dialog').showModal();checkUpdates();};
-$('updates-check').onclick=()=>checkUpdates();
+$('updates-open').onclick=()=>{startupUpdatePending=false;if(!$('updates-dialog').open)$('updates-dialog').showModal();checkUpdates(false,true);};
+$('updates-check').onclick=()=>checkUpdates(false,true);
 checkUpdates(true);
 $('updates-download').onclick=async()=>{
   $('updates-download').disabled=true;

@@ -172,9 +172,10 @@ def index():
 release_checker = updates.ReleaseChecker()
 
 @app.get('/api/updates')
+@app.post('/api/updates')
 def check_updates():
     try:
-        return jsonify(release_checker.check())
+        return jsonify(release_checker.check(force=request.method=='POST'))
     except updates.UpdateError as exc:
         return jsonify(error=str(exc)), 502
 

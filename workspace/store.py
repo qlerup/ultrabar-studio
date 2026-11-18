@@ -33,6 +33,22 @@ class StoreError(ValueError):
     pass
 
 
+class StoreCancelled(StoreError):
+    pass
+
+
+def check_cancel(cancel):
+    if cancel is not None and cancel.is_set():
+        raise StoreCancelled('Update cancelled. Your existing library and Core setup are unchanged.')
+
+
+class CancellableWriter:
+    def __init__(self,output,cancel):self.output=output;self.cancel=cancel
+    def write(self,data):
+        check_cancel(self.cancel)
+        return self.output.write(data)
+
+
 def package_links(package):
     if package.get('origin')=='local':return {}
     value=package.get('source','')
@@ -266,6 +282,7 @@ def inspect_apk(server,path,entry):
 class Store:
     def __init__(self,server):
         self.server=server;self.lock=threading.RLock();self.job=None;self.icon_sources={};self.local_pending=None;self.github_links={};self.local_preview_lock=threading.Lock()
+        self.cancel_event=None
         from package_stats import PackageStats
         self.stats=PackageStats()
     def records(self):
@@ -375,13 +392,26 @@ class Store:
                 params=payload.get('params') if isinstance(payload,dict) else None
                 if isinstance(params,dict) and isinstance(params.get('packageId'),str) and params['packageId'] in plan and payload.get('action')=='studioNative':params['packageVersion']=plan[params['packageId']].split('|',1)[0]
     def update_job(self,**values):
-        with self.lock:self.job.update(values)
+        with self.lock:
+            if self.job.get('cancel_requested') and not values.get('state'):return
+            self.job.update(values)
+    def cancel(self,body):
+        with self.lock:
+            if not isinstance(body,dict) or not self.job or body.get('request_id')!=self.job.get('request_id'):
+                raise StoreError('This update changed. Refresh its status before cancelling.')
+            if self.job['state']!='running':return copy.deepcopy(self.job)
+            if not self.job.get('can_cancel') or self.cancel_event is None:
+                raise StoreError('The verified package is being saved and can no longer be cancelled. You can close this window.')
+            self.cancel_event.set()
+            self.job.update(cancel_requested=True,message='Cancelling update. You can close this window while the current network request finishes.')
+            return copy.deepcopy(self.job)
     def start(self,body):
         if not isinstance(body,dict) or not ID.fullmatch(str(body.get('id',''))):raise StoreError('Choose a package from the store.')
         with self.lock:
             if self.job and self.job['state']=='running':raise StoreError('Another installation is already running.')
-            self.job=dict(state='running',message='Checking approved package...',id=body['id'],request_id=uuid.uuid4().hex)
-        threading.Thread(target=self.install,args=(dict(body),),daemon=True,name='StudioStoreInstall').start()
+            self.job=dict(state='running',message='Checking approved package...',id=body['id'],request_id=uuid.uuid4().hex,can_cancel=True)
+            self.cancel_event=threading.Event();cancel=self.cancel_event
+        threading.Thread(target=self.install,args=(dict(body),None,cancel),daemon=True,name='StudioStoreInstall').start()
         return self.status()
     def preview_local(self,body=None):
         if not self.local_preview_lock.acquire(blocking=False):raise StoreError('A folder check is already running.')
@@ -464,15 +494,19 @@ class Store:
                     raise StoreError('Local preview expired. Select the folder again.')
                 self.local_pending=None
                 _,_,p,raw=pending
-            self.job=dict(state='running',message='Verifying local development package...',id=p['id'],request_id=uuid.uuid4().hex)
-        threading.Thread(target=self.install,args=(dict(body),(p,raw)),daemon=True,name='StudioLocalInstall').start()
+            self.job=dict(state='running',message='Verifying local development package...',id=p['id'],request_id=uuid.uuid4().hex,can_cancel=True)
+            self.cancel_event=threading.Event();cancel=self.cancel_event
+        threading.Thread(target=self.install,args=(dict(body),(p,raw),cancel),daemon=True,name='StudioLocalInstall').start()
         return self.status()
-    def install(self,body,local=None):
+    def install(self,body,local=None,cancel=None):
         server=self.server
         try:
+            check_cancel(cancel)
             p=local[0] if local else next((p for p in catalog() if p['id']==body['id']),None)
+            check_cancel(cancel)
             if not local and (not p or p['version']!=body.get('version') or p['artifact']['sha256']!=body.get('sha256')):raise StoreError('The catalog changed. Refresh the store and review the package again.')
-            if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before installing this package.')
+            if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:
+                raise StoreError('Update Studio before installing this package. '+p['name']+' '+p['version']+' requires Studio '+p['compatibility']['minStudioVersion']+' or newer; installed: '+updates.VERSION+'.')
             device=body.get('device_id') or ''
             deferred=p['type']=='corebar-app'
             if screen_sync.applies(p):screen_sync.validate_identity(p)
@@ -485,7 +519,8 @@ class Store:
                 path=Path(folder)/('package.apk' if p['type']=='corebar-app' else 'plugin.json')
                 if local:path.write_bytes(local[1]);size=len(local[1])
                 else:
-                    with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),out)
+                    with path.open('wb') as out: size=fetch(p['artifact']['url'],min(p['artifact']['size'],MAX_SIZE),CancellableWriter(out,cancel))
+                check_cancel(cancel)
                 self.update_job(message='Checking package integrity and contents…')
                 if size!=p['artifact']['size'] or hashlib.sha256(path.read_bytes()).hexdigest()!=p['artifact']['sha256']:raise StoreError('Package integrity check failed. Nothing was installed.')
                 record=dict(id=p['id'],name=p['name'],version=p['version'],type=p['type'],artifact=p['artifact'],device_id=device if p['type']=='corebar-app' else None,requiresDeploy=True)
@@ -507,24 +542,28 @@ class Store:
                         p=dict(p,bundledWidgets=embedded)
                         record.update(bundledWidgets=copy.deepcopy(embedded),widgets=bundle_contract.validate(p,widget_package))
                     record.update(deferred=True,device_id=None,android=copy.deepcopy(p['android']),compatibility=copy.deepcopy(p['compatibility']),permissions=list(p['permissions']))
-                    cached=server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
-                    cached.parent.mkdir(parents=True,exist_ok=True)
-                    with self.lock:
-                        cached.with_suffix('.tmp').write_bytes(path.read_bytes());cached.with_suffix('.tmp').replace(cached)
-                        # Keep dependencies for widgets already placed in drafts.
-                        from editor import atomic_json
-                        dependencies=self.dependencies()
-                        dependencies[p['android']['packageId']]=p
-                        atomic_json(cached.parent/'library.json', dependencies)
                 with self.lock:
+                    check_cancel(cancel)
+                    self.job['can_cancel']=False
                     self.update_job(message='Saving package to your PC library…')
+                    if deferred:
+                        cached=server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
+                        cached.parent.mkdir(parents=True,exist_ok=True)
+                        cached.with_suffix('.tmp').write_bytes(path.read_bytes());cached.with_suffix('.tmp').replace(cached)
+                        # Dependencies and the library share one non-cancellable commit.
+                        from editor import atomic_json
+                        dependencies=self.dependencies();dependencies[p['android']['packageId']]=p
+                        atomic_json(cached.parent/'library.json', dependencies)
                     records=self.records();records[self.key(p,device)]=record
                     if p['id']=='studio.bambu' and p['type']=='corebar-widget':records.pop('studio.bambu.widget:pc',None)
                     self.save(records)
             self.update_job(state='complete',message='Installed. '+('Find the widgets in Studio & App Store. Drag onto Core, configure, then Deploy to activate.' if deferred or p['type'] in ('studio-plugin','corebar-widget') else 'Find the app in the CoreBAR app list.'))
         except Exception as exc:
+            if isinstance(exc,StoreCancelled) or (cancel is not None and cancel.is_set()):
+                self.update_job(state='cancelled',can_cancel=False,message='Update cancelled. Your existing library and Core setup are unchanged.')
+                return
             text=str(exc) if isinstance(exc,(StoreError,server.DeviceError)) else 'Installation could not be completed. Check the connection and retry; Core may already have installed the package.'
-            self.update_job(state='error',message=text)
+            self.update_job(state='error',can_cancel=False,message=text)
 
     def install_on_core(self,path,p,device,notify=None,background=None):
         # Caller holds device_lock, including when invoked during Deploy.
@@ -677,6 +716,8 @@ def register_store(server):
         return Response(store.icon(digest),mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
     @server.app.post('/api/store/install')
     def install():return jsonify(store.start(request.get_json(silent=True))),202
+    @server.app.post('/api/store/cancel')
+    def cancel_install():return jsonify(job=store.cancel(request.get_json(silent=True)))
     @server.app.post('/api/store/local/preview')
     def preview_local():return jsonify(store.preview_local(request.get_json(silent=True)))
     @server.app.post('/api/store/local/add')

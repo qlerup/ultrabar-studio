@@ -4,7 +4,7 @@ import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = '0.49.2'
+VERSION = '0.49.3'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
 RELEASE_FEED_URL = RELEASES_URL + '/latest/download/studio-update.json'
@@ -19,11 +19,14 @@ def version_tuple(value):
 
 def check_latest():
     headers={
-        'Accept': 'application/json', 'User-Agent': f'UltraBar-Studio/{VERSION}'}
+        'Accept': 'application/json', 'User-Agent': f'UltraBar-Studio/{VERSION}',
+        'Cache-Control': 'no-cache'}
     try:
         # Update metadata comes only from the published release asset.
         # Never fall back to GitHub REST: clients share its anonymous quota.
-        response=urlopen(Request(RELEASE_FEED_URL,headers=headers),timeout=10)
+        # The latest-release redirect may also be cached upstream. A new network
+        # check gets its own URL; the ReleaseChecker still coalesces normal polls.
+        response=urlopen(Request(RELEASE_FEED_URL+'?refresh='+str(time.time_ns()),headers=headers),timeout=10)
         with response:
             raw=response.read(1024 * 1024 + 1)
         if len(raw) > 1024 * 1024:
@@ -76,15 +79,18 @@ class ReleaseChecker:
         self.expires=0
         self.result=None
         self.error=None
+        self.generation=0
 
-    def check(self):
+    def check(self, force=False):
+        observed=self.generation
         with self.lock:
-            if time.monotonic()>=self.expires:
+            if time.monotonic()>=self.expires or (force and observed==self.generation):
                 self.result=None
                 self.error=None
                 try:self.result=check_latest()
                 except UpdateError as exc:self.error=str(exc)
                 self.expires=time.monotonic()+(60 if self.error else 300)
+                self.generation+=1
             if self.error:raise UpdateError(self.error)
             return dict(self.result)
 

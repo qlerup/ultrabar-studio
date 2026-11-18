@@ -50,14 +50,46 @@ class UpdateTests(unittest.TestCase):
         self.assertTrue(result['download_available'])
         self.assertEqual(result['sha256'],'a'*64)
         self.assertEqual(fetch.call_count,1)
-        self.assertEqual(fetch.call_args.args[0].full_url,updates.RELEASE_FEED_URL)
+        self.assertEqual(fetch.call_args.args[0].full_url.split('?',1)[0],updates.RELEASE_FEED_URL)
 
     def test_missing_or_limited_feed_never_falls_back_to_rest_api(self):
         for status in (404,403,429):
             with patch.object(updates,'urlopen',side_effect=HTTPError('url',status,'unavailable',{},None)) as fetch:
                 with self.assertRaises(updates.UpdateError):updates.check_latest()
             self.assertEqual(fetch.call_count,1)
-            self.assertEqual(fetch.call_args.args[0].full_url,updates.RELEASE_FEED_URL)
+            self.assertEqual(fetch.call_args.args[0].full_url.split('?',1)[0],updates.RELEASE_FEED_URL)
+
+    def test_manual_check_bypasses_success_and_error_caches(self):
+        checker=updates.ReleaseChecker()
+        with patch.object(updates.time,'monotonic',return_value=10),patch.object(updates,'check_latest',return_value=dict(latest_version='0.49.1')) as fetch:
+            self.assertEqual(checker.check()['latest_version'],'0.49.1')
+            fetch.return_value=dict(latest_version='0.49.2')
+            self.assertEqual(checker.check()['latest_version'],'0.49.1')
+            self.assertEqual(checker.check(force=True)['latest_version'],'0.49.2')
+            self.assertEqual(fetch.call_count,2)
+            fetch.side_effect=updates.UpdateError('Offline')
+            with self.assertRaises(updates.UpdateError):checker.check(force=True)
+            fetch.side_effect=None
+            with self.assertRaises(updates.UpdateError):checker.check()
+            self.assertEqual(checker.check(force=True)['latest_version'],'0.49.2')
+            self.assertEqual(fetch.call_count,4)
+
+    def test_new_network_checks_revalidate_the_latest_release_redirect(self):
+        raw=json.dumps(dict(tag_name='v99.0.0',draft=False,prerelease=False,assets=[])).encode()
+        with patch.object(updates.time,'time_ns',side_effect=[11,12]),patch.object(updates,'urlopen',side_effect=[io.BytesIO(raw),io.BytesIO(raw)]) as fetch:
+            updates.check_latest();updates.check_latest()
+        urls=[call.args[0].full_url for call in fetch.call_args_list]
+        self.assertEqual(urls,[updates.RELEASE_FEED_URL+'?refresh=11',updates.RELEASE_FEED_URL+'?refresh=12'])
+        self.assertTrue(all(call.args[0].get_header('Cache-control')=='no-cache' for call in fetch.call_args_list))
+
+    def test_manual_endpoint_refreshes_but_get_requests_share_cache(self):
+        client=server.app.test_client();headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
+        self.assertEqual(client.post('/api/updates',headers={'Host':headers['Host']}).status_code,403)
+        with patch.object(server,'release_checker',updates.ReleaseChecker()),patch.object(updates,'check_latest',return_value=dict(latest_version='99.0.0')) as fetch:
+            self.assertEqual(client.get('/api/updates',headers=headers).status_code,200)
+            client.get('/api/updates',headers=headers);self.assertEqual(fetch.call_count,1)
+            self.assertEqual(client.post('/api/updates',headers=headers).status_code,200)
+            self.assertEqual(fetch.call_count,2)
 
     def test_concurrent_checks_share_one_request(self):
         import concurrent.futures,threading

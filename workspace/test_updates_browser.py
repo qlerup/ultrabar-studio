@@ -15,7 +15,8 @@ class UpdateUITests(unittest.TestCase):
      browser=pw.chromium.launch(channel='msedge');page=browser.new_page()
      page.route('**/api/preferences',lambda r:r.fulfill(json=dict(setup_seen=True,target='')))
      notes='New features\n\n- Remember CoreBAR\n- Start with Windows\n<script>window.notesExecuted=true</script>'
-     page.route('**/api/updates',lambda r:r.fulfill(json=dict(update_available=True,download_available=True,latest_version='99.0.0',current_version='0.19.0',release_notes=notes)))
+     checks=[]
+     page.route('**/api/updates',lambda r:(checks.append(r.request.method),r.fulfill(json=dict(update_available=True,download_available=True,latest_version='99.0.0',current_version='0.19.0',release_notes=notes))))
      job={'state':'idle'};launches=[]
      page.route('**/api/updates/status',lambda r:r.fulfill(json=job))
      def download(r):
@@ -26,11 +27,13 @@ class UpdateUITests(unittest.TestCase):
      expect(page.locator('#updates-dialog')).to_be_visible()
      expect(page.locator('#updates-open')).to_have_text('Update available: 99.0.0')
      expect(page.locator('#updates-open')).to_have_class('update-available')
+     self.assertEqual(checks,['GET'])
      expect(page.locator('#updates-download')).to_be_visible()
      page.keyboard.press('Escape')
      expect(page.locator('#updates-dialog')).not_to_be_visible()
      expect(page.locator('#updates-open')).to_have_text('Update available: 99.0.0')
      page.locator('#updates-open').click();expect(page.locator('#updates-download')).to_be_visible()
+     self.assertEqual(checks[-1],'POST')
      expect(page.locator('#updates-notes-body')).to_have_text(notes)
      self.assertFalse(page.evaluate('!!window.notesExecuted'))
      self.assertEqual(page.locator('#updates-notes-body script').count(),0)

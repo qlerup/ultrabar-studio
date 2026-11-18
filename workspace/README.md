@@ -1,4 +1,16 @@
-# UltraBar Studio — 0.49.2 Windows
+# UltraBar Studio — 0.49.3 Windows
+
+## 0.49.3 update
+
+Store updates show early errors, including a required newer Studio version, instead
+of leaving the update dialog on "Checking approved package". Close and Escape work
+while a package update runs; closing leaves it running in the background. Cancel
+update stops it before the verified library commit and preserves the existing
+library. Cancellation may wait for the current bounded network request to return.
+
+Manual Studio update checks bypass the five-minute automatic cache and revalidate
+the latest release download URL. Automatic checks and downloads still share their
+cache, and no GitHub REST API fallback is used.
 
 ## 0.49.2 update
 

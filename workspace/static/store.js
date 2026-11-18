@@ -3,6 +3,7 @@
   let packages=[],installed=[],manualPackages=[],job=null,pending=null,loading=false,opened=false;
   let manualPreview=null,manualBusy=false,manualGeneration=0;
   let pendingDeploy={},pendingInfo=null,progressId=null,progressDevice=null,pollingJob=false;
+  let progressClosedEarly=false;
   const dismissedJobs=new Set();
   const iconCache=new Map();
   const statsCache=new Map(),visibleStats=new Set(),statsPackages=new Map();let fetchingStats=false;
@@ -80,15 +81,17 @@
   }
   function showUpdate(value){
     const id=value.request_id||progressId;
+    if(id&&progressClosedEarly){dismissedJobs.add(id);progressId=id;return;}
     if(id&&dismissedJobs.has(id))return;
     if(id&&progressId!==id){progressId=id;progressDevice=snapshot?.device_id||null;}
-    const box=$('store-progress'),running=value.state==='running',failed=value.state==='error';
-    box.dataset.state=running?'running':failed?'error':'success';box.setAttribute('aria-busy',String(running));
-    $('store-progress-title').textContent=running?'Updating package':failed?'Update interrupted':'Update ready to deploy';
-    $('store-progress-package').textContent=[value.name,value.version].filter(Boolean).join(' · ');
+    const box=$('store-progress'),running=value.state==='running',cancelled=value.state==='cancelled',failed=value.state==='error'||cancelled;
+    box.dataset.state=running?'running':cancelled?'cancelled':failed?'error':'success';box.setAttribute('aria-busy',String(running));
+    $('store-progress-title').textContent=running?'Updating package':cancelled?'Update cancelled':failed?'Update interrupted':'Update ready to deploy';
+    const label=[value.name,value.version].filter(Boolean).join(' · ');if(label)$('store-progress-package').textContent=label;
     $('store-progress-message').textContent=running?value.message:failed?value.message:'The update is ready in your library on this PC. Core has not been updated yet.';
-    $('store-progress-help').textContent=running?'Downloading and checking the package. Keep Studio open.':failed?'The update was not confirmed. Check the message and retry.':'Deploy to apply the update to Core. New settings may only work on the device after Deploy. Existing widget settings are preserved. If the package is not in your layout yet, add it first. Deploy now opens your draft for review.';
-    $('store-progress-spinner').hidden=!running;$('store-progress-later').disabled=running;$('store-progress-later').textContent=running?'Updating…':failed?'Close':'Later';
+    $('store-progress-help').textContent=running?(value.cancel_requested?'You can close this window while cancellation completes.':'You can close this window. The update continues in the background.'):cancelled?'Your existing library and Core setup are unchanged.':failed?'The update was not confirmed. Check the message and retry.':'Deploy to apply the update to Core. New settings may only work on the device after Deploy. Existing widget settings are preserved. If the package is not in your layout yet, add it first. Deploy now opens your draft for review.';
+    $('store-progress-spinner').hidden=!running;$('store-progress-later').disabled=false;$('store-progress-later').textContent=failed||running?'Close':'Later';
+    $('store-progress-cancel').hidden=!running;$('store-progress-cancel').disabled=!id||value.can_cancel===false||!!value.cancel_requested;
     $('store-progress-deploy').hidden=running||failed;
     if(!box.open)box.showModal();
   }
@@ -96,12 +99,16 @@
     try{await window.studioEditor.deployFromStore(device);}
     catch(error){status(error.message,true);if(reopen&&progressId&&job?.state==='complete'){$('store-progress').showModal();$('store-progress-message').textContent=error.message;}}
   }
-  $('store-progress').addEventListener('cancel',event=>{if($('store-progress-later').disabled)event.preventDefault();});
-  $('store-progress').addEventListener('close',()=>{if(progressId)dismissedJobs.add(progressId);});
+  $('store-progress').addEventListener('close',()=>{if(progressId)dismissedJobs.add(progressId);else progressClosedEarly=true;});
   $('store-progress-later').onclick=()=>$('store-progress').close();
+  $('store-progress-cancel').onclick=async()=>{
+    if(!progressId)return;$('store-progress-cancel').disabled=true;
+    try{const data=await(await api('/api/store/cancel',{method:'POST',body:JSON.stringify({request_id:progressId})})).json();job=data.job;showUpdate(job);}
+    catch(error){$('store-progress-message').textContent=error.message;}
+  };
   $('store-progress-deploy').onclick=()=>{$('store-progress').close();openDeploy(progressDevice,true);};
   $('store-install-confirm').onclick=async()=>{const body=pending,info=pendingInfo;if(!body)return;pending=null;pendingInfo=null;$('store-install-dialog').close();
-    if(info?.is_update){progressId=null;progressDevice=snapshot?.device_id||null;showUpdate({...info,state:'running',message:'Starting update…'});}
+    if(info?.is_update){progressId=null;progressClosedEarly=false;progressDevice=snapshot?.device_id||null;showUpdate({...info,state:'running',message:'Starting update…'});}
     try{job=await(await api(body.local?'/api/store/local/install':'/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();if(info?.is_update)showUpdate({...info,...job});if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));}}
     catch(e){status(e.message,true);if(info?.is_update)showUpdate({...info,state:'error',message:e.message});}
   };
@@ -159,7 +166,7 @@
   window.studioStore={leave(){opened=false;document.body.classList.remove('store-open');$('store-content').hidden=true;$('nav-store').classList.remove('nav-active');$('nav-store').setAttribute('aria-pressed','false');}};
   setInterval(async()=>{
     if(!opened||document.hidden||job?.state!=='running'||pollingJob)return;pollingJob=true;
-    try{const d=await(await api('/api/store/job')).json();job=d.job;status(job?.message||'',job?.state==='error');if(job?.is_update)showUpdate(job);if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));render();}}catch(e){status(e.message,true);if($('store-progress').open){$('store-progress-message').textContent='Update status is unavailable. The update may still be running. Studio will keep checking.';$('store-progress-later').disabled=false;$('store-progress-later').textContent='Close';}}finally{pollingJob=false;}
+    try{const d=await(await api('/api/store/job')).json();job=d.job;status(job?.message||'',job?.state==='error');if(job?.is_update||(progressId&&job?.request_id===progressId))showUpdate(job);if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));render();}}catch(e){status(e.message,true);if($('store-progress').open){$('store-progress-message').textContent='Update status is unavailable. The update may still be running. Studio will keep checking.';$('store-progress-later').disabled=false;$('store-progress-later').textContent='Close';}}finally{pollingJob=false;}
   },1000);
   setInterval(()=>{if(opened&&!document.hidden&&job?.state!=='running')refresh();},60000);
   setInterval(loadStats,3000);
