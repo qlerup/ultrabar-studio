@@ -21,6 +21,9 @@
   const status=(text,error=false)=>{$('store-status').textContent=text;$('store-status').classList.toggle('error',error);};
   const version=v=>v.split('.').map(Number);
   const newer=(a,b)=>{a=version(a);b=version(b);for(let i=0;i<3;i++){if(a[i]!==b[i])return a[i]>b[i];}return false;};
+  const studioVersion=document.querySelector('meta[name="studio-version"]').content;
+  const needsStudio=p=>p.compatibility?.minStudioVersion&&newer(p.compatibility.minStudioVersion,studioVersion);
+  function openStudioUpdate(p){status(p.name+' requires Studio '+p.compatibility.minStudioVersion+' or newer. Installed: '+studioVersion+'.');$('updates-open').click();}
   function record(p){return installed.find(i=>i.id===p.id&&!i.device_id)||installed.find(i=>p.id==='studio.bambu'&&i.id==='studio.bambu.widget'&&!i.device_id&&i.type==='corebar-widget'&&i.source?.startsWith('https://github.com/qlerup/ultrabar-bambu/blob/'));}
   function render(){
     $('store-device').textContent=snapshot?`Selected CoreBAR: ${snapshot.model} / ${snapshot.target}`:'No CoreBAR connected. Apps and widgets can still be installed into your library on this PC.';
@@ -36,6 +39,7 @@
       title.append(el('span','eyebrow',p.type==='corebar-app'?'CORE APP':p.type==='studio-plugin'?'PRESET':'CORE WIDGET'),el('h2','',p.name));heading.append(icon,title);
       title.append(el('p','muted store-publisher',p.origin==='local'?'MANUAL APP / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / In library: '+saved.version:''}`));
+      if(needsStudio(p))card.append(el('p','store-version-notice',`Requires Studio ${p.compatibility.minStudioVersion} or newer. You have ${studioVersion}. Update Studio to use this ${p.type==='corebar-widget'?'widget':'app'}.`));
       if(pendingDeploy[p.id]){const notice=el('p','store-deploy-notice','Available in your library. Deploy required on Core.');notice.setAttribute('role','status');card.append(notice);}
       if(p.type==='corebar-app')card.append(el('p','muted','Install into your library. Add the app to your Core layout, then Deploy to install it on CoreBAR.'));
       let badges=null;if(p.links?.repository&&p.artifact?.url){badges=el('div','store-badges');badges.dataset.id=p.id;badges.setAttribute('aria-live','polite');for(const kind of ['downloads','issues']){const badge=el('span','store-stat');badge.dataset.stat=kind;badges.append(badge);}statsPackages.set(p.id,p);card.append(badges);}
@@ -43,13 +47,13 @@
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
       const tools=el('div','editor-buttons');
       if(!p.unlisted){
-        const b=el('button','primary',saved?(newer(p.version,saved.version)?'Update':'Installed'):'Install');
-        b.disabled=active||Boolean(saved&&!newer(p.version,saved.version));
-        b.title='Installs or updates the library on this PC. Deploy applies it to Core.';
-        b.onclick=()=>confirmInstall(p);tools.append(b);
+        const b=el('button','primary',needsStudio(p)?'Update Studio first':saved?(newer(p.version,saved.version)?'Update':'Installed'):'Install');
+        b.disabled=active||Boolean(!needsStudio(p)&&saved&&!newer(p.version,saved.version));
+        b.title=needsStudio(p)?'A newer Studio version is required to use this package.':'Installs or updates the library on this PC. Deploy applies it to Core.';
+        b.onclick=()=>needsStudio(p)?openStudioUpdate(p):confirmInstall(p);tools.append(b);
       }
       if(saved){
-        if(pendingDeploy[p.id]){const deploy=el('button','','Review & deploy');deploy.disabled=active;deploy.onclick=()=>openDeploy(snapshot?.device_id);tools.append(deploy);}
+        if(pendingDeploy[p.id]){const deploy=el('button','','Review & deploy');deploy.disabled=active||needsStudio(p);deploy.onclick=()=>openDeploy(snapshot?.device_id);tools.append(deploy);}
         const remove=el('button','','Remove from library');remove.disabled=active;
         remove.onclick=async()=>{if(!confirm('Remove this package from the library? Existing draft and deployed widgets are kept. Remove them from your layout and Deploy to remove them from Core.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Package removed from library.');}catch(e){status(e.message,true);}};tools.append(remove);
       }
@@ -69,6 +73,7 @@
     finally{loading=false;$('store-refresh').disabled=false;}
   }
   function confirmInstall(p){
+    if(needsStudio(p)){openStudioUpdate(p);return;}
     pendingInfo={name:p.name,version:p.version,is_update:Boolean(record(p)&&newer(p.version,record(p).version))};
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256};
     if(p.origin==='local')pending.local=true;

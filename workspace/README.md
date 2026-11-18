@@ -2,6 +2,9 @@
 
 ## 0.49.3 update
 
+Package cards show the required and installed Studio versions prominently when
+incompatible, with an Update Studio first action instead of starting installation.
+
 Store updates show early errors, including a required newer Studio version, instead
 of leaving the update dialog on "Checking approved package". Close and Escape work
 while a package update runs; closing leaves it running in the background. Cancel

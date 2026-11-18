@@ -7,6 +7,23 @@ import test_action_wizard_browser as fixture_browser
 from test_store import fixture
 
 class StoreUpdateBrowserTests(unittest.TestCase):
+    def test_future_studio_requirement_is_shown_before_installation(self):
+        import updates
+        package,raw=fixture();latest=copy.deepcopy(package);latest['version']='1.0.1';latest['compatibility']['minStudioVersion']='99.0.0'
+        with sync_playwright() as pw,fixture_browser.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(store,'catalog',return_value=[latest]),patch.object(server.store,'start') as install:
+            page.unroute('**/api/store/installed');server.store.job=None
+            server.store.save({package['id']+':pc':dict(package,widgets=store.plugin_templates(raw))})
+            page.locator('#nav-store').click();card=page.locator('.store-card')
+            expect(card.locator('.store-version-notice')).to_contain_text('Requires Studio 99.0.0 or newer')
+            expect(card.locator('.store-version-notice')).to_contain_text('You have '+updates.VERSION)
+            expect(card.get_by_role('button',name='Update',exact=True)).to_have_count(0)
+            card.get_by_role('button',name='Update Studio first',exact=True).click()
+            expect(page.locator('#updates-dialog')).to_be_visible();expect(page.locator('#store-install-dialog')).not_to_be_visible()
+            install.assert_not_called();page.keyboard.press('Escape')
+            out=Path(__file__).parent/'data/qa';out.mkdir(exist_ok=True,parents=True);page.screenshot(path=str(out/'store-studio-requirement.png'))
+            page.set_viewport_size(dict(width=390,height=844));self.assertTrue(page.evaluate('document.documentElement.scrollWidth<=innerWidth+1'))
+            page.screenshot(path=str(out/'store-studio-requirement-mobile.png'))
+
     def test_early_version_rejection_stops_spinner_and_allows_close(self):
         package,raw=fixture();latest=copy.deepcopy(package);latest['version']='1.0.1'
         entered=threading.Event();release=threading.Event()
