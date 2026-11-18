@@ -18,16 +18,16 @@ window.studioPackageUI=(()=>{
     }
   }
   function create({api,onConnectionsChange,onError}){
-    const cache=new Map(),loading=new Set();
+    const cache=new Map(),loading=new Set(),previewRequests=new Set(),thumbnails=new Map();
     // Connection records are owned/shared by the trusted provider, not a widget.
     // Requests still authenticate the installed package/widget at the endpoint.
     const identity=b=>b.descriptor.connection.provider;
     const endpoint=(b,op)=>'/api/studio/integrations/'+encodeURIComponent(b.packageId)+'/'+encodeURIComponent(b.widgetKey)+'/'+op;
     const call=async(b,op,body)=>{const response=await api(endpoint(b,op),op==='list'?{}:{method:'POST',body:JSON.stringify(body||{})});return response.json();};
     const remember=(b,data)=>{if(data.items)cache.set(identity(b),data.items);};
-    async function load(b){
+    async function load(b,background=false){
       const key=identity(b);if(loading.has(key))return;loading.add(key);
-      try{remember(b,await call(b,'list'));onConnectionsChange();}catch(e){onError(e.message);}finally{loading.delete(key);}
+      try{remember(b,await call(b,'list'));onConnectionsChange();}catch(e){if(!background)onError(e.message);}finally{loading.delete(key);}
     }
     function picker(panel,b,values,changed){
       const config=b.descriptor.connection,key=identity(b),items=cache.get(key)||[];
@@ -119,10 +119,26 @@ window.studioPackageUI=(()=>{
     function presentation(binding,values){
       const config=binding?.descriptor?.presentation;if(!config)return {};
       const source=config.source,connection=binding.descriptor.connection;
-      const data=source.scope==='setting'?values:(cache.get(connection?.provider)||[]).find(item=>item.id===values[connection.key]);
-      return config.presets.find(preset=>preset.value===data?.[source.key])||{};
+      if(source.scope==='setting')return config.presets.find(preset=>preset.value===values[source.key])||{};
+      const key=identity(binding),items=cache.get(key);
+      if(!items&&values[connection.key]&&!previewRequests.has(key)){
+        previewRequests.add(key);load(binding,true);
+      }
+      const device=items?.find(item=>item.id===values[connection.key]);
+      const preset=config.presets.find(preset=>preset.value===device?.[source.key]);
+      const thumbnail=device?.thumbnail;
+      if(!preset||!thumbnail||!/^[A-Za-z0-9+/]{1,8192}={0,2}$/.test(thumbnail)||thumbnail.length%4)return preset||{};
+      if(!thumbnails.has(thumbnail)){
+        const bytes=Uint8Array.from(atob(thumbnail),character=>character.charCodeAt(0));
+        thumbnails.set(thumbnail,URL.createObjectURL(new Blob([bytes],{type:'image/png'})));
+      }
+      return {...preset,imageUrl:thumbnails.get(thumbnail)};
     }
-    return {picker,presentation,clear:()=>cache.clear()};
+    return {picker,presentation,clear:()=>{
+      cache.clear();previewRequests.clear();
+      for(const url of thumbnails.values())URL.revokeObjectURL(url);
+      thumbnails.clear();
+    }};
   }
   function artwork(parent,shapes){
     if(!shapes?.length)return;

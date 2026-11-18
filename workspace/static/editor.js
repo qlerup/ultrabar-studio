@@ -432,7 +432,11 @@
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
     const presentation=packageUI.presentation(studioBinding(spec),spec);
     card.replaceChildren(el('strong','native-title',presentation.labels?.title||w.name||'Studio'));
-    window.studioPackageUI.artwork(card,presentation.artwork);
+    if(!card.classList.contains('small-widget')||spec.kind!=='bambu'){
+      if(spec.kind==='bambu'&&presentation.imageUrl){
+        const image=el('img','package-artwork');image.src=presentation.imageUrl;image.alt='';image.draggable=false;card.append(image);
+      }else window.studioPackageUI.artwork(card,presentation.artwork);
+    }
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
     if(card.classList.contains('small-widget')){

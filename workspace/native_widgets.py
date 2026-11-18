@@ -237,11 +237,15 @@ class NativeWidgets:
                         apply_sizes(compact_profiles)
                         applied_compact_profiles = compact_profiles
                     import widget_presentation
+                    from bambu_artwork import thumbnail
                     printers = self.server.bambu.sample()
                     with self.lock:
                         specs, presentations = self.specs, self.presentations
                     widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
-                    state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=self.server.companion.metrics.sample(), printers=printers)
+                    models = {printer.get('model') for printer in printers.values()}
+                    images = {model: image for model in models if (image := thumbnail(model))}
+                    state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=self.server.companion.metrics.sample(),
+                                 printers=printers, printerImages=images)
                     payload = json.dumps(state,allow_nan=False).encode()
                     if len(payload) >= 262144:
                         raise EditError('Widget data exceeds the Core runtime limit. Reduce the number or size of package artwork presets.')

@@ -16,6 +16,7 @@ import time
 import uuid
 from flask import jsonify, request
 from editor import EditError, atomic_json
+from bambu_artwork import thumbnail
 
 MAX_PACKET = 262144
 ACTIONS = ('pause', 'resume', 'stop', 'light_on', 'light_off')
@@ -448,6 +449,7 @@ class Printers:
     def listing(self):
         with self.lock:
             return [dict(id=p['id'], name=p['name'], model=p.get('model', 'generic'), host=p['host'], serial=p['serial'], controls=p['controls'],
+                         thumbnail=thumbnail(p.get('model', 'generic')),
                          status=self.links[p['id']].snapshot() if p['id'] in self.links else dict(connection='Not connected', fresh=False)) for p in self.read()]
 
     def validate(self, specs):

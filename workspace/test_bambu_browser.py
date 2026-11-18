@@ -44,7 +44,17 @@ class BambuBrowserTests(unittest.TestCase):
         template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.widget',_storeVersion='2.0.0')
         template['_studio']=legacy_descriptor(template)
         template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in ('generic','h2d','h3c')]))
-        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
+        template['_studio']['presentation']=dict(api=1,source=dict(scope='connection',key='model'),presets=[
+            dict(value='h2d',artwork=[dict(type='rect',points=[10,10,90,90],fill='accent')]),
+            dict(value='h3c',artwork=[dict(type='oval',points=[10,10,90,90],fill='accent')]),
+        ])
+        from base64 import b64encode
+        from io import BytesIO
+        from PIL import Image
+        def thumbnail(model):
+            buffer=BytesIO(); Image.new('RGB',(30,40),'red' if model=='h2d' else 'blue').save(buffer,format='PNG')
+            return b64encode(buffer.getvalue()).decode('ascii')
+        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(bambu,'thumbnail',side_effect=thumbnail),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.route('**/api/studio/integrations/*/*/probe',lambda r:r.fulfill(json=dict(pin='b'*64)))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
@@ -68,6 +78,7 @@ class BambuBrowserTests(unittest.TestCase):
             page.get_by_role('button',name='Add printer',exact=True).click()
             expect(page.locator('#connection-code')).to_have_value('')
             page.locator('#connection-name').fill('H3C office')
+            page.locator('#connection-model').select_option('h3c')
             page.locator('#connection-host').fill('192.168.1.31')
             page.locator('#connection-serial').fill('SYNTHETIC456')
             page.locator('#connection-code').fill('LAN67890')
@@ -83,6 +94,13 @@ class BambuBrowserTests(unittest.TestCase):
             expect(page.locator('[data-connection-key=printerId] option')).to_have_count(3)
             ids=page.locator('[data-connection-key=printerId] option').evaluate_all('(items)=>items.map(o=>o.value).filter(Boolean)')
             self.assertEqual(len(ids),2)
+            page.locator('[data-connection-key=printerId]').select_option(ids[0])
+            image=page.locator('#core-canvas .bambu-preview img.package-artwork')
+            expect(image).to_have_js_property('naturalWidth',30)
+            first_thumbnail=image.get_attribute('src')
+            page.locator('[data-connection-key=printerId]').select_option(ids[1])
+            expect(image).to_have_js_property('naturalWidth',30)
+            self.assertNotEqual(first_thumbnail,image.get_attribute('src'))
             page.locator('[data-connection-key=printerId]').select_option(ids[0])
             item.drag_to(page.locator('#core-screen'));page.locator('[data-connection-key=printerId]').select_option(ids[1])
             page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')

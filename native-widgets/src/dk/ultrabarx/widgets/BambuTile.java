@@ -20,6 +20,8 @@ public final class BambuTile {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static volatile JSONObject printers = new JSONObject();
     private static volatile JSONObject widgetSpecs = new JSONObject();
+    private static volatile JSONObject printerImages = new JSONObject();
+    private static final android.util.LruCache<String, Bitmap> thumbnails = new android.util.LruCache<>(16);
     private static volatile long received;
     private static WaterLayer expanded;
     private static final java.util.ArrayDeque<JSONObject> commands = new java.util.ArrayDeque<>();
@@ -30,6 +32,26 @@ public final class BambuTile {
         main.post(() -> { if (expanded != null) expanded.refresh(); });
     }
     public static void updateSpecs(JSONObject specs){widgetSpecs=specs==null?new JSONObject():specs;}
+    static void updateArtwork(JSONObject images) { printerImages = images == null ? new JSONObject() : images; }
+
+    private static Bitmap thumbnail(JSONObject snapshot) {
+        String encoded = printerImages.optString(snapshot.optString("model"));
+        if (encoded.isEmpty() || encoded.length() > 8192) return null;
+        Bitmap image = thumbnails.get(encoded);
+        if (image != null) return image;
+        try {
+            byte[] bytes = android.util.Base64.decode(encoded, android.util.Base64.NO_WRAP);
+            BitmapFactory.Options bounds = new BitmapFactory.Options();
+            bounds.inJustDecodeBounds = true;
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.length, bounds);
+            if (bounds.outWidth < 1 || bounds.outHeight < 1 || bounds.outWidth > 100 || bounds.outHeight > 100) return null;
+            image = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+            if (image != null) thumbnails.put(encoded, image);
+            return image;
+        } catch (IllegalArgumentException invalidImage) {
+            return null;
+        }
+    }
     private static JSONObject snapshot(JSONObject spec) {
         JSONObject value = printers.optJSONObject(spec.optString("printerId"));
         return value == null ? new JSONObject() : value;
@@ -104,9 +126,23 @@ public final class BambuTile {
         p.setColor(fresh(s)?accent:0xff74838b); canvas.drawCircle(24,28,3,p);
         label(canvas,p,s.optString("name",title==null?"Bambu Lab":title),34,33,14,text,true,width-62);
         String primary = spec.optString("primary","progress"), value = metric(s,primary);
-        label(canvas,p,value,22,108,primary.equals("progress")?52:30,text,true,WidgetPresentation.hasArtwork(spec)?width-90:width-40);
-        if(width>=180)WidgetPresentation.draw(canvas,spec,width-72,62,54,accent);
-        label(canvas,p,primary.equals("progress")?state(s):primary.equals("remaining")?"TIME REMAINING":primary.equals("temperature")?"ACTIVE NOZZLE":"PRINTER STATUS",23,133,11,accent,false,width-40);
+        Bitmap image = width >= 180 ? thumbnail(s) : null;
+        boolean showArtwork = width >= 180 && (image != null || WidgetPresentation.hasArtwork(spec));
+        float size = Math.min(86, width * .34f);
+        float artworkX = width - 18 - size;
+        float readingWidth = showArtwork ? artworkX - 30 : width - 42;
+        float valueSize = primary.equals("progress") ? Math.min(52, readingWidth / 1.8f) : 30;
+        label(canvas,p,value,22,108,valueSize,text,true,readingWidth);
+        if (image != null) {
+            float scale = size / Math.max(image.getWidth(), image.getHeight());
+            float imageWidth = image.getWidth() * scale, imageHeight = image.getHeight() * scale;
+            float left = artworkX + (size - imageWidth) / 2, top = 56 + (size - imageHeight) / 2;
+            p.setFilterBitmap(true);
+            canvas.drawBitmap(image, null, new RectF(left, top, left + imageWidth, top + imageHeight), p);
+        } else if (showArtwork) {
+            WidgetPresentation.draw(canvas, spec, artworkX, 56, size, accent);
+        }
+        label(canvas,p,primary.equals("progress")?state(s):primary.equals("remaining")?"TIME REMAINING":primary.equals("temperature")?"ACTIVE NOZZLE":"PRINTER STATUS",23,133,11,accent,false,readingWidth);
         String secondary = spec.optString("secondary", "remaining");
         label(canvas,p,(secondary.equals("temperature") ? "Nozzle " : "") + metric(s,secondary),23,165,14,MUTED,false,width-42);
         p.setColor(0x22ffffff); canvas.drawRoundRect(22,183,width-22,187,2,2,p);
@@ -217,7 +253,10 @@ public final class BambuTile {
             hero.addView(headline);
             job=txt("No active print",13,foreground,false);
             job.setEllipsize(android.text.TextUtils.TruncateAt.MARQUEE);job.setMarqueeRepeatLimit(-1);job.setSelected(true);
-            hero.addView(job);
+            LinearLayout jobLine = new LinearLayout(getContext());
+            jobLine.setWeightSum(2);
+            jobLine.addView(job, new LinearLayout.LayoutParams(0, -2, 1));
+            hero.addView(jobLine, new LinearLayout.LayoutParams(-1, -2));
             progress=new ProgressBar(getContext(),null,android.R.attr.progressBarStyleHorizontal);progress.setMax(100);progress.setProgressTintList(android.content.res.ColorStateList.valueOf(accent));LinearLayout.LayoutParams progressParams=new LinearLayout.LayoutParams(-1,4);progressParams.setMargins(0,8,18,6);hero.addView(progress,progressParams);
             details=txt("Waiting for printer",12,muted,false);hero.addView(details);
             middle.addView(hero,new LinearLayout.LayoutParams(0,-2,1.15f));

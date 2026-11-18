@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.52.2 Windows
+# UltraBar Studio — 0.52.3 Windows
+
+## 0.52.3 update
+
+Bambu uses a larger printer image on Core and in the large layout preview. When
+Bambu Studio is installed locally, UltraBar uses its thumbnail for the model
+selected in Manage printers. The Store widget's model illustration is used if
+the thumbnail is unavailable. The unfolded filename field is half as wide and
+scrolls names that exceed the available space.
 
 ## 0.52.2 update
 
