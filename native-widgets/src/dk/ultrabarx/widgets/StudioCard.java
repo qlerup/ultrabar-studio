@@ -3,6 +3,7 @@ package dk.ultrabarx.widgets;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Outline;
 import android.graphics.Paint;
 import android.graphics.Typeface;
 import android.os.Handler;
@@ -10,6 +11,7 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewOutlineProvider;
 import android.view.MotionEvent;
 import android.widget.FrameLayout;
 import org.json.JSONArray;
@@ -23,6 +25,11 @@ import java.util.ArrayList;
 /** A real child view of LineOS's scrolling card, never a separate window. */
 public final class StudioCard extends View {
     private static final String TAG = "ultrabar-studio-native-v1";
+    private static final ViewOutlineProvider SMALL_OUTLINE = new ViewOutlineProvider() {
+        @Override public void getOutline(View view, Outline outline) {
+            outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), Math.min(view.getWidth(), view.getHeight()) / 4f);
+        }
+    };
     private static final ArrayList<WeakReference<StudioCard>> views = new ArrayList<>();
     private static volatile JSONObject state = new JSONObject();
     private static volatile long received = 0;
@@ -31,6 +38,7 @@ public final class StudioCard extends View {
     private final Paint paint = new Paint(3);
     private String widgetId, title;
     private JSONObject bambuSpec;
+    private ViewOutlineProvider fullOutline;
     private final ArrayList<View> originals = new ArrayList<>();
     private final ArrayList<Integer> visibility = new ArrayList<>();
 
@@ -91,15 +99,81 @@ public final class StudioCard extends View {
     }
     private static String gb(double n){return String.format(java.util.Locale.US,"%.1f",n);}
     private static int blend(int foreground,int background,float amount){return Color.rgb((int)(Color.red(foreground)*amount+Color.red(background)*(1-amount)),(int)(Color.green(foreground)*amount+Color.green(background)*(1-amount)),(int)(Color.blue(foreground)*amount+Color.blue(background)*(1-amount)));}
+    private void drawSmall(Canvas canvas, JSONObject spec) {
+        int width = getWidth(), height = getHeight();
+        int foreground = Color.parseColor(spec.optString("textColor", "#eef6f2"));
+        int accent = Color.parseColor(spec.optString("accent", "#94d9bb"));
+        paint.setColor(Color.parseColor(spec.optString("background", "#192325")));
+        canvas.drawRect(0, 0, width, height, paint);
+        String label = WidgetPresentation.label(spec, "title", title == null ? "Studio" : title);
+        String kind = spec.optString("kind"), reading = "—", detail = "";
+        double percent = Double.NaN;
+        boolean online = received > 0 && SystemClock.elapsedRealtime() - received < 10000;
+        JSONObject metrics = state.optJSONObject("metrics");
+        if (kind.equals("bambu")) {
+            label = BambuTile.smallTitle(spec, label);
+            reading = BambuTile.smallReading(spec);
+            percent = BambuTile.smallProgress(spec);
+        } else if (kind.equals("clock")) {
+            java.util.Date now = new java.util.Date();
+            boolean twelve = spec.optString("hourFormat", "24").equals("12");
+            reading = new java.text.SimpleDateFormat(twelve ? "h:mm a" : "HH:mm", java.util.Locale.getDefault()).format(now);
+            if (spec.optBoolean("showDate", true))
+                detail = new java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault()).format(now);
+        } else if (online && metrics != null) {
+            if (kind.equals("disk")) {
+                JSONArray disks = metrics.optJSONArray("disks"), drives = spec.optJSONArray("drives");
+                String drive = spec.optString("drive", "all");
+                if (drives != null && drives.length() > 0)
+                    drive = drives.optString((int) ((SystemClock.elapsedRealtime() / 5000) % drives.length()));
+                if (disks != null) for (int i = 0; i < disks.length(); i++) {
+                    JSONObject disk = disks.optJSONObject(i);
+                    if (disk != null && (drive.equals("all") || drive.equals(disk.optString("name")))) {
+                        percent = disk.optDouble("percent");
+                        detail = disk.optString("name").replace("\\", "");
+                        break;
+                    }
+                }
+            } else if (kind.equals("gpu")) {
+                JSONObject gpu = metrics.optJSONObject("gpu");
+                if (gpu != null) percent = gpu.optDouble("usage");
+            } else percent = metrics.optDouble(kind);
+            if (kind.equals("cpu") || kind.equals("gpu") || kind.equals("memory"))
+                detail = kind.equals("memory") ? "RAM" : kind.toUpperCase(java.util.Locale.ROOT);
+            if (!Double.isNaN(percent)) reading = Math.round(percent) + "%";
+        }
+        smallText(canvas, label, width, height * .28f, 13, foreground, true);
+        smallText(canvas, reading, width, height * .61f, 23, foreground, true);
+        if (!detail.isEmpty()) smallText(canvas, detail, width, height * .8f, 11, accent, false);
+        if (!Double.isNaN(percent)) bar(canvas, height * .85f, width, percent, accent);
+    }
+    private void smallText(Canvas canvas, String value, int width, float baseline, float size, int color, boolean bold) {
+        paint.setTextSize(size);
+        paint.setTypeface(Typeface.create(bold ? "sans-serif-medium" : "sans-serif", Typeface.NORMAL));
+        String fitted = android.text.TextUtils.ellipsize(value, new android.text.TextPaint(paint), width - 20,
+                android.text.TextUtils.TruncateAt.END).toString();
+        text(canvas, fitted, (width - paint.measureText(fitted)) / 2, baseline, size, color, bold);
+    }
     @Override protected void onDraw(Canvas original){
         super.onDraw(original);Canvas c=original;float scale=getHeight()/240f;if(scale<=0)return;
-        c.save();c.scale(scale,scale);float width=getWidth()/scale;
         int white=Color.rgb(239,246,242),muted=Color.rgb(155,177,165),accent=Color.rgb(148,217,187);
         JSONObject specs=state.optJSONObject("widgets"),spec=specs==null?null:specs.optJSONObject(widgetId);
         bambuSpec=spec!=null&&"bambu".equals(spec.optString("kind"))?spec:null;
         if(bambuSpec!=null)try{bambuSpec.put("_widgetId",widgetId);}catch(Exception ignored){}
-        if(bambuSpec!=null){setClickable(true);BambuTile.draw(this,c,width,spec,title);c.restore();return;}
-        setClickable(false);
+        setClickable(bambuSpec != null);
+        boolean small = getHeight() < 160;
+        if (getParent() instanceof View) {
+            View parent = (View) getParent();
+            if (small && parent.getOutlineProvider() != SMALL_OUTLINE) {
+                fullOutline = parent.getOutlineProvider();
+                parent.setOutlineProvider(SMALL_OUTLINE);
+            } else if (!small && parent.getOutlineProvider() == SMALL_OUTLINE) {
+                parent.setOutlineProvider(fullOutline);
+            }
+        }
+        if(spec != null && small) { drawSmall(c, spec); return; }
+        c.save();c.scale(scale,scale);float width=getWidth()/scale;
+        if(bambuSpec!=null){BambuTile.draw(this,c,width,spec,title);c.restore();return;}
         int background=Color.rgb(25,35,37);
         if(spec!=null)try{background=Color.parseColor(spec.optString("background","#192325"));}catch(Exception ignored){}
         if(spec!=null)try{white=Color.parseColor(spec.optString("textColor","#eef6f2"));}catch(Exception ignored){}

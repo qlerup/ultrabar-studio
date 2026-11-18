@@ -123,6 +123,17 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('details[data-group="store"]').get_by_role('button',name='Drive usage',exact=True)).to_be_visible()
       expect(page.locator('#widget-library').get_by_role('button',name='Legacy drive',exact=True,include_hidden=True)).to_have_count(0)
       expect(page.locator('#core-canvas').get_by_role('button',name='Legacy drive',exact=True)).to_have_count(1)
+      canvas=page.locator('#core-canvas')
+      for title in ('Existing Store Clock','Legacy drive'):
+       canvas.get_by_role('button',name=title,exact=True).click()
+       page.get_by_label('Widget size').select_option('small')
+       assert 'small-widget' in canvas.get_by_role('button',name=title,exact=True).get_attribute('class').split()
+      rects=canvas.locator('.small-widget').evaluate_all('(cards)=>cards.map(card=>card.getBoundingClientRect().toJSON())')
+      assert rects[0]['height'] < canvas.locator('.clock-preview').bounding_box()['height']
+      page.locator('#widget-undo').click()
+      expect(canvas.locator('.small-widget')).to_have_count(1)
+      page.locator('#widget-undo').click()
+      expect(canvas.locator('.small-widget')).to_have_count(0)
       stock=page.locator('details[data-group="ultrabar"]')
       studio=page.locator('details[data-group="store"]')
       expect(stock.get_by_role('button',name='Clock',exact=True)).to_have_count(1)

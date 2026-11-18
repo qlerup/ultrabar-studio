@@ -62,6 +62,18 @@ public final class BambuTile {
             case "none": return ""; default: return "—";
         }
     }
+    static String smallTitle(JSONObject spec, String fallback) {
+        return snapshot(spec).optString("name", fallback);
+    }
+    static String smallReading(JSONObject spec) {
+        JSONObject printer = snapshot(spec);
+        return fresh(printer) ? metric(printer, spec.optString("primary", "progress")) :
+                printer.has("connection") ? "Offline" : "Setup";
+    }
+    static double smallProgress(JSONObject spec) {
+        JSONObject printer = snapshot(spec);
+        return fresh(printer) ? printer.optDouble("mc_percent") : Double.NaN;
+    }
     private static String temperature(JSONObject s, String key) {
         double degrees = s.optDouble(key);
         return Double.isNaN(degrees) || Double.isInfinite(degrees) ? "—" : Math.round(degrees) + "°C";
@@ -152,7 +164,12 @@ public final class BambuTile {
             ViewParent ancestor=source.getParent();
             while(ancestor instanceof ViewGroup){ViewGroup v=(ViewGroup)ancestor;if(v.getClass().getName().contains("RecyclerView")||(v instanceof LinearLayout&&((LinearLayout)v).getOrientation()==LinearLayout.HORIZONTAL&&v.getChildCount()>1)){row=v;break;}item=v;ancestor=v.getParent();}
             float unit=from.width(),gap=source.getHeight()/12f,viewportLeft=gap,viewportWidth=host.getWidth()-gap*2;
-            if(row!=null){
+            boolean mixed = source.getHeight() < 160;
+            if (row != null) for (int i = 0; i < row.getChildCount(); i++) {
+                View card = row.getChildAt(i);
+                if (card.getHeight() > 0 && card.getHeight() < 160) mixed = true;
+            }
+            if(row!=null && !mixed){
                 ArrayList<View> ordered=new ArrayList<>();
                 for(int i=0;i<row.getChildCount();i++){View v=row.getChildAt(i);if(v.getWidth()>0&&v.getHeight()>=source.getHeight()*.8f){ordered.add(v);unit=Math.min(unit,v.getWidth());}}
                 ordered.sort((a,b)->Float.compare(a.getX(),b.getX()));float measured=Float.MAX_VALUE;
@@ -167,8 +184,18 @@ public final class BambuTile {
             int position=Math.max(0,Math.min(visibleSlots-1,Math.round((from.left-viewportLeft)/(unit+gap))));
             float width=LiquidGeometry.width(unit,gap,viewportWidth,slots);
             float left=viewportLeft+LiquidGeometry.startSlot(position,slots,visibleSlots)*(unit+gap);
-            to.set(left,from.top,left+width,from.bottom);current.set(from);
-            if(row!=null){for(int i=0;i<row.getChildCount();i++){View neighbor=row.getChildAt(i);if(neighbor==sourceItem)continue;int[] pos=new int[2];neighbor.getLocationOnScreen(pos);float x=pos[0]-base[0];float movement=x<from.left?to.left-from.left:to.right-from.right;neighbors.add(neighbor);translations.add(neighbor.getTranslationX());movements.add(movement);}}
+            if (mixed) {
+                gap = 20;
+                unit = (host.getWidth() - gap * 6) / 5;
+                width = LiquidGeometry.width(unit, gap, host.getWidth() - gap * 2, slots);
+                left = Math.max(gap, Math.min(host.getWidth() - gap - width, from.centerX() - width / 2));
+                to.set(left, gap, left + width, host.getHeight() - gap);
+                sourceItem = item;
+                sourceAlpha = item.getAlpha();
+                radius = Math.min(radius, from.height() / 4);
+            } else to.set(left,from.top,left+width,from.bottom);
+            current.set(from);
+            if(row!=null && !mixed){for(int i=0;i<row.getChildCount();i++){View neighbor=row.getChildAt(i);if(neighbor==sourceItem)continue;int[] pos=new int[2];neighbor.getLocationOnScreen(pos);float x=pos[0]-base[0];float movement=x<from.left?to.left-from.left:to.right-from.right;neighbors.add(neighbor);translations.add(neighbor.getTranslationX());movements.add(movement);}}
             body=new LinearLayout(getContext());body.setOrientation(LinearLayout.VERTICAL);body.setPadding(30,14,30,14);
             FrameLayout.LayoutParams bp=new FrameLayout.LayoutParams((int)to.width(),(int)to.height());bp.leftMargin=(int)to.left;bp.topMargin=(int)to.top;addView(body,bp);
             LinearLayout header=new LinearLayout(getContext());header.setGravity(Gravity.CENTER_VERTICAL);

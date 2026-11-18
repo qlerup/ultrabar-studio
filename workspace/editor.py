@@ -67,6 +67,49 @@ def fresh_draft(snapshot):
 
 def settings_path(server,device):return draft_path(server,device).with_suffix('.settings.json')
 def vivo_path(server,device):return draft_path(server,device).with_suffix('.vivo.json')
+def compact_profiles_path(server, device):
+    return draft_path(server, device).with_suffix('.compact-profiles.json')
+
+
+def validate_compact_profiles(value, profiles, records=None):
+    by_id = {profile['id']: profile for profile in profiles}
+    if not isinstance(value, dict) or set(value) - set(by_id):
+        raise EditError('Choose widget sizes for an existing profile.')
+    for key, ids in value.items():
+        if not isinstance(ids, list) or len(ids) > 128 or any(not isinstance(i, str) for i in ids) or len(ids) != len(set(ids)):
+            raise EditError('Invalid small widget selection.')
+        widgets = {widget['id']: widget for widget in by_id[key]['homeData']}
+        if set(ids) - set(widgets):
+            raise EditError('Small widgets must be on the Core layout.')
+    if records is not None:
+        from store import widget_sizes
+        for profile in profiles:
+            selected = set(value.get(profile['id'], []))
+            for widget in profile['homeData']:
+                size = 'small' if widget['id'] in selected else 'large'
+                if size not in widget_sizes(widget, records):
+                    raise EditError(f"{widget.get('name') or widget['id']} does not support the {size} size.")
+    return {key: ids for key, ids in value.items() if ids}
+
+
+def saved_compact_profiles(server, snapshot):
+    try:
+        value = json.loads(compact_profiles_path(server, snapshot['device_id']).read_text(encoding='utf-8'))
+        if not isinstance(value, dict) or any(not isinstance(ids, list) or any(not isinstance(i, str) for i in ids) for ids in value.values()):
+            raise ValueError()
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as exc:
+        raise EditError('Could not read saved widget layouts. Existing settings were preserved.') from exc
+    result = {}
+    for profile in snapshot['profiles']:
+        ids = {widget['id'] for widget in profile['homeData']}
+        selected = [key for key in value.get(profile['id'], []) if key in ids]
+        if selected:
+            result[profile['id']] = selected
+    return result
+
+
 def saved_vivo(server,device):
     try:return json.loads(vivo_path(server,device).read_text(encoding='utf-8'))
     except FileNotFoundError:return {}
@@ -115,12 +158,15 @@ def load_draft(server, snapshot):
         if 'background_apps' not in draft:draft['background_apps']=saved_background(server,snapshot['device_id'])
         if 'app_settings' not in draft:draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
         if 'vivo_screens' not in draft:draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
+        if 'compact_profiles' not in draft:
+            draft['compact_profiles'] = saved_compact_profiles(server, snapshot)
         server.store.migrate_bambu_draft(draft)
         return draft
     draft = fresh_draft(snapshot)
     draft['background_apps']=saved_background(server,snapshot['device_id'])
     draft['app_settings']=saved_app_settings(server,snapshot['device_id'])
     draft['vivo_screens']=saved_vivo(server,snapshot['device_id'])
+    draft['compact_profiles']=saved_compact_profiles(server, snapshot)
     server.store.migrate_bambu_draft(draft)
     atomic_json(path, draft)
     return draft
@@ -343,6 +389,7 @@ def register_editor(server):
                 return jsonify(error='The device or draft changed. Reopen the editor before saving.'), 409
             profiles = body.get('profiles')
             validate(profiles, draft['base_profiles'])
+            compact_profiles = validate_compact_profiles(body.get('compact_profiles', draft['compact_profiles']), profiles, server.store.records())
             candidate=dict(profiles=profiles,background_apps=body.get('background_apps',draft.get('background_apps',[])),app_settings=body.get('app_settings',draft.get('app_settings',{})))
             validate_background(candidate['background_apps'])
             server.store.migrate_bambu_draft(candidate)
@@ -351,6 +398,7 @@ def register_editor(server):
             settings=app_settings.validate_all(server,candidate['app_settings'])
             screens=body.get('vivo_screens',draft.get('vivo_screens',{}));vivo.validate(screens,profiles)
             draft.update(profiles=profiles, background_apps=background,app_settings=settings,vivo_screens=screens, revision=uuid.uuid4().hex, saved_at=datetime.now(timezone.utc).isoformat())
+            draft['compact_profiles'] = compact_profiles
             atomic_json(draft_path(server, snapshot['device_id']), draft)
             return jsonify(draft=draft)
 
@@ -370,6 +418,7 @@ def register_editor(server):
             draft['background_apps']=saved_background(server,latest['device_id'])
             draft['app_settings']=saved_app_settings(server,latest['device_id'])
             draft['vivo_screens']=saved_vivo(server,latest['device_id'])
+            draft['compact_profiles']=saved_compact_profiles(server, latest)
             atomic_json(draft_path(server, latest['device_id']), draft)
             return jsonify(draft=draft, snapshot=latest)
 
@@ -407,6 +456,7 @@ def register_editor(server):
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
             validate(draft['profiles'], draft['base_profiles'])
+            compact_profiles = validate_compact_profiles(draft['compact_profiles'], draft['profiles'], server.store.records())
             from native_widgets import specifications
             server.bambu.validate(specifications(draft['profiles']))
             validate_background(draft.get('background_apps',[]))
@@ -423,6 +473,7 @@ def register_editor(server):
             rollback['background_apps']=saved_background(server,latest['device_id'])
             rollback['app_settings']=saved_app_settings(server,latest['device_id'])
             rollback['vivo_screens']=saved_vivo(server,latest['device_id'])
+            rollback['compact_profiles']=saved_compact_profiles(server, latest)
             rollback_path = draft_path(server, latest['device_id']).with_suffix('.rollback.json')
             atomic_json(rollback_path, rollback)
             stage('Waking Core and waiting for the screen…')
@@ -436,7 +487,7 @@ def register_editor(server):
             app_settings.deploy(server,{k:v for k,v in draft.get('app_settings',{}).items() if k in requested})
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
-            server.native_widgets.prepare(draft['profiles'], server.connection['target'])
+            server.native_widgets.prepare(draft['profiles'], server.connection['target'], compact_profiles)
             # A timeout is ambiguous: always read back, and never blindly resend a write.
             stage('Sending the layout and settings to Core…')
             acknowledged = True
@@ -463,12 +514,14 @@ def register_editor(server):
             atomic_json(background_path(server,latest['device_id']),draft.get('background_apps',[]))
             atomic_json(settings_path(server,latest['device_id']),draft.get('app_settings',{}))
             atomic_json(vivo_path(server,latest['device_id']),draft.get('vivo_screens',{}))
+            atomic_json(compact_profiles_path(server, latest['device_id']), compact_profiles)
             snapshot = dict(latest, profiles=verified, read_at=datetime.now(timezone.utc).isoformat())
             server.connection['snapshot'] = snapshot
             new_draft = fresh_draft(snapshot)
             new_draft['background_apps']=deepcopy(draft.get('background_apps',[]))
             new_draft['app_settings']=deepcopy(draft.get('app_settings',{}))
             new_draft['vivo_screens']=deepcopy(draft.get('vivo_screens',{}))
+            new_draft['compact_profiles']=compact_profiles
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
@@ -481,10 +534,11 @@ def register_editor(server):
             except server.DeviceError:
                 pass
             stage('Waiting for widgets to become ready…')
-            server.native_widgets.configure(verified, server.connection['target'])
-            if server.native_widgets.specs:
+            server.native_widgets.configure(verified, server.connection['target'], compact_profiles)
+            needs_runtime = bool(server.native_widgets.specs or compact_profiles)
+            if needs_runtime:
                 server.native_widgets.ready.wait(8)
-            native_note = '' if not server.native_widgets.specs or server.native_widgets.ready.is_set() else ' Studio widgets are waiting for Core home; keep Studio connected.'
+            native_note = '' if not needs_runtime or server.native_widgets.ready.is_set() else ' Studio is waiting for Core home to apply the widget layout; keep Studio connected.'
             server.store.mark_deployed(latest['device_id'],package_plan)
             if not activated:native_note+=' Core home still needs a restart before updated widgets are visible.'
             return jsonify(draft=new_draft, snapshot=snapshot, backup=latest['backup'], acknowledged=acknowledged,
@@ -512,6 +566,7 @@ def register_editor(server):
             restored['background_apps']=previous.get('background_apps',[])
             restored['app_settings']=previous.get('app_settings',{})
             restored['vivo_screens']=previous.get('vivo_screens',{})
+            restored['compact_profiles']=validate_compact_profiles(previous.get('compact_profiles', {}), restored['profiles'])
             validate_background(restored['background_apps'])
             validate(restored['profiles'], restored['base_profiles'])
             atomic_json(draft_path(server, snapshot['device_id']), restored)

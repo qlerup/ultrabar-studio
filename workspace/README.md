@@ -1,5 +1,17 @@
 # UltraBar Studio — 0.51.0 Windows
 
+## 0.52.0 update
+
+Choose Large or Small in Widget settings for each supported card. Four small
+widgets fit in the space of one large standard card. Consecutive small widgets
+fill each column from top to bottom and the layout still scrolls horizontally.
+Use Save and Deploy to apply the sizes. Keep Studio connected to CoreBAR.
+Mixed sizes require root-enabled CB01 with LineOS 1.0.9.
+
+The Store supports declaring large, small or both in the widget descriptor.
+Studio renders a compact layout for clock, drive, monitor and Bambu cards.
+Existing placements start large.
+
 ## 0.51.0 update
 
 Packages own their choice lists, text labels and printer illustrations. Studio

@@ -9,6 +9,42 @@ Java.perform(function () {
     }
     const Card = Java.use('dk.ultrabarx.widgets.StudioCard');
     const Bambu = Java.use('dk.ultrabarx.widgets.BambuTile');
+    let profiles = typeof studioCompactProfiles === 'undefined' ? {} : studioCompactProfiles;
+    let mixedLayout = null;
+    let lastLayoutError = '';
+    let ready = false;
+    let layoutPending = false;
+    function updateLayout() {
+        if (!mixedLayout && !Object.keys(profiles).length) return true;
+        mixedLayout ||= Java.use('dk.ultrabarx.widgets.MixedWidgetLayout');
+        const Home = Java.use('com.ultrabar.launch.ui.activity.HomeActivity');
+        const Record = Java.use('android.app.ActivityThread$ActivityClientRecord');
+        const activities = Java.use('android.app.ActivityThread').currentActivityThread().mActivities.value;
+        let home = null;
+        for (let i = 0; i < activities.size(); i++) {
+            const activity = Java.cast(activities.valueAt(i), Record).activity.value;
+            if (Home.class.isInstance(activity)) { home = activity; break; }
+        }
+        return mixedLayout.apply(home, JSON.stringify(profiles));
+    }
+    function reportReady() {
+        if (updateLayout() && !ready) { ready = true; send({ready: true}); }
+    }
+    rpc.exports.setCompactProfiles = next => new Promise((resolve, reject) =>
+        Java.perform(() => Java.scheduleOnMainThread(() => {
+            try { profiles = next; resolve(updateLayout()); }
+            catch (error) { reject(new Error(String(error))); }
+        })));
+    setInterval(() => {
+        if (layoutPending || (!Object.keys(profiles).length && !mixedLayout)) return;
+        layoutPending = true;
+        Java.scheduleOnMainThread(() => {
+            try { reportReady(); lastLayoutError = ''; }
+            catch (error) {
+                if (lastLayoutError !== String(error)) send({error: lastLayoutError = String(error)});
+            } finally { layoutPending = false; }
+        });
+    }, 1000);
     setInterval(function () {
         Java.perform(function () {
             for (const event of JSON.parse(String(Bambu.drainActions()))) send({bambuAction: event});
@@ -36,6 +72,6 @@ Java.perform(function () {
         }
         const roots = Java.use('android.view.WindowManagerGlobal').getInstance().mViews.value;
         for (let i=0; i<roots.size(); i++) visit(roots.get(i));
-        send({ready: true});
+        reportReady();
     });
 });

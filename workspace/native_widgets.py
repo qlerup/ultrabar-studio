@@ -83,6 +83,7 @@ class NativeWidgets:
         self.thread = None
         self.target = None
         self.specs = {}
+        self.compact_profiles = {}
         self.status = 'No Studio native widgets deployed'
         self.last_error = None
         self.token = None
@@ -118,9 +119,9 @@ class NativeWidgets:
                         ' -D -l 127.0.0.1:27042 --token='+self.token+
                         ' </dev/null >/data/local/tmp/studio-runtime.log 2>&1 &')
 
-    def prepare(self, profiles, target):
+    def prepare(self, profiles, target, compact_profiles=None):
         specs = specifications(profiles)
-        if not specs:
+        if not specs and not compact_profiles:
             return
         adb = self.server.adb
         if 'uid=0(' not in adb('-s', target, 'shell', 'id'):
@@ -128,7 +129,8 @@ class NativeWidgets:
         if adb('-s', target, 'shell', 'getprop', 'ro.product.cpu.abi') != 'armeabi-v7a':
             raise EditError('This native widget build supports ARM32 CoreBAR only.')
         package = adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE)
-        check_lineos(package)
+        if check_lineos(package) != '1.0.9' and compact_profiles:
+            raise EditError('Two widget rows require LineOS 1.0.9 on CoreBAR.')
         self.server.bambu.validate(specs)
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
@@ -145,7 +147,7 @@ class NativeWidgets:
             adb('-s', target, 'shell', 'umask 077; cat > /data/local/tmp/studio-runtime-token', input_data=self.token.encode())
         self.start_runtime(target)
 
-    def configure(self, profiles, target):
+    def configure(self, profiles, target, compact_profiles=None):
         specs = specifications(profiles)
         import widget_presentation
         presentations = widget_presentation.bindings(specs, self.server.store.records()) if specs else {}
@@ -156,9 +158,10 @@ class NativeWidgets:
                 if self.thread.is_alive():
                     raise EditError('Previous native widget connection is still closing.')
             self.specs = specs
+            self.compact_profiles = compact_profiles or {}
             self.presentations = presentations
             self.server.bambu.configure(specs)
-            if not specs:
+            if not specs and not compact_profiles:
                 self.stop.set()
                 self.status = 'No Studio native widgets deployed'
                 return
@@ -179,6 +182,16 @@ class NativeWidgets:
         session = None
         script = None
         pid = None
+        applied_compact_profiles = None
+        def apply_sizes(value):
+            cancel = frida.Cancellable()
+            timeout = threading.Timer(5, cancel.cancel)
+            timeout.daemon = True
+            timeout.start()
+            try:
+                return script.exports_sync.set_compact_profiles(value, cancellable=cancel)
+            finally:
+                timeout.cancel()
         try:
             while not self.stop.is_set():
                 try:
@@ -203,7 +216,9 @@ class NativeWidgets:
                             remote = frida.get_device_manager().add_remote_device('127.0.0.1:'+port, token=self.token)
                         self.status = 'Loading native widgets into Core home'
                         session = remote.attach(new_pid)
-                        script = session.create_script((self.server.ROOT/'assets/native/widgets.js').read_text(encoding='utf-8'))
+                        source = (self.server.ROOT/'assets/native/widgets.js').read_text(encoding='utf-8')
+                        applied_compact_profiles = self.compact_profiles
+                        script = session.create_script(f'const studioCompactProfiles = {json.dumps(applied_compact_profiles)};\n'+source)
                         def message(msg, data):
                             if msg.get('type') == 'send' and msg['payload'].get('ready'):
                                 self.status = 'Native widgets connected'
@@ -217,6 +232,10 @@ class NativeWidgets:
                         script.on('message', message)
                         script.load()
                         pid = new_pid
+                    compact_profiles = self.compact_profiles
+                    if applied_compact_profiles != compact_profiles:
+                        apply_sizes(compact_profiles)
+                        applied_compact_profiles = compact_profiles
                     import widget_presentation
                     printers = self.server.bambu.sample()
                     with self.lock:
@@ -237,6 +256,9 @@ class NativeWidgets:
                     self.stop.wait(4)
         finally:
             if session and not session.is_detached:
+                if script is not None and applied_compact_profiles:
+                    try: apply_sizes({})
+                    except Exception: pass
                 session.detach()
             if port:
                 try: adb('-s', target, 'forward', '--remove', 'tcp:'+port)

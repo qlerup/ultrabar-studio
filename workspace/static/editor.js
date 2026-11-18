@@ -25,7 +25,7 @@
     $('action-undo').disabled=working||actionSaving||!history.length;
     for(const control of $('vivo-screen-settings').querySelectorAll('button,input'))control.disabled=working||actionSaving;
   }
-  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{}}));if(history.length>30)history.shift();dirty=true;updateControls();}
+  function checkpoint(){history.push(clone({profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{},compact_profiles:draft.compact_profiles||{}}));if(history.length>30)history.shift();dirty=true;updateControls();}
   function change(fn,refresh=true){if(working||!draft)return;checkpoint();fn();if(refresh)renderEditor();}
   function showMode(next){if(actionSaving)return;mode=next;for(const m of ['layout','actions','pc']){$(m+'-editor').hidden=m!==mode;$('mode-'+m).setAttribute('aria-pressed',m===mode);}if(mode==='pc')refreshPc();if(mode==='actions'){renderModules();requestAnimationFrame(()=>centerHardware($('action-devices')));}}
   async function openEditor(){
@@ -54,12 +54,29 @@
     draft.background_apps??=[];for(const app of draft.background_apps)app.settings??={};
     draft.app_settings??={};
     draft.vivo_screens??={};
+    draft.compact_profiles??={};
     if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
     const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
     renderLibrary();renderCanvas();renderBackground();renderProperties();renderModules();renderAppSettingsRecovery();updateControls();
   }
   function nativeSpec(w){return w.param?.payload?.action==='studioNative'?w.param.payload.params:null;}
+  function widgetSizes(widget){
+    const spec=nativeSpec(widget);
+    if(!spec)return ['large'];
+    const template=storePresets.find(item=>{
+      const candidate=nativeSpec(item);
+      return candidate&&candidate.packageId===spec.packageId&&candidate.widgetKey===spec.widgetKey;
+    });
+    return template?._sizes||['large','small'];
+  }
+  function isSmall(widget){return draft.compact_profiles?.[current().id]?.includes(widget.id)||false;}
+  function setWidgetSize(widget,size){
+    const ids=(draft.compact_profiles[current().id]||[]).filter(id=>id!==widget.id);
+    if(size==='small')ids.push(widget.id);
+    if(ids.length)draft.compact_profiles[current().id]=ids;
+    else delete draft.compact_profiles[current().id];
+  }
   function nativeTemplate(kind,name,drive='all'){return {type:'PC_CONTROL',name,bgColor:'#192325',iconScale:0,_new:true,_native:true,param:{output:10,payload:{action:'studioNative',params:{kind,accent:'#94d9bb',textColor:'#eef6f2',...(kind==='disk'?{drive}:{})}}}};}
   async function loadStorePresets(){
     try{
@@ -78,6 +95,7 @@
         if(nativeSpec(t))for(const field of (w._studio||w.studio)?.settings?.fields||[])nativeSpec(t)[field.key]=w[field.key]??field.default;
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:nativeSpec(t).hourFormat??w.hourFormat??'24',showSeconds:nativeSpec(t).showSeconds??w.showSeconds??true,showDate:nativeSpec(t).showDate??w.showDate??true});}
         else if(nativeSpec(t))Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion});
+        if(w.sizes)t._sizes=w.sizes;
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
         return t;
@@ -108,6 +126,11 @@
     const screen=$('core-screen').getBoundingClientRect();
     if(x<screen.left||x>screen.right||y<screen.top||y>screen.bottom)return null;
     const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
+    const hit=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;});
+    if(hit>=0&&$('core-canvas').classList.contains('mixed-widgets')){
+      const r=cards[hit].getBoundingClientRect();
+      return hit+(cards[hit].classList.contains('small-widget')?y>(r.top+r.bottom)/2:x>(r.left+r.right)/2);
+    }
     const next=cards.findIndex(card=>{const r=card.getBoundingClientRect();return x<r.left+r.width/2;});
     return next<0?cards.length:next;
   }
@@ -213,9 +236,9 @@
   }
   function addWidget(template,at=current().homeData.length){
     backgroundIndex=-1;
-    const widget=clone(template),companion=widget._bundledApp;delete widget._bundledApp;delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
+    const widget=clone(template),companion=widget._bundledApp,sizes=widgetSizes(template);delete widget._sizes;delete widget._bundledApp;delete widget._storePackage;delete widget._storeKey;delete widget._storeVersion;if(widget._new){widget.id=(widget._native?'studio_native_':'studio_')+crypto.randomUUID().replaceAll('-','');delete widget._new;delete widget._native;}
     if(current().homeData.some(w=>w.id===widget.id)){message('This widget is already on Core. Select its card to edit it.');return;}
-    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});current().homeData.splice(at,0,widget);widgetIndex=at;});
+    change(()=>{if(widget.type==='APPS')draft.background_apps=draft.background_apps.filter(a=>a.id!==widget.id);if(companion&&!draft.background_apps.some(a=>a.id===companion.id)&&!draft.profiles.some(p=>p.homeData.some(w=>w.type==='APPS'&&w.id===companion.id)))draft.background_apps.push({id:companion.id,name:companion.name,settings:{launch:false}});current().homeData.splice(at,0,widget);if(!sizes.includes('large'))setWidgetSize(widget,'small');widgetIndex=at;});
   }
   function addBackground(w){
     if(!w||w.type!=='APPS'){message('Background apps supports Core apps. Display widgets belong on the bar.',true);return;}
@@ -287,6 +310,22 @@
     window.studioPackageUI.artwork(card,presentation.artwork);
     const bar=value=>{const track=el('span','native-track'),fill=el('span','');fill.style.width=Math.max(0,Math.min(100,value||0))+'%';track.append(fill);return track;};
     const number=value=>value==null?'--':Number(value).toFixed(1);
+    if(card.classList.contains('small-widget')){
+      const now=new Date(),drives=pcMetrics.disks||[];
+      const drive=drives.find(d=>spec.drives?.includes(d.name)||spec.drive==='all'||spec.drive===d.name);
+      const usage=spec.kind==='disk'?drive?.percent:spec.kind==='gpu'?pcMetrics.gpu?.usage:pcMetrics[spec.kind];
+      const reading=spec.kind==='clock'?now.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit',hour12:spec.hourFormat==='12'}):
+        spec.kind==='bambu'?({progress:'64%',state:'Printing',remaining:'47 min',temperature:'220?C'}[spec.primary||'progress']):
+        usage==null?'--':Math.round(usage)+'%';
+      card.append(el('span','compact-reading',reading));
+      if(spec.kind==='bambu')card.append(bar(64));
+      else if(usage!=null){
+        const detail=spec.kind==='disk'?drive.name.slice(0,2):spec.kind==='memory'?'RAM':spec.kind.toUpperCase();
+        card.append(el('span','compact-detail',detail),bar(usage));
+      }
+      else if(spec.kind==='clock'&&spec.showDate!==false)card.append(el('span','compact-detail',now.toLocaleDateString([], {day:'numeric',month:'short'})));
+      return;
+    }
     if(spec.kind==='bambu'){
       const primary={progress:'64%',state:'Printing',remaining:'0h 47m',temperature:'220°C'};
       const secondary={remaining:'0h 47m remaining',state:'Printing',job:'Desk organiser',layers:'Layer 128 / 200',temperature:'Nozzle 220°C',none:''};
@@ -423,7 +462,8 @@
   $('core-next').onclick=()=>{$('core-canvas').scrollLeft+=1424;};
   function renderCanvas(){
     const canvas=$('core-canvas'),position=canvas.scrollLeft;canvas.replaceChildren();
-    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
+    canvas.classList.toggle('mixed-widgets',current().homeData.some(isSmall));
+    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
     if(!current().homeData.length)canvas.append(el('p','canvas-empty','Drop widgets here to build your Core screen'));
     canvas.scrollLeft=position;requestAnimationFrame(syncCoreScroll);
@@ -437,6 +477,17 @@
     const spec=nativeSpec(w),shortcut=pcWidgetSpec(w);
     panel.append(el('span','badge',spec?'Studio widget':shortcut?(shortcut.kind==='url'?'Website':'PC app'):w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
+      const sizes=widgetSizes(w),sizeField=el('label','property-field','Widget size'),sizeSelect=el('select');
+      const active=isSmall(w)?'small':'large';
+      for(const size of ['large','small']){
+        if(!sizes.includes(size)&&size!==active)continue;
+        option(sizeSelect,size,(size==='small'?'Small':'Large')+(sizes.includes(size)?'':' (unsupported)'));
+        sizeSelect.lastChild.disabled=!sizes.includes(size);
+      }
+      sizeSelect.value=active;
+      sizeSelect.disabled=sizes.length===1&&sizes.includes(active);
+      sizeSelect.onchange=()=>change(()=>setWidgetSize(w,sizeSelect.value));
+      sizeField.append(sizeSelect);panel.append(sizeField);
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
       renderPackageSettings(panel,spec);
@@ -446,7 +497,7 @@
     if(w.type==='APPS')renderAppSettings(w.id,panel);
     if(w.type==='APPS'&&draft.app_settings?.[w.id])panel.append(button('Forget draft app settings',()=>change(()=>delete draft.app_settings[w.id]),'danger-quiet'));
     const moves=el('div','property-moves');moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));panel.append(moves);
-    panel.append(button('Remove from Core',()=>change(()=>{current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
+    panel.append(button('Remove from Core',()=>change(()=>{setWidgetSize(w,'large');current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
     if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));
   }
@@ -668,7 +719,7 @@
     if(!actions.length)box.append(el('p','canvas-empty','No actions assigned yet. Choose what happens in step 2, then fill in step 3.'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
-  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{}})})).json();draft=response.draft;dirty=false;updateControls();}
+  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{},compact_profiles:draft.compact_profiles||{}})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
   async function refreshPc(){
     try{const data=await (await api('/api/pc')).json();pcActions=data.actions||[];pcMetrics=data.metrics||{};$('pc-status').textContent=data.status+' / '+(data.native_status||'');
@@ -687,7 +738,7 @@
   $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;pcWidgetForms.clear();resetActionComposer();renderEditor();};
   $('action-undo').onclick=()=>$('widget-undo').click();
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
-  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
+  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(Object.keys(draft.compact_profiles||{}).length)box.append(el('p','','Apply mixed widget sizes to CoreBAR.'));if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
   $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
   $('deploy-progress-close').onclick=()=>$('deploy-progress').close();

@@ -59,6 +59,43 @@ class EditorTests(unittest.TestCase):
             adb.assert_not_called()
         self.assertEqual(self.snapshot['profiles'][0]['name'],'Home')
 
+    def test_widget_sizes_persist_through_draft_deploy_and_reset(self):
+        rows = profiles()
+        key = 'studio_native_' + 'a' * 32
+        rows[0]['homeData'].append(dict(id=key, type='PC_CONTROL', name='Store Clock', param=dict(
+            payload=dict(action='studioNative', params=dict(kind='clock', accent='#94d9bb')))))
+        sizes = {'p1': [key]}
+        saved = self.post('/api/editor/draft', dict(device_id='core1', revision=self.draft['revision'],
+                                                  profiles=rows, compact_profiles=sizes))
+        self.assertEqual(saved.status_code, 200)
+        self.draft = saved.json['draft']
+        self.assertEqual(self.draft['compact_profiles'], sizes)
+        self.assertEqual(editor.saved_compact_profiles(server, self.snapshot), {})
+        with patch.object(server, 'read_snapshot', return_value=self.snapshot), \
+                patch.object(editor.bridge, 'request') as send, patch.object(server, 'adb', return_value='Status: ok'), \
+                patch.object(server, 'parse_profiles', return_value={'profiles': rows}), \
+                patch.object(server.native_widgets.ready, 'wait'):
+            deployed = self.post('/api/editor/deploy')
+        self.assertEqual(deployed.status_code, 200)
+        self.assertEqual(send.call_args.args[-1], editor.to_wire(rows))
+        self.assertEqual(editor.saved_compact_profiles(server, deployed.json['snapshot']), sizes)
+        server.native_widgets.configure.assert_called_once_with(rows, self.snapshot['target'], sizes)
+        self.draft = deployed.json['draft']
+        with patch.object(server, 'read_snapshot', return_value=deployed.json['snapshot']):
+            self.assertEqual(self.post('/api/editor/reset').json['draft']['compact_profiles'], sizes)
+
+    def test_widget_sizes_respect_store_package_declarations(self):
+        rows = profiles()
+        key = 'studio_native_' + 'b' * 32
+        rows[0]['homeData'].append(dict(id=key, type='PC_CONTROL', name='Store Clock', param=dict(
+            payload=dict(action='studioNative', params=dict(kind='clock', accent='#94d9bb', packageId='studio.clock', widgetKey='clock')))))
+        records = {'studio.clock:pc': dict(id='studio.clock', widgets=[dict(id='clock', sizes=['small'])])}
+        with self.assertRaisesRegex(editor.EditError, 'does not support the large size'):
+            editor.validate_compact_profiles({}, rows, records)
+        self.assertEqual(editor.validate_compact_profiles({'p1': [key]}, rows, records), {'p1': [key]})
+        with self.assertRaisesRegex(editor.EditError, 'does not support the small size'):
+            editor.validate_compact_profiles({'p1': ['clock', key]}, rows, records)
+
     def test_stale_draft_and_wrong_device_rejected(self):
         self.assertEqual(self.save(profiles()).status_code,200)
         self.assertEqual(self.save(profiles()).status_code,409)

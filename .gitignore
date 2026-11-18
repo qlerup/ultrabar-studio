@@ -25,6 +25,8 @@
 !/native-widgets/build.py
 !/native-widgets/src/
 !/native-widgets/src/**
+!/native-widgets/compile-stubs/
+!/native-widgets/compile-stubs/**
 !/native-widgets/tests/
 !/native-widgets/tests/**
 **/__pycache__/

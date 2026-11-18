@@ -13,6 +13,18 @@ from store import StoreError, require_widget_version, widget_package
 
 
 class StudioContractTests(unittest.TestCase):
+    def test_widget_size_declarations_and_minimum_version(self):
+        def parse(sizes):
+            widget = dict(id='clock', name='Clock', kind='clock', sizes=sizes)
+            return widget_package(json.dumps(dict(widgetApi=1, runtime='studio-native-v1', widgets=[widget])).encode())
+        for sizes in (['small'], ['large'], ['large', 'small']):
+            self.assertEqual(parse(sizes)[0]['sizes'], sizes)
+        for invalid in ([], ['small', 'small'], ['medium'], 'small', [{}]):
+            with self.subTest(invalid=invalid), self.assertRaises(StoreError):
+                parse(invalid)
+        with self.assertRaisesRegex(StoreError, '0.52.0'):
+            require_widget_version(parse(['small']), dict(compatibility=dict(minStudioVersion='0.51.0')))
+
     def test_model_choices_are_bounded_and_require_compatible_studio(self):
         descriptor=legacy_bambu()
         field=dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value='generic',label='Other'),dict(value='h2d',label='H2D')])
