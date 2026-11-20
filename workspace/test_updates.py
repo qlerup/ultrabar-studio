@@ -162,6 +162,40 @@ class UpdateTests(unittest.TestCase):
             browser.assert_called_once_with(updates.RELEASES_URL+'/latest')
 
 class DownloadTests(unittest.TestCase):
+    def test_startup_cleanup_keeps_current_pending_and_unrelated_files(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
+        with TemporaryDirectory() as tmp, patch.object(updates, 'VERSION', '0.52.10'):
+            root = Path(tmp)
+            draft = root / 'draft.json'
+            draft.write_bytes(b'draft')
+            cache = root / 'updates'
+            updates.remove_old_installers(cache)
+            cache.mkdir()
+            old = cache / 'UltraBarStudio-Setup-0.52.9.exe'
+            locked = cache / 'UltraBarStudio-Setup-0.51.0.exe'
+            keep = ('UltraBarStudio-Setup-0.52.10.exe', 'UltraBarStudio-Setup-0.52.11.exe',
+                    'UltraBarStudio-Setup-0.51.0.part', 'Backup-UltraBarStudio-Setup-0.51.0.exe')
+            for path in [old, locked, *(cache / name for name in keep)]:
+                path.write_bytes(b'installer')
+            directory = cache / 'UltraBarStudio-Setup-0.50.0.exe'
+            directory.mkdir()
+            unlink = Path.unlink
+
+            def unlink_unless_locked(path, **kwargs):
+                if path == locked:
+                    raise PermissionError('Installer is in use')
+                unlink(path, **kwargs)
+
+            with patch.object(Path, 'unlink', unlink_unless_locked), self.assertLogs(level='WARNING'):
+                updates.remove_old_installers(cache)
+            self.assertFalse(old.exists())
+            self.assertTrue(locked.exists())
+            updates.remove_old_installers(cache)
+            self.assertEqual({path.name for path in cache.iterdir()}, {*keep, directory.name})
+            self.assertEqual(draft.read_bytes(), b'draft')
+
     def test_download_verify_launch_and_keep_data(self):
         import tempfile,hashlib
         from pathlib import Path

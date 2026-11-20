@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.7 Windows
+# UltraBar Studio — 0.52.8 Windows
+
+## 0.52.8 update
+
+Printer artwork appears automatically in saved layouts once widget metadata loads.
+On startup, Studio removes cached installers for older versions and keeps the
+installer for the running version.
 
 ## 0.52.7 update
 

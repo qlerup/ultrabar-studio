@@ -186,8 +186,11 @@
           draft.background_apps=draft.background_apps.filter(a=>a.id!=='dk.ultrabar.bambu');if(draft.app_settings)delete draft.app_settings['dk.ultrabar.bambu'];
         },false);
       }
-      if(draft&&!drag)renderLibrary();
-      if(draft&&!drag)renderProperties();
+      if(draft&&!drag){
+        renderLibrary();
+        renderCanvas();
+        renderProperties();
+      }
     }catch(error){message('Could not load installed store presets. '+error.message,true);}
   }
   window.addEventListener('studio-store-changed',()=>{loadStorePresets();if(snapshot)loadCatalog();});

@@ -126,6 +126,27 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('[data-connection-key=printerId]').select_option(ids[0]);page.locator('#widget-undo').click()
             expect(page.locator('[data-connection-key=printerId]')).to_have_value(ids[1])
 
+            # Open the saved layout with a clock selected and delay the package
+            # metadata until after the first canvas render and PC refresh.
+            saved['profiles'][0]['homeData'].sort(key=lambda widget: widget['id'] != 'clock')
+            pending = []
+            page.route('**/api/editor', lambda route: route.fulfill(json=dict(draft=saved)))
+            page.route('**/api/store/installed', lambda route: pending.append(route))
+            page.reload()
+            page.locator('#connection-open').click();page.locator('#manual-connection summary').click()
+            page.locator('#target').fill('192.168.1.20:5555');page.locator('#connect').click()
+            page.locator('#nav-editor').click()
+            expect(page.locator('#pc-status')).to_contain_text('Offline test')
+            expect(page.locator('#core-canvas .canvas-widget.selected')).to_have_accessible_name('Clock')
+            expect(image).to_have_count(0)
+            self.assertEqual(len(pending), 1)
+            pending[0].fulfill(json=dict(installed=[],widgets=[template]))
+            expect(image).to_have_count(2)
+            expect(image.nth(0)).to_have_js_property('naturalWidth',30)
+            expect(image.nth(1)).to_have_js_property('naturalWidth',30)
+            self.assertNotEqual(image.nth(0).get_attribute('src'),image.nth(1).get_attribute('src'))
+            expect(page.locator('#core-canvas .canvas-widget.selected')).to_have_accessible_name('Clock')
+
     def test_independent_cards_save_reload_and_undo(self):
         template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.panel',_storeVersion='1.0.0',_bundledApp=dict(id='dk.ultrabar.bambu',name='Bambu'))
         template['_studio']=legacy_descriptor(template)

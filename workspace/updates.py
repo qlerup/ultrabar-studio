@@ -1,19 +1,22 @@
 """Verified release downloads and explicit installer launch."""
 import json
+import logging
 import re
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-VERSION = '0.52.7'
+VERSION = '0.52.8'
 REPOSITORY = 'qlerup/ultrabar-studio'
 RELEASES_URL = f'https://github.com/{REPOSITORY}/releases'
 RELEASE_FEED_URL = RELEASES_URL + '/latest/download/studio-update.json'
+VERSION_NUMBER = r'(?:0|[1-9][0-9]*)(?:\.(?:0|[1-9][0-9]*)){2}'
+INSTALLER_NAME = re.compile(rf'UltraBarStudio-Setup-({VERSION_NUMBER})\.exe')
 
 class UpdateError(Exception):
     pass
 
 def version_tuple(value):
-    if not isinstance(value, str) or not re.fullmatch(r'v?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', value):
+    if not isinstance(value, str) or not re.fullmatch(rf'v?{VERSION_NUMBER}', value):
         raise UpdateError('The release has an unsupported version number.')
     return tuple(map(int, value.removeprefix('v').split('.')))
 
@@ -71,6 +74,25 @@ import time
 from pathlib import Path
 from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, build_opener
+
+def remove_old_installers(folder):
+    """Keep the running version's installer and any pending newer download."""
+    current = version_tuple(VERSION)
+    try:
+        for path in folder.iterdir():
+            match = INSTALLER_NAME.fullmatch(path.name)
+            if not match or version_tuple(match.group(1)) >= current:
+                continue
+            try:
+                if path.is_file():
+                    path.unlink(missing_ok=True)
+            except OSError as exc:
+                logging.warning('Could not remove old Studio installer %s: %s', path.name, exc)
+    except FileNotFoundError:
+        pass
+    except OSError as exc:
+        logging.warning('Could not read the Studio update cache: %s', exc)
+
 
 class ReleaseChecker:
     """Coalesce concurrent checks; back off after a failed network request."""

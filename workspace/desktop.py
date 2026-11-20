@@ -11,6 +11,7 @@ def main():
     import webview
     from waitress import create_server
     import server
+    from updates import remove_old_installers
 
     server.DATA_DIR.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(filename=str(server.DATA_DIR / 'studio.log'), level=logging.WARNING,
@@ -30,6 +31,8 @@ def main():
     http = None
     pending_update = []
     try:
+        if server.PACKAGED:
+            remove_old_installers(server.DATA_DIR / 'updates')
         http = create_server(server.app, host='127.0.0.1', port=0, threads=4)
         port = http.effective_port
         server.app.config['ALLOWED_HOSTS'] = {f'127.0.0.1:{port}'}
