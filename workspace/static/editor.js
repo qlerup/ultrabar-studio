@@ -706,17 +706,6 @@
     if(shortcut)renderPcWidgetSettings(w,panel);
     if(w.type==='APPS')renderAppSettings(w.id,panel);
     if(w.type==='APPS'&&draft.app_settings?.[w.id])panel.append(button('Forget draft app settings',()=>change(()=>delete draft.app_settings[w.id]),'danger-quiet'));
-    const moves=el('div','property-moves');
-    if(hasGrid()){
-      const directions=isSmall(w)?[['←',-1,0],['→',1,0],['↑',0,-1],['↓',0,1]]:[['←',-1,0],['→',1,0]];
-      for(const [label,dx,dy] of directions)moves.append(button(label,()=>{
-        const [column,row]=positionsForCurrent()[w.id],cell=[column+dx,row+dy];
-        if(cell[0]<0||cell[0]>511||cell[1]<0||cell[1]>1)return;
-        const positions=proposePosition(w,isSmall(w),cell);
-        if(positions)change(()=>applyPositions(w,cell,positions));
-      }));
-    }else moves.append(button('←',()=>moveWidget(widgetIndex,Math.max(0,widgetIndex-1))),button('→',()=>moveWidget(widgetIndex,Math.min(current().homeData.length,widgetIndex+2))));
-    panel.append(moves);
     panel.append(button('Remove from Core',()=>change(()=>{removePlacement(current(),w.id);current().homeData.splice(widgetIndex,1);widgetIndex=Math.max(0,widgetIndex-1);}), 'danger-quiet'));
     if(w.type==='PC_CONTROL'&&!nativeSpec(w)&&!shortcut)panel.append(el('p','muted','PC actions require Studio or their original PC software to be connected.'));
     if(['CPU','MEMORY','STORAGE'].includes(w.type))panel.append(el('p','muted',w.type==='STORAGE'?'Shows combined usage of fixed PC drives. Individual drives appear under PC connection.':'Reads actual PC measurements while Studio is connected.'));

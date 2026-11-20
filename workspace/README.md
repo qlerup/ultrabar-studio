@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.8 Windows
+# UltraBar Studio — 0.52.9 Windows
+
+## 0.52.9 update
+
+Removed the move arrows from widget settings. Drag widgets into position directly
+in the CoreBAR layout.
 
 ## 0.52.8 update
 
