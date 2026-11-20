@@ -141,17 +141,6 @@
     widgetIndex=current().homeData.indexOf(widget);
     backgroundIndex=-1;
   }
-  function setWidgetSize(widget,size){
-    const layout=layoutParts(),small=layout.small.filter(id=>id!==widget.id);
-    if(size==='small')small.push(widget.id);
-    if(!layout.positions&&!layout.splits.length){storeLayout(current(),small,null);return;}
-    const positions={...positionsForCurrent()}, old=positions[widget.id];
-    delete positions[widget.id];
-    storeLayout(current(),small,positions);
-    let cell=old?[old[0],size==='small'?old[1]:0]:[nextFreeColumn(positions),0];
-    if((size!=='small'&&splitOverlaps(cell[0],footprintWidth(widget,false)))||findOverlaps(widget,size==='small',cell,positions).length)cell=[nextFreeColumn(positions),0];
-    applyPositions(widget,cell,positions);
-  }
   function removePlacement(profile,widgetId){
     const layout=layoutParts(profile),positions=layout.positions?{...layout.positions}:null;
     if(positions)delete positions[widgetId];
@@ -237,8 +226,12 @@
     const canvas=$('core-canvas'),rect=canvas.getBoundingClientRect(),scale=rect.width/1424;
     const column=((d.x-rect.left)/scale+canvas.scrollLeft-gridMargin+10)/cellPitch;
     const col=Math.max(0,Math.min(511,Math.floor(column)));
-    const small=currentSmall||!sizes.includes('large')||(sizes.includes('small')&&splitOverlaps(col,1));
-    const row=small&&(d.y-rect.top)/scale>=140?1:0, cell=[col,row];
+    const largeSlot=currentSmall&&sizes.includes('large')&&[...canvas.querySelectorAll('.core-slot:not(.core-slot-split)')].find(slot=>{
+      const start=Number(slot.dataset.slotColumn);
+      return col>=start&&col<start+2;
+    });
+    const small=!largeSlot&&(currentSmall||!sizes.includes('large')||(sizes.includes('small')&&splitOverlaps(col,1)));
+    const row=small&&(d.y-rect.top)/scale>=140?1:0, cell=[largeSlot?Number(largeSlot.dataset.slotColumn):col,row];
     const positions=proposePosition(widget,small,cell);
     const insertion=!positions&&d.payload.kind==='widget-new'&&gridInsertion(widget,!sizes.includes('large'),column);
     return {...(insertion||{cell,positions,small,span:footprintWidth(widget,small)}),rect,scale};
@@ -270,7 +263,9 @@
       const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
       const x=grid?.insertion?grid.rect.left+(gridMargin+grid.cell[0]*cellPitch-$('core-canvas').scrollLeft-10)*grid.scale:
         cards[at]?.getBoundingClientRect().left??cards.at(-1)?.getBoundingClientRect().right??screen.left+12;
-      d.marker.hidden=false;d.marker.style.left=Math.max(screen.left+2,Math.min(screen.right-4,x))+'px';d.marker.style.top=(screen.top+8)+'px';d.marker.style.height=Math.max(10,screen.height-16)+'px';
+      const height=Math.min(90,screen.height*.42);
+      d.marker.hidden=false;d.marker.style.left=Math.max(screen.left+10,Math.min(screen.right-14,x))+'px';
+      d.marker.style.top=(screen.top+(screen.height-height)/2)+'px';d.marker.style.height=height+'px';
     }else{d.marker.hidden=true;$('core-canvas').classList.remove('grid-drag');}
     d.frame=requestAnimationFrame(paintWidgetDrag);
   }
@@ -299,9 +294,9 @@
     }else if(grid){
       const widget=current().homeData[d.payload.index];
       change(()=>{
-        if(grid.small&&!isSmall(widget)){
+        if(grid.small!==isSmall(widget)){
           const {small,positions}=layoutParts();
-          storeLayout(current(),[...small,widget.id],positions);
+          storeLayout(current(),grid.small?[...small,widget.id]:small.filter(id=>id!==widget.id),positions);
         }
         applyPositions(widget,grid.cell,grid.positions);
       });
@@ -714,17 +709,6 @@
     const spec=nativeSpec(w),shortcut=pcWidgetSpec(w);
     panel.append(el('span','badge',spec?'Studio widget':shortcut?(shortcut.kind==='url'?'Website':'PC app'):w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
-      const sizes=widgetSizes(w),sizeField=el('label','property-field','Widget size'),sizeSelect=el('select');
-      const active=isSmall(w)?'small':'large';
-      for(const size of ['large','small']){
-        if(!sizes.includes(size)&&size!==active)continue;
-        option(sizeSelect,size,(size==='small'?'Small':'Large')+(sizes.includes(size)?'':' (unsupported)'));
-        sizeSelect.lastChild.disabled=!sizes.includes(size);
-      }
-      sizeSelect.value=active;
-      sizeSelect.disabled=sizes.length===1&&sizes.includes(active);
-      sizeSelect.onchange=()=>change(()=>setWidgetSize(w,sizeSelect.value));
-      sizeField.append(sizeSelect);panel.append(sizeField);
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
       renderPackageSettings(panel,spec);

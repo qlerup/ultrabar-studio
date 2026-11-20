@@ -40,18 +40,23 @@ window.studioPackageUI=(()=>{
     function manage(b){
       const config=b.descriptor.connection,dialog=node('dialog','studio-connections-dialog');dialog.id='studio-connections';
       const heading=node('div','studio-connections-heading');heading.append(node('h3','',config.title),button('Close',()=>dialog.close()));
-      const notice=node('p','muted');notice.setAttribute('role','status');
+      const notice=node('p','muted studio-connection-notice');notice.setAttribute('role','status');
       const list=node('div','studio-connection-list'),form=node('form','studio-connection-form');
       dialog.append(heading,node('p','muted','Connections belong to this app on this PC. Access codes are protected by your Windows account and are never sent to Core.'),notice,list,form);
       let editing=null,pending=null,saving=false,polling=false,timer=null;
       const message=(text,error=false)=>{notice.textContent=text;notice.classList.toggle('error',error);};
       const items=()=>cache.get(identity(b))||[];
-      const status=item=>item.host+' · '+(item.status?.connection||'Not connected');
+      function updateRowStatus(row,item){
+        const status=row.querySelector('.studio-connection-status');
+        status.textContent=item.status?.connection||'Not connected';
+        status.classList.toggle('is-connected',status.textContent==='Connected');
+        row.querySelector('.studio-connection-host').textContent=item.host;
+      }
       async function refresh(live=false){
         const data=await call(b,'list');if(!dialog.open||(live&&saving))return;remember(b,data);
         const rows=[...list.querySelectorAll('.studio-connection-row')];
         if(!live||rows.length!==items().length||rows.some(row=>!items().some(item=>item.id===row.dataset.connectionId)))renderList();
-        else for(const row of rows){const item=items().find(item=>item.id===row.dataset.connectionId);row.querySelector('.studio-connection-status').textContent=status(item);}
+        else for(const row of rows)updateRowStatus(row,items().find(item=>item.id===row.dataset.connectionId));
       }
       async function poll(){
         if(polling)return;polling=true;
@@ -62,15 +67,20 @@ window.studioPackageUI=(()=>{
         list.replaceChildren();
         if(!items().length)list.append(node('p','muted','No connections yet. Add your first '+config.itemLabel+' below.'));
         for(const item of items()){
-          const row=node('section','studio-connection-row');row.dataset.connectionId=item.id;row.append(node('strong','',item.name),node('p','muted studio-connection-status',status(item)));
-          const actions=node('div','property-moves');actions.append(button('Edit',()=>edit(item)),button('Reconnect',async()=>{
+          const row=node('section','studio-connection-row');row.dataset.connectionId=item.id;
+          const summary=node('div','studio-connection-summary');
+          summary.append(node('strong','',item.name),node('span','studio-connection-status'),node('span','muted studio-connection-host'));
+          row.append(summary);updateRowStatus(row,item);
+          const actions=node('div','studio-connection-actions');actions.append(button('Edit',()=>edit(item)),button('Reconnect',async()=>{
             try{remember(b,await call(b,'reconnect',{id:item.id}));if(dialog.open){renderList();message('Reconnect requested. Status updates automatically.');}}catch(e){if(dialog.open)message(e.message,true);}
           }),button('Remove',async()=>{
             if(!confirm('Remove '+item.name+'? Widgets using this connection will need another selection.'))return;
             try{remember(b,await call(b,'remove',{id:item.id}));if(dialog.open){if(editing?.id===item.id)edit(null);renderList();}}catch(e){if(dialog.open)message(e.message,true);}
           },'danger-quiet'));row.append(actions);list.append(row);
         }
-        list.append(button('Add '+config.itemLabel,()=>edit(null)),button('Refresh status',async()=>{try{await refresh();}catch(e){message(e.message,true);}}));
+        const tools=node('div','studio-connection-tools');
+        tools.append(button('Add '+config.itemLabel,()=>edit(null)),button('Refresh status',async()=>{try{await refresh();}catch(e){message(e.message,true);}}));
+        list.append(tools);
       }
       function edit(item){
         if(saving)return;editing=item;pending=null;message('');form.replaceChildren(node('h4','',(item?'Edit ':'Add ')+config.itemLabel));
@@ -84,6 +94,7 @@ window.studioPackageUI=(()=>{
           wrap.append(input);if(field.type==='secret'&&item)wrap.append(node('small','muted','Leave blank to keep the saved value.'));if(field.help)wrap.append(node('small','muted',field.help));form.append(wrap);inputs[field.key]=input;
         }
         if(config.setupHelp)form.append(node('p','muted',config.setupHelp));
+        const discovery=node('div','studio-connection-discovery');
         const results=node('div','studio-search-results'),search=button('Search local network',async()=>{
           search.disabled=true;results.replaceChildren();
           try{
@@ -94,7 +105,8 @@ window.studioPackageUI=(()=>{
               pending=null;approval.hidden=true;submit.textContent='Check connection';results.replaceChildren();
             }));
           }catch(e){if(dialog.open)message(e.message,true);}finally{search.disabled=false;}
-        });form.append(search,results);
+        });
+        discovery.append(search,results);form.insertBefore(discovery,form.children[1]||null);
         const approval=node('section','studio-certificate');approval.hidden=true;const submit=node('button','primary','Check connection');submit.type='submit';form.append(approval,submit);
         for(const input of Object.values(inputs))input.addEventListener('input',()=>{pending=null;approval.hidden=true;submit.textContent='Check connection';});
         form.onsubmit=async event=>{

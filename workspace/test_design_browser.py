@@ -125,31 +125,8 @@ class DesignTests(unittest.TestCase):
       expect(page.locator('#widget-library').get_by_role('button',name='Legacy drive',exact=True,include_hidden=True)).to_have_count(0)
       expect(page.locator('#core-canvas').get_by_role('button',name='Legacy drive',exact=True)).to_have_count(1)
       canvas=page.locator('#core-canvas')
-      for title in ('Existing Store Clock','Legacy drive'):
-       canvas.get_by_role('button',name=title,exact=True).click()
-       page.get_by_label('Widget size').select_option('small')
-       assert 'small-widget' in canvas.get_by_role('button',name=title,exact=True).get_attribute('class').split()
-      rects=canvas.locator('.small-widget').evaluate_all('(cards)=>cards.map(card=>card.getBoundingClientRect().toJSON())')
-      assert rects[0]['height'] < canvas.locator('.clock-preview').bounding_box()['height']
-      clock=canvas.get_by_role('button',name='Existing Store Clock',exact=True)
-      clock.scroll_into_view_if_needed()
-      before=clock.bounding_box();scale=canvas.bounding_box()['width']/1424
-      x=before['x']+before['width']/2;y=before['y']+before['height']/2
-      page.mouse.move(x,y);page.mouse.down();page.mouse.move(x,y+130*scale,steps=12)
-      expect(page.locator('.grid-marker')).to_be_visible()
-      page.mouse.up()
-      after=clock.bounding_box()
-      assert abs(after['x']-before['x'])<1 and abs(after['y']-before['y']-130*scale)<1
-      with page.expect_response(lambda r:r.url.endswith('/api/editor/draft') and r.request.method=='POST') as saved:
-       page.locator('#draft-save').click()
-      config=saved.value.json()['draft']['compact_profiles']['p1']
-      assert config['positions']['studio_native_0123456789abcdef0123456789abcdef'][1]==1
-      page.locator('#widget-undo').click()
-      expect(canvas.locator('.small-widget')).to_have_count(2)
-      page.locator('#widget-undo').click()
-      expect(canvas.locator('.small-widget')).to_have_count(1)
-      page.locator('#widget-undo').click()
-      expect(canvas.locator('.small-widget')).to_have_count(0)
+      canvas.get_by_role('button',name='Existing Store Clock',exact=True).click()
+      expect(page.get_by_label('Widget size',exact=True)).to_have_count(0)
       page.locator('#core-next').click()
       slider=page.get_by_role('slider',name='Scroll Core preview')
       for width in (1440,390):
@@ -159,7 +136,8 @@ class DesignTests(unittest.TestCase):
        expect(slider).to_have_value('0')
        assert canvas.evaluate('(node)=>node.scrollLeft')==0
        bounds=slider.bounding_box()
-       x=bounds['x']+6;y=bounds['y']+bounds['height']/2
+       handle_width=min(72,max(34,width*.06))
+       x=bounds['x']+handle_width/2;y=bounds['y']+bounds['height']/2
        page.mouse.move(x,y);page.mouse.down();page.mouse.move(bounds['x']+bounds['width']-5,y,steps=12);page.mouse.up()
        expect(slider).to_have_value(slider.get_attribute('max'))
        assert canvas.evaluate('''(node)=>{
@@ -183,6 +161,8 @@ class DesignTests(unittest.TestCase):
         preview=dialog.get_by_role('button',name=name).locator('.core-slot-preview-widget')
         expect(preview).to_have_count(count)
         expect(preview.first).to_be_visible()
+        size=preview.first.bounding_box()
+        assert 1.06<size['width']/size['height']<1.14
        assert dialog.evaluate('(node)=>node.scrollWidth<=node.clientWidth')
       page.set_viewport_size(dict(width=1440,height=960))
       dialog.get_by_role('button',name='2×2 grid').click()
@@ -201,6 +181,9 @@ class DesignTests(unittest.TestCase):
       line=page.locator('.widget-insert-marker:not(.grid-marker)')
       expect(line).to_be_visible()
       assert 0<before['x']-line.bounding_box()['x']<17
+      expect(canvas).to_have_css('background-image','none')
+      assert 0<line.bounding_box()['height']<before['height']*.5
+      assert line.evaluate("(node)=>getComputedStyle(node,'::after').borderRadius")=='50%'
       page.mouse.up()
       expect(second).to_have_attribute('aria-label','System Monitor')
       assert abs(second.bounding_box()['x']-before['x'])<1
@@ -216,6 +199,26 @@ class DesignTests(unittest.TestCase):
       page.mouse.down();page.mouse.move(target['x']+target['width']/2,target['y']+target['height']/2,steps=12);page.mouse.up()
       expect(canvas.locator('.small-widget')).to_have_attribute('aria-label','System Monitor')
       expect(empty.locator('.core-slot-cell')).to_have_count(3)
+      def drag_card_to(target):
+       card=canvas.get_by_role('button',name='System Monitor',exact=True).bounding_box()
+       destination=target.bounding_box()
+       page.mouse.move(card['x']+card['width']/2,card['y']+card['height']/2)
+       page.mouse.down()
+       page.mouse.move(destination['x']+destination['width']/2,destination['y']+destination['height']/2,steps=12)
+       expect(page.locator('.grid-marker:not(.invalid-grid-marker)')).to_be_visible()
+       page.mouse.up()
+      drag_card_to(empty.locator('.core-slot-cell').first)
+      expect(canvas.locator('.small-widget')).to_have_count(1)
+      drag_card_to(canvas.locator('.core-slot[data-slot-column="12"]'))
+      expect(canvas.locator('.small-widget')).to_have_count(0)
+      expect(empty.locator('.core-slot-cell')).to_have_count(4)
+      with page.expect_response(lambda r:r.url.endswith('/api/editor/draft') and r.request.method=='POST') as saved:
+       page.locator('#draft-save').click()
+      assert saved.value.json()['draft']['compact_profiles']['p1']['small']==[]
+      page.locator('#widget-undo').click()
+      expect(canvas.locator('.small-widget')).to_have_count(1)
+      page.locator('#widget-undo').click()
+      expect(canvas.locator('.small-widget')).to_have_count(1)
       page.locator('#widget-undo').click()
       expect(empty.locator('.core-slot-cell')).to_have_count(4)
       empty.get_by_role('button',name='Change empty 2×2 grid').click()

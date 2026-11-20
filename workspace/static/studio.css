@@ -75,7 +75,9 @@ body.store-open .sidebar #nav-editor{background:transparent;border-color:transpa
 @media(max-width:850px){.sidebar #nav-store{grid-column:1/-1;margin:0}.store-filters{gap:8px}}
 
 .widget-drag-ghost{position:fixed;z-index:10000;pointer-events:none;padding:10px 14px;border:1px solid var(--mint);background:var(--panel);color:var(--text);box-shadow:0 8px 22px #0007;max-width:240px;font-size:13px}
-.widget-insert-marker{position:fixed;width:3px;background:var(--mint);box-shadow:0 0 0 1px #111;z-index:9999;pointer-events:none}
+.widget-insert-marker{position:fixed;z-index:9999;pointer-events:none}
+.widget-insert-marker:not(.grid-marker){width:4px;border-radius:999px;background:linear-gradient(180deg,#8175cc,var(--mint) 45%,#8175cc);box-shadow:0 0 10px #b9b2ff55}
+.widget-insert-marker:not(.grid-marker)::after{content:'';position:absolute;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);border:1px solid var(--mint);border-radius:50%;background:linear-gradient(var(--mint),var(--mint)) center/9px 2px no-repeat,linear-gradient(var(--mint),var(--mint)) center/2px 9px no-repeat,#252139;box-shadow:0 2px 6px #0009}
 .canvas-widget,.library-item{user-select:none}
 
 .native-clock-time{font-size:34px;font-weight:600;white-space:nowrap;margin:28px 0 20px;font-variant-numeric:tabular-nums}
