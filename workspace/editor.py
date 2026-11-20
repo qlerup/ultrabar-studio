@@ -20,6 +20,9 @@ class EditError(ValueError):
     pass
 
 
+STUDIO_PROFILE_ID = re.compile(r'studio_profile_[0-9a-f]{32}')
+
+
 def wake_for_deploy(server, target):
     """Wake without toggling power; verify Android has left standby before writing."""
     try:
@@ -233,14 +236,22 @@ def load_draft(server, snapshot):
     return draft
 
 
-def validate(profiles, base):
+def validate(profiles, base, restored_removals=()):
     if not isinstance(profiles, list) or not 1 <= len(profiles) <= 64 or any(not isinstance(p, dict) for p in profiles):
         raise EditError('A draft must contain between 1 and 64 profiles.')
-    if [p.get('id') for p in profiles] != [p.get('id') for p in base]:
-        raise EditError('Keep the existing profiles and their IDs. Profile creation/removal is not supported yet.')
+    ids = [p.get('id') for p in profiles]
+    if any(not isinstance(ident, str) or not ident for ident in ids) or len(set(ids)) != len(ids):
+        raise EditError('Each profile needs a unique ID.')
+    originals = {p['id']: p for p in base}
+    retained = [ident for ident in originals if ident not in restored_removals or ident in ids]
+    if ids[:len(retained)] != retained:
+        raise EditError('Keep the existing profiles and their IDs.')
+    if any(not STUDIO_PROFILE_ID.fullmatch(ident) for ident in ids[len(retained):]):
+        raise EditError('Create new profiles from the Studio profile menu.')
     if sum(p.get('default') is True for p in profiles) != 1:
         raise EditError('Exactly one profile must be the default.')
-    for p, original in zip(profiles, base):
+    for p in profiles:
+        original = originals.get(p['id'], {})
         if not isinstance(p.get('name'), str) or not 1 <= len(p['name'].strip()) <= 100:
             raise EditError('Give each profile a name of 1–100 characters.')
         widgets, modules = p.get('homeData'), p.get('module')
@@ -330,7 +341,9 @@ def retain_cleared_slots(profiles, current):
             return [emptied(v) for v in value]
         return value
     result = deepcopy(profiles)
-    for p, present in zip(result, current):
+    current_by_id = {p['id']: p for p in current}
+    for p in result:
+        present = current_by_id.get(p['id'], {})
         for module in present.get('module', []):
             saved = next((m for m in p['module'] if m['serialNo'] == module['serialNo']), None)
             if saved is None:
@@ -449,7 +462,7 @@ def register_editor(server):
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Reopen the editor before saving.'), 409
             profiles = body.get('profiles')
-            validate(profiles, draft['base_profiles'])
+            validate(profiles, draft['base_profiles'], draft.get('restored_profile_removals', ()))
             compact_profiles = validate_compact_profiles(body.get('compact_profiles', draft['compact_profiles']), profiles, server.store.records())
             candidate=dict(profiles=profiles,background_apps=body.get('background_apps',draft.get('background_apps',[])),app_settings=body.get('app_settings',draft.get('app_settings',{})))
             validate_background(candidate['background_apps'])
@@ -516,7 +529,7 @@ def register_editor(server):
             draft = load_draft(server, snapshot)
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
-            validate(draft['profiles'], draft['base_profiles'])
+            validate(draft['profiles'], draft['base_profiles'], draft.get('restored_profile_removals', ()))
             compact_profiles = validate_compact_profiles(draft['compact_profiles'], draft['profiles'], server.store.records())
             core_layouts = core_widget_layouts(compact_profiles)
             from native_widgets import specifications
@@ -625,12 +638,17 @@ def register_editor(server):
                 return jsonify(error='The connected CoreBAR changed.'), 409
             restored = fresh_draft(latest)
             restored['profiles'] = retain_cleared_slots(previous['profiles'], latest['profiles'])
+            saved_ids = {p['id'] for p in restored['profiles']}
+            restored['restored_profile_removals'] = [
+                p['id'] for p in latest['profiles']
+                if p['id'] not in saved_ids and STUDIO_PROFILE_ID.fullmatch(p['id'])
+            ]
             restored['background_apps']=previous.get('background_apps',[])
             restored['app_settings']=previous.get('app_settings',{})
             restored['vivo_screens']=previous.get('vivo_screens',{})
             restored['compact_profiles']=validate_compact_profiles(previous.get('compact_profiles', {}), restored['profiles'])
             validate_background(restored['background_apps'])
-            validate(restored['profiles'], restored['base_profiles'])
+            validate(restored['profiles'], restored['base_profiles'], restored['restored_profile_removals'])
             atomic_json(draft_path(server, snapshot['device_id']), restored)
             server.connection['snapshot'] = latest
             return jsonify(draft=restored, snapshot=latest)

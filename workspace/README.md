@@ -1,4 +1,12 @@
-# UltraBar Studio — 0.52.9 Windows
+# UltraBar Studio — 0.52.10 Windows
+
+## 0.52.10 update
+
+- Drag new widgets between existing cards in mixed-size CoreBAR layouts. The
+  insertion line shows where the new card will go.
+- The profile menu matches Studio's theme and can create and save a new profile
+  in the local draft. Deploy sends the new profile to CoreBAR.
+- Choose between a large slot and a 2×2 grid using visual previews of each layout.
 
 ## 0.52.9 update
 

@@ -57,7 +57,9 @@
     draft.compact_profiles??={};
     widgetIndex=Math.min(widgetIndex,Math.max(0,current().homeData.length-1));
     if(backgroundIndex>=draft.background_apps.length)backgroundIndex=-1;
-    const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));select.value=profileIndex;
+    const select=$('edit-profile');select.replaceChildren();draft.profiles.forEach((p,i)=>option(select,i,p.name));
+    option(select,'new','+ New profile…');select.lastElementChild.disabled=draft.profiles.length>=64;
+    select.value=profileIndex;
     $('edit-profile-name').value=current()?.name||'';$('edit-show-names').checked=current()?.showName!==false;
     renderLibrary();renderCanvas();renderBackground();renderProperties();renderModules();renderAppSettingsRecovery();updateControls();
   }
@@ -212,16 +214,34 @@
   }
   function overBackground(x,y){const r=$('background-drop').getBoundingClientRect();return x>=r.left&&x<=r.right&&y>=r.top&&y<=r.bottom;}
   function dragApp(payload){return payload.widget||(payload.kind==='widget-move'?current().homeData[payload.index]:null);}
+  function gridInsertion(widget,small,column){
+    const positions=positionsForCurrent(), {splits}=layoutParts(), span=footprintWidth(widget,small);
+    if(nextFreeColumn(positions)+span>512)return null;
+    const blocks=current().homeData.map(w=>{
+      const start=positions[w.id][0];
+      return [start,start+footprintWidth(w,isSmall(w))];
+    }).concat(splits.map(start=>[start,start+2]));
+    // Do not insert through an existing widget or a 2×2 group.
+    const boundaries=[...new Set(blocks.flat())].filter(edge=>blocks.every(([start,end])=>edge<=start||edge>=end));
+    const at=boundaries.reduce((closest,edge)=>Math.abs(edge-column)<Math.abs(closest-column)?edge:closest,Infinity);
+    if(!Number.isFinite(at))return null;
+    const shift=start=>start>=at?start+span:start;
+    return {insertion:true,cell:[at,0],small,span,splits:splits.map(shift),
+      positions:Object.fromEntries(Object.entries(positions).map(([id,[start,row]])=>[id,[shift(start),row]]))};
+  }
   function gridDrop(d){
     const widget=dragApp(d.payload);
     const sizes=widgetSizes(widget);
     const currentSmall=d.payload.kind==='widget-move'&&isSmall(widget);
     if(!hasGrid()&&!currentSmall&&sizes.includes('large'))return null;
     const canvas=$('core-canvas'),rect=canvas.getBoundingClientRect(),scale=rect.width/1424;
-    const col=Math.max(0,Math.min(511,Math.floor(((d.x-rect.left)/scale+canvas.scrollLeft-gridMargin+10)/cellPitch)));
+    const column=((d.x-rect.left)/scale+canvas.scrollLeft-gridMargin+10)/cellPitch;
+    const col=Math.max(0,Math.min(511,Math.floor(column)));
     const small=currentSmall||!sizes.includes('large')||(sizes.includes('small')&&splitOverlaps(col,1));
     const row=small&&(d.y-rect.top)/scale>=140?1:0, cell=[col,row];
-    return {cell,positions:proposePosition(widget,small,cell),small,span:footprintWidth(widget,small),rect,scale};
+    const positions=proposePosition(widget,small,cell);
+    const insertion=!positions&&d.payload.kind==='widget-new'&&gridInsertion(widget,!sizes.includes('large'),column);
+    return {...(insertion||{cell,positions,small,span:footprintWidth(widget,small)}),rect,scale};
   }
   function paintWidgetDrag(){
     const d=widgetPointer;if(!d?.active)return;
@@ -235,9 +255,9 @@
       at=widgetDropIndex(d.x,d.y);
       const grid=gridDrop(d);
       $('core-canvas').classList.toggle('grid-drag',!!grid);
-      d.marker.classList.toggle('grid-marker',!!grid);
+      d.marker.classList.toggle('grid-marker',!!grid&&!grid.insertion);
       d.marker.classList.toggle('invalid-grid-marker',!!grid&&!grid.positions);
-      if(grid){
+      if(grid&&!grid.insertion){
         const {cell:[col,row],rect,scale,span,small}=grid,canvas=$('core-canvas');
         const x=rect.left+(gridMargin+col*cellPitch-canvas.scrollLeft)*scale;
         const left=Math.max(screen.left,x),right=Math.min(screen.right,x+(span*cellPitch-20)*scale);
@@ -248,7 +268,8 @@
       }
       d.marker.style.width='';
       const cards=[...$('core-canvas').querySelectorAll('.canvas-widget')];
-      const x=cards[at]?.getBoundingClientRect().left??cards.at(-1)?.getBoundingClientRect().right??screen.left+12;
+      const x=grid?.insertion?grid.rect.left+(gridMargin+grid.cell[0]*cellPitch-$('core-canvas').scrollLeft-10)*grid.scale:
+        cards[at]?.getBoundingClientRect().left??cards.at(-1)?.getBoundingClientRect().right??screen.left+12;
       d.marker.hidden=false;d.marker.style.left=Math.max(screen.left+2,Math.min(screen.right-4,x))+'px';d.marker.style.top=(screen.top+8)+'px';d.marker.style.height=Math.max(10,screen.height-16)+'px';
     }else{d.marker.hidden=true;$('core-canvas').classList.remove('grid-drag');}
     d.frame=requestAnimationFrame(paintWidgetDrag);
@@ -363,7 +384,7 @@
       const previous=hasGrid()?positionsForCurrent():null;
       current().homeData.splice(at,0,widget);
       const small=target?.small||!sizes.includes('large'),selected=small?[...layout.small,widget.id]:layout.small;
-      storeLayout(current(),selected,layout.positions);
+      storeLayout(current(),selected,layout.positions,target?.splits??layout.splits);
       if(target)applyPositions(widget,target.cell,target.positions);
       else if(previous)applyPositions(widget,[nextFreeColumn(previous),0],previous);
       else widgetIndex=at;});
@@ -614,10 +635,16 @@
       });
       $('core-canvas').querySelector(`[data-slot-column="${column}"] button`)?.focus({preventScroll:true});
     };
-    const large=button('One large slot',()=>update(false));
-    const grid=button('2×2 grid',()=>update(true));
-    large.setAttribute('aria-pressed',String(!split));grid.setAttribute('aria-pressed',String(split));
-    options.append(large,grid);
+    for(const [divided,label] of [[false,'One large slot'],[true,'2×2 grid']]){
+      const option=button('',()=>update(divided),'core-slot-option');
+      option.setAttribute('aria-pressed',String(divided===split));
+      option.autofocus=divided===split;
+      const screen=el('span','core-slot-preview');screen.setAttribute('aria-hidden','true');
+      const layout=el('span','core-slot-preview-layout'+(divided?' is-split':''));
+      for(let i=0;i<(divided?4:1);i++)layout.append(el('span','core-slot-preview-widget'));
+      screen.append(el('span','core-slot-preview-neighbor'),layout);
+      option.append(screen,el('span','core-slot-option-label',label));options.append(option);
+    }
     dialog.append(title,options,button('Cancel',()=>dialog.close(),'core-slot-cancel'));
     dialog.addEventListener('close',()=>dialog.remove(),{once:true});
     document.body.append(dialog);dialog.showModal();
@@ -928,7 +955,7 @@
     if(!actions.length)box.append(el('p','canvas-empty','No actions assigned yet. Choose what happens in step 2, then fill in step 3.'));
   }
   dropzone($('action-sequence'),data=>{if(data.kind==='action-new')addAction(data.action);if(data.kind==='action-move')moveAction(data.index,inputScene().actions.length);});
-  async function save(){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles:draft.profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{},compact_profiles:draft.compact_profiles||{}})})).json();draft=response.draft;dirty=false;updateControls();}
+  async function save(profiles=draft.profiles){const response=await (await api('/api/editor/draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,profiles,background_apps:draft.background_apps||[],app_settings:draft.app_settings||{},vivo_screens:draft.vivo_screens||{},compact_profiles:draft.compact_profiles||{}})})).json();draft=response.draft;dirty=false;updateControls();}
   async function operation(fn){if(working||!draft)return;working=true;busy=true;controls();updateControls();try{await fn();}catch(error){message(error.message,true);}finally{working=false;busy=false;controls();updateControls();}}
   function readPc(){
     if(!pcRequest)pcRequest=api('/api/pc').then(response=>response.json()).finally(()=>{pcRequest=null;});
@@ -965,7 +992,40 @@
   $('nav-editor').onclick=openEditor;$('nav-overview').onclick=overview;
   for(const m of ['layout','actions','pc'])$('mode-'+m).onclick=()=>showMode(m);
   $('library-search').oninput=renderLibrary;
-  $('edit-profile').onchange=()=>{if(actionSaving)return;profileIndex=Number($('edit-profile').value);widgetIndex=0;moduleSerial='';inputKey='';pcWidgetForms.clear();resetActionComposer();renderEditor();};
+  function selectEditorProfile(index){
+    profileIndex=index;widgetIndex=0;backgroundIndex=-1;moduleSerial='';inputKey='';
+    pcWidgetForms.clear();resetActionComposer();renderEditor();
+  }
+  $('edit-profile').onchange=()=>{
+    if(working||actionSaving)return;
+    if($('edit-profile').value!=='new'){selectEditorProfile(Number($('edit-profile').value));return;}
+    $('edit-profile').value=profileIndex;
+    $('new-profile-form').reset();$('new-profile-error').textContent='';
+    $('new-profile-name').setCustomValidity('');
+    $('new-profile-dialog').showModal();
+  };
+  $('new-profile-name').oninput=()=>{$('new-profile-name').setCustomValidity('');$('new-profile-error').textContent='';};
+  $('new-profile-cancel').onclick=()=>$('new-profile-dialog').close();
+  $('new-profile-dialog').addEventListener('cancel',event=>{if(working)event.preventDefault();});
+  $('new-profile-form').onsubmit=async event=>{
+    event.preventDefault();
+    const input=$('new-profile-name'),name=input.value.trim();
+    if(!name){input.setCustomValidity('Enter a profile name.');input.reportValidity();return;}
+    await operation(async()=>{
+      const profile={id:'studio_profile_'+crypto.randomUUID().replaceAll('-',''),name,
+        default:false,showName:true,iconScale:100,homeData:[],module:[]};
+      const controls=[input,$('new-profile-cancel'),$('new-profile-save')];
+      controls.forEach(control=>control.disabled=true);
+      try{await save([...draft.profiles,profile]);}
+      catch(error){$('new-profile-error').textContent=error.message;return;}
+      finally{controls.forEach(control=>control.disabled=false);}
+      for(const previous of history)previous.profiles.push(clone(profile));
+      $('new-profile-dialog').close();
+      selectEditorProfile(draft.profiles.length-1);
+      message('Profile saved in your Studio draft. Use Deploy to add it to Core.');
+    });
+    if(!$('new-profile-dialog').open)$('edit-profile').focus();
+  };
   $('edit-profile-name').onchange=()=>change(()=>current().name=$('edit-profile-name').value);
   $('edit-show-names').onchange=()=>change(()=>current().showName=$('edit-show-names').checked);
   $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;pcWidgetForms.clear();resetActionComposer();renderEditor();};

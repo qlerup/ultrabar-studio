@@ -89,9 +89,20 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .core-slot-split .core-slot-trigger{inset:50% auto auto 50%;width:72px;height:56px;transform:translate(-50%,-50%);border:1px solid #8c82ad;border-radius:12px;font-size:34px}
 .core-slot-split:hover .core-slot-trigger,.core-slot-split:focus-within .core-slot-trigger{opacity:1}
 .core-canvas.grid-drag .core-slot-trigger{pointer-events:none;opacity:0}
-.core-slot-dialog{width:min(380px,calc(100vw - 32px));border:1px solid #4a445e;border-radius:10px;background:#1c1d2a;color:var(--text);padding:24px}
+.core-slot-dialog{width:min(620px,calc(100vw - 32px));border:1px solid #4a445e;border-radius:10px;background:#1c1d2a;color:var(--text);padding:clamp(14px,3vw,24px)}
 .core-slot-dialog h3{margin:0 0 16px;font-size:18px}
-.core-slot-options{display:flex;flex-wrap:wrap;gap:8px}
+.core-slot-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.core-slot-option{display:grid;gap:10px;padding:clamp(6px,1.25vw,12px);text-align:left}
 .core-slot-options [aria-pressed=true]{border-color:#a39acb;background:#302a43}
+.core-slot-preview{display:flex;align-items:stretch;gap:7%;aspect-ratio:2.3;overflow:hidden;padding:7% 8% 7% 0;background:#0b0e11;border:1px solid #44495a;border-radius:5px}
+.core-slot-preview-neighbor{flex:0 0 40%;margin-left:-19%;border:1px solid #354451;border-radius:7px;background:#1b2831;position:relative}
+.core-slot-preview-neighbor::after{content:'';position:absolute;right:18%;top:40%;width:46%;height:9%;background:#627989;border-radius:2px;box-shadow:0 9px #364958}
+.core-slot-preview-layout{flex:1;min-width:0;display:grid;gap:7%}
+.core-slot-preview-layout.is-split{grid-template:repeat(2,minmax(0,1fr))/repeat(2,minmax(0,1fr))}
+.core-slot-preview-widget{display:block;border:1px solid #a39acb;border-radius:6px;background:#2b2b43}
+.core-slot-option-label{font-size:13px;font-weight:600}
+#new-profile-dialog{width:min(440px,calc(100vw - 32px))}
+#new-profile-dialog .editor-buttons{justify-content:flex-end;margin-top:18px}
+#new-profile-error:not(:empty){margin-top:12px;color:#ffc5ce}
 .core-slot-cancel{margin-top:16px}
 @media(hover:none){.core-slot-trigger{opacity:.75}}

@@ -97,6 +97,28 @@ class ActionWizardTests(unittest.TestCase):
             expect(selected).to_have_count(1)
             expect(detail).to_contain_text('Connected via ADB')
 
+    def test_profile_menu_creates_and_saves_a_profile(self):
+        with sync_playwright() as pw, self.workspace(pw) as (page, host, *_):
+            select = page.get_by_label('Profile', exact=True)
+            select.press('Space')
+            expect(select).to_have_css('appearance', 'base-select')
+            self.assertTrue(select.evaluate("node => node.matches(':open')"))
+            page.get_by_role('option', name='+ New profile…').click()
+            dialog = page.get_by_role('dialog', name='New profile')
+            expect(dialog).to_be_visible()
+            expect(dialog.get_by_label('Profile name')).to_be_focused()
+            dialog.get_by_label('Profile name').fill('Work setup')
+            dialog.get_by_role('button', name='Save profile').click()
+            expect(dialog).not_to_be_visible()
+            expect(select).to_have_value('2')
+            expect(page.locator('#edit-profile-name')).to_have_value('Work setup')
+            saved = page.request.get('http://'+host+'/api/editor',
+                                     headers={'X-Studio-Token': server.SESSION_TOKEN}).json()['draft']
+            self.assertEqual(len(saved['base_profiles']), 2)
+            self.assertEqual([p['name'] for p in saved['profiles']], ['Home', 'Second', 'Work setup'])
+            self.assertEqual(saved['profiles'][2]['homeData'], [])
+            self.assertTrue(saved['profiles'][0]['default'])
+
     def test_website_program_core_app_edit_and_saved_action(self):
         with sync_playwright() as pw, self.workspace(pw) as (page,host,root,program,picker,legacy):
             first=page.locator('#action-devices [data-layout-key="0000000000000001"]')

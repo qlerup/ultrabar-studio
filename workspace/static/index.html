@@ -32,7 +32,7 @@
       <section id="editor-content" hidden>
         <div class="editor-heading"><div><div class="eyebrow">DESIGN &amp; ACTIONS</div><h2>Make Core your own.</h2><p id="draft-status" role="status" class="muted">Loading draft…</p></div><div class="editor-buttons"><button id="draft-save">Save draft</button><button id="draft-deploy" class="primary">Deploy to Core →</button></div></div>
         <div id="editor-notice" role="status" aria-live="polite"></div>
-        <div class="editor-profile"><label>Profile <select id="edit-profile"></select></label><label>Profile name <input id="edit-profile-name" maxlength="100"></label><label class="check-label"><input id="edit-show-names" type="checkbox"> Show names</label></div>
+        <div class="editor-profile"><label><span id="edit-profile-label">Profile</span><select id="edit-profile" aria-labelledby="edit-profile-label"></select></label><label>Profile name <input id="edit-profile-name" maxlength="100"></label><label class="check-label"><input id="edit-show-names" type="checkbox"> Show names</label></div>
         <div class="editor-mode-tabs"><button id="mode-layout" aria-pressed="true">Core layout</button><button id="mode-actions" aria-pressed="false">Module actions</button><button id="mode-pc" aria-pressed="false">PC connection</button></div>
         <div id="layout-editor" class="builder-grid">
           <aside class="builder-library"><div class="section-heading"><h3>Widget library</h3></div><input id="library-search" type="search" placeholder="Search widgets and apps" aria-label="Search widget library"><p class="muted">Drag widgets onto the Core bar. Drag apps onto the bar or into Background apps.</p><div id="widget-library"></div></aside>
@@ -128,6 +128,15 @@
     <div class="guide-footer"><span class="muted">Ready? Search for your CoreBAR.</span><button id="guide-find-devices" type="button" class="primary">Find devices →</button></div>
   </dialog>
 
+  <dialog id="new-profile-dialog" class="core-slot-dialog" aria-labelledby="new-profile-title">
+    <h3 id="new-profile-title">New profile</h3>
+    <form id="new-profile-form">
+      <label class="property-field">Profile name<input id="new-profile-name" required maxlength="100" autofocus></label>
+      <p class="muted">Save the profile in Studio, then deploy it to CoreBAR when your layout is ready.</p>
+      <p id="new-profile-error" role="alert"></p>
+      <div class="editor-buttons"><button id="new-profile-cancel" type="button">Cancel</button><button id="new-profile-save" type="submit" class="primary">Save profile</button></div>
+    </form>
+  </dialog>
   <dialog id="deploy-dialog" aria-labelledby="deploy-title"><h2 id="deploy-title">Deploy settings to Core?</h2><div id="deploy-summary"></div><p class="muted">Studio checks for newer settings, backs up the current profile package and verifies the saved result. Core's LineOS home app briefly restarts to display the updated layout.</p><div class="editor-buttons"><button id="deploy-cancel">Cancel</button><button id="deploy-confirm" class="primary">Deploy settings</button></div></dialog>
   <dialog id="deploy-progress" data-state="running" aria-labelledby="deploy-progress-title" aria-describedby="deploy-progress-message" aria-busy="true">
     <div class="deploy-heading"><span class="deploy-state-icon" aria-hidden="true"></span><div><div class="eyebrow">COREBAR / DEPLOYMENT</div><h2 id="deploy-progress-title">Deploying to Core</h2></div></div>

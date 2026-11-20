@@ -211,6 +211,18 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .library-icon img{display:block;width:32px;height:32px;object-fit:contain}
 
 .core-canvas .canvas-widget.pc-shortcut-preview{align-items:stretch;text-align:left;justify-content:flex-start;background:#232334;padding:18px;gap:8px}
+
+#edit-profile{color-scheme:dark}
+@supports (appearance:base-select){
+  #edit-profile,#edit-profile::picker(select){appearance:base-select}
+  #edit-profile::picker(select){background:#191b23;color:var(--text);border:1px solid #4a445e;border-radius:4px;margin-block:5px;padding:4px;box-shadow:0 12px 30px #0009}
+  #edit-profile::picker-icon{color:var(--mint)}
+  #edit-profile option{padding:9px 12px;border-radius:2px;overflow-wrap:anywhere}
+  #edit-profile option::checkmark{color:var(--mint)}
+  #edit-profile option:checked{background:var(--accent-soft)}
+  #edit-profile option:hover:not(:disabled),#edit-profile option:focus-visible{background:#34364a}
+  #edit-profile option[value="new"]{border-top:1px solid var(--line);color:var(--mint);margin-top:4px}
+}
 .pc-shortcut-kind{font-size:10px;color:#c5bfff;letter-spacing:1.4px}.pc-shortcut-image{display:grid;place-items:center;min-height:0;height:132px;overflow:hidden;border-radius:12px;background:#191928;color:#c7c0ff;font-size:50px}
 .pc-shortcut-image img{display:block;max-width:100%;height:100%;object-fit:contain;transform:scale(var(--shortcut-scale,1))}.pc-shortcut-image.custom-picture img{width:100%;object-fit:cover}
 .pc-shortcut-detail{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.75}

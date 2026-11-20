@@ -35,6 +35,35 @@ class EditorTests(unittest.TestCase):
     def save(self,rows):
         return self.post('/api/editor/draft',dict(device_id='core1',revision=self.draft['revision'],profiles=rows))
 
+    def test_create_profile_save_deploy_and_restore(self):
+        original = profiles()
+        created = dict(id='studio_profile_'+'a'*32, name='Work', default=False,
+                       showName=True, iconScale=100, homeData=[], module=[])
+        rows = [*original, created]
+        self.assertEqual(self.save([created, *original]).status_code, 400)
+        self.assertEqual(self.save([*original, dict(created, id='p1')]).status_code, 400)
+        self.assertEqual(self.save([*original, dict(created, id='foreign')]).status_code, 400)
+        with patch.object(server, 'adb') as adb:
+            result = self.save(rows)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(self.client.get('/api/editor', headers=self.headers).json['draft']['profiles'], rows)
+            adb.assert_not_called()
+        self.draft = result.json['draft']
+        with patch.object(server, 'read_snapshot', return_value=self.snapshot), \
+                patch.object(editor.bridge, 'request') as bridge, patch.object(server, 'adb', return_value=b'x'), \
+                patch.object(server, 'parse_profiles', return_value={'profiles': rows}):
+            result = self.post('/api/editor/deploy')
+            self.assertEqual(result.status_code, 200, result.json)
+            self.assertEqual(bridge.call_args.args[4], editor.to_wire(rows))
+        self.draft = result.json['draft']
+        self.assertEqual(self.save(original).status_code, 400)
+        with patch.object(server, 'read_snapshot', return_value=result.json['snapshot']):
+            restored = self.post('/api/editor/restore-draft')
+        self.assertEqual(restored.status_code, 200, restored.json)
+        self.assertEqual(restored.json['draft']['profiles'], original)
+        self.draft = restored.json['draft']
+        self.assertEqual(self.save(original).status_code, 200)
+
     def test_rejected_overlay_cannot_be_saved_or_redeployed(self):
         rows=profiles()
         rows[0]['homeData'].append(dict(id='legacy_gpu', type='PC_CONTROL',
