@@ -61,6 +61,42 @@ class ActionWizardTests(unittest.TestCase):
             finally:
                 browser.close();http.shutdown()
 
+    def test_overview_selection_follows_the_device_across_status_updates(self):
+        with sync_playwright() as pw, self.workspace(pw) as (page, *_):
+            page.locator('#nav-overview').click()
+            strip = page.locator('#hardware-preview')
+            core = strip.locator('[data-layout-key="core"]')
+            first = strip.locator('[data-layout-key="0000000000000001"]')
+            second = strip.locator('[data-layout-key="0000000000000002"]')
+            detail = page.locator('#hardware-detail')
+            selected = strip.locator('[aria-pressed="true"]')
+            expect(core).to_have_attribute('aria-pressed', 'true')
+            first.click()
+            expect(first).to_have_attribute('aria-pressed', 'true')
+            expect(selected).to_have_count(1)
+            expect(first).to_have_css('border-top-color', 'rgb(185, 178, 255)')
+            expect(core).to_have_css('border-top-color', 'rgba(0, 0, 0, 0)')
+            expect(detail).to_contain_text('0000000000000001')
+
+            second.press('Enter')
+            expect(second).to_have_attribute('aria-pressed', 'true')
+            expect(first).to_have_attribute('aria-pressed', 'false')
+            hardware = page.evaluate('structuredClone(snapshot.hardware)')
+            target = page.evaluate('snapshot.target')
+            next(d for d in hardware['devices'] if d['serial'] == '0000000000000002')['online'] = False
+            page.route('**/api/hardware', lambda r: r.fulfill(json=dict(target=target, hardware=hardware)))
+            page.evaluate('pollHardware()')
+            expect(second).to_have_attribute('aria-pressed', 'true')
+            expect(detail).to_contain_text('0000000000000002')
+            expect(detail).to_contain_text('CoreBAR reports offline')
+
+            expect(page.locator('#preview-refresh')).to_be_enabled()
+            with page.expect_request('**/api/screen'):
+                core.click()
+            expect(core).to_have_attribute('aria-pressed', 'true')
+            expect(selected).to_have_count(1)
+            expect(detail).to_contain_text('Connected via ADB')
+
     def test_website_program_core_app_edit_and_saved_action(self):
         with sync_playwright() as pw, self.workspace(pw) as (page,host,root,program,picker,legacy):
             first=page.locator('#action-devices [data-layout-key="0000000000000001"]')

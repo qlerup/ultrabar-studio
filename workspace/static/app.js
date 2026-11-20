@@ -6,6 +6,7 @@ let hardwarePolling = false, connectionGeneration = 0;
 let screenPolling = false, screenCapturedAt = null, coreScreenOff = false;
 let cubeImages = {}, cubeLoading = false, screenRefreshPending = false, cubeRefreshPending = false;
 let layoutDrag = null, layoutSaving = false, suppressHardwareClickUntil = 0;
+let selectedHardwareKey = 'core';
 const names = {DOT_KEY:'DotKey',VIVO_CUBE:'VivoCube',KNOB_KEY:'KnobKey',SENSE_CUBE:'SenseCube',MEMORY:'Memory',STORAGE:'Storage',TIME:'Clock',APPS:'App',PC_CONTROL:'PC action'};
 const symbols = {DOT_KEY:'⠿',VIVO_CUBE:'▣',KNOB_KEY:'◉',SENSE_CUBE:'◇',MEMORY:'▥',STORAGE:'▤',TIME:'◷',APPS:'▦',PC_CONTROL:'↗'};
 function el(tag, className, text) { const node=document.createElement(tag); if(className) node.className=className; if(text!==undefined) node.textContent=text; return node; }
@@ -57,6 +58,15 @@ function createHardwareUnit(device=null){
     unit.append(face,el('span','unit-name',names[device.type]||device.name),el('span','unit-state',device.online===true?'Online':device.online===false?'Offline':'Unknown'));
   return unit;
 }
+function showHardwareSelection(device=null) {
+  selectedHardwareKey=device?.serial??'core';
+  for(const card of $('hardware-preview').children){
+    card.setAttribute('aria-pressed',String(card.dataset.layoutKey===selectedHardwareKey));
+  }
+  $('hardware-detail').textContent=device
+    ? `${names[device.type]||device.name} · ${device.serial} · ${device.online===true?'CoreBAR reports online':device.online===false?'CoreBAR reports offline':'Status unknown'}`
+    : `CoreBAR · ${snapshot.hardware?.status_error?'Connection unverified':'Connected via ADB'}`;
+}
 function renderHardware() {
   if(layoutDrag)return;
   const hardware=snapshot.hardware||{},devices=hardware.devices||[];
@@ -68,13 +78,12 @@ function renderHardware() {
   strip.replaceChildren();
   const core=createHardwareUnit();strip.append(core);
   core.title='Refresh CoreBAR screen preview';
-  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;captureScreen(true);};
+  core.onclick=()=>{if(Date.now()<suppressHardwareClickUntil)return;showHardwareSelection();captureScreen(true);};
   for(const device of devices){
     const unit=createHardwareUnit(device);
     unit.onclick=()=>{
       if(Date.now()<suppressHardwareClickUntil)return;
-      $('hardware-detail').dataset.serial=device.serial;
-      $('hardware-detail').textContent=`${names[device.type]||device.name} · ${device.serial} · ${device.online===true?'CoreBAR reports online':device.online===false?'CoreBAR reports offline':'Status unknown'}`;
+      showHardwareSelection(device);
     };
     strip.append(unit);
   }
@@ -83,12 +92,10 @@ function renderHardware() {
   const known=new Set(snapshot.layout_order||[]);
   if(known.size)for(const card of [...strip.children])if(!known.has(card.dataset.layoutKey))strip.append(card);
   for(const card of strip.children){card.setAttribute('aria-keyshortcuts','Alt+ArrowLeft Alt+ArrowRight');card.setAttribute('aria-describedby','layout-help');}
+  showHardwareSelection(devices.find(device=>device.serial===selectedHardwareKey));
   renderCoreScreen();
   centerHardware();
   if(focusedKey)[...strip.children].find(node=>node.dataset.layoutKey===focusedKey)?.focus({preventScroll:true});
-  const selected=devices.find(device=>device.serial===$('hardware-detail').dataset.serial);
-  if(selected)$('hardware-detail').textContent=`${names[selected.type]||selected.name} · ${selected.serial} · ${selected.online===true?'CoreBAR reports online':selected.online===false?'CoreBAR reports offline':'Status unknown'}`;
-  else if($('hardware-detail').dataset.serial){delete $('hardware-detail').dataset.serial;$('hardware-detail').textContent='Select a module to see its connection status.';}
   window.dispatchEvent(new Event('studio-hardware-changed'));
 }
 // Balance the space around CoreBAR without changing the saved device order.

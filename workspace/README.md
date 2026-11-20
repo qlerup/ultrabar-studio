@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.6 Windows
+# UltraBar Studio — 0.52.7 Windows
+
+## 0.52.7 update
+
+Device overview now highlights the selected module and keeps the highlight in
+sync with its connection details when device status updates.
 
 ## 0.52.6 update
 
