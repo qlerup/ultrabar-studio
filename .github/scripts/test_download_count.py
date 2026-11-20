@@ -1,11 +1,20 @@
 import unittest
-from update_download_count import installer_downloads,badge
+
+from update_download_count import badge, installer_downloads
 
 
 class CounterTests(unittest.TestCase):
-    def test_installers_only_across_releases(self):
-        releases=[dict(assets=[dict(name='UltraBarStudio-Setup-0.33.0.exe',download_count=10),dict(name='SHA256SUMS-0.33.0.txt',download_count=99),dict(name='source.zip',download_count=50)]),dict(assets=[dict(name='UltraBarStudio-Setup-0.34.0.exe',download_count=7)]),dict(draft=True,assets=[dict(name='UltraBarStudio-Setup-0.35.0.exe',download_count=100)])]
-        self.assertEqual(installer_downloads(releases),17)
-        self.assertIn('Downloads: 17',badge(17))
+    def test_only_installer_downloads_count(self):
+        release = {"assets": [
+            {"name": "UltraBarStudio-Setup-0.34.0.exe", "download_count": 7},
+            {"name": "SHA256SUMS.txt", "download_count": 99},
+            {"name": "studio-update.json", "download_count": 50},
+        ]}
+        self.assertEqual(installer_downloads(release), 7)
+        self.assertIn("Downloads: 7", badge(7))
+
     def test_invalid_count_does_not_publish_a_false_value(self):
-        with self.assertRaises(ValueError):installer_downloads([dict(assets=[dict(name='UltraBarStudio-Setup-1.0.0.exe',download_count=-1)])])
+        with self.assertRaises(ValueError):
+            installer_downloads({"assets": [
+                {"name": "UltraBarStudio-Setup-1.0.0.exe", "download_count": -1}
+            ]})

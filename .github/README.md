@@ -1,6 +1,6 @@
 # UltraBar Studio
 
-[![Downloads](https://raw.githubusercontent.com/qlerup/ultrabar-studio/stats/downloads.svg?v=2)](https://github.com/qlerup/ultrabar-studio/releases)
+[![Latest Windows installer downloads](https://raw.githubusercontent.com/qlerup/ultrabar-studio/stats/downloads.svg?v=3)](https://github.com/qlerup/ultrabar-studio/releases)
 
 <img width="2541" height="861" alt="image" src="https://github.com/user-attachments/assets/2ab39753-689d-447c-9a8f-55cf33a46535" />
 

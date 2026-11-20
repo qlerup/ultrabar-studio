@@ -1,39 +1,37 @@
-"""Count published Studio installers, not checksums, source archives or users."""
+"""Count Windows installer downloads for the release GitHub marks as latest."""
 from datetime import datetime,timezone
 import json,os,re,subprocess
 
 
-def installer_downloads(releases):
-    total=0
-    for release in releases:
-        if release.get('draft'):continue
-        for asset in release.get('assets',[]):
-            if not re.fullmatch(r'UltraBarStudio-Setup-\d+\.\d+\.\d+\.exe',asset.get('name','')):continue
-            value=asset['download_count']
-            if type(value) is not int or value<0:raise ValueError('Invalid download count')
-            total+=value
+def installer_downloads(release):
+    total = 0
+    for asset in release["assets"]:
+        if re.fullmatch(r"UltraBarStudio-Setup-\d+\.\d+\.\d+\.exe", asset["name"]):
+            count = asset["download_count"]
+            if type(count) is not int or count < 0:
+                raise ValueError("Invalid installer download count")
+            total += count
     return total
 
 
 def badge(total):
     right=max(44,len(str(total))*7+18);width=78+right;center=78+right/2
-    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="Downloads: {total}"><title>Studio downloads: {total}</title><rect width="78" height="20" fill="#292c38"/><rect x="78" width="{right}" height="20" fill="#b8adff"/><g font-family="Verdana,Arial,sans-serif" font-size="11" text-anchor="middle"><text x="39" y="14" fill="#fff">Downloads</text><text x="{center}" y="14" fill="#171923">{total}</text></g></svg>'''
+    return f'''<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="20" role="img" aria-label="Downloads: {total}"><title>Latest Studio installer downloads: {total}</title><rect width="78" height="20" fill="#292c38"/><rect x="78" width="{right}" height="20" fill="#b8adff"/><g font-family="Verdana,Arial,sans-serif" font-size="11" text-anchor="middle"><text x="39" y="14" fill="#fff">Downloads</text><text x="{center}" y="14" fill="#171923">{total}</text></g></svg>'''
 
 
 def main():
     repo=os.environ['GITHUB_REPOSITORY']
-    def api(path,method='GET',body=None,optional=False,pages=False):
+    def api(path,method='GET',body=None,optional=False):
         args=['gh','api','repos/'+repo+path,'--method',method]
         if body is not None:args+=['--input','-']
-        if pages:args+=['--paginate','--slurp']
         result=subprocess.run(args,input=json.dumps(body).encode() if body is not None else None,capture_output=True)
         if result.returncode:
             if optional and b'HTTP 404' in result.stderr:return None
             raise RuntimeError('Could not update Studio download badge: '+result.stderr.decode(errors='replace'))
         return json.loads(result.stdout)
-    releases=[r for page in api('/releases?per_page=100',pages=True) for r in page]
-    total=installer_downloads(releases)
-    metadata=dict(installerDownloads=total,updatedAt=datetime.now(timezone.utc).isoformat(),scope='Published UltraBarStudio-Setup-*.exe assets across releases; not unique users or installations.')
+    release = api('/releases/latest')
+    total = installer_downloads(release)
+    metadata=dict(installerDownloads=total,updatedAt=datetime.now(timezone.utc).isoformat(),releaseTag=release['tag_name'],scope='Windows installer downloads for the latest Studio release.')
     ref=api('/git/ref/heads/stats',optional=True)
     tree=api('/git/trees','POST',dict(tree=[dict(path='downloads.svg',mode='100644',type='blob',content=badge(total)),dict(path='downloads.json',mode='100644',type='blob',content=json.dumps(metadata,indent=2)+'\n')]))
     commit=api('/git/commits','POST',dict(message='Refresh Studio downloads: '+str(total),tree=tree['sha'],parents=[ref['object']['sha']] if ref else []))
