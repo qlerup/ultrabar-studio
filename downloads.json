@@ -1,5 +1,6 @@
 {
-  "installerDownloads": 119,
-  "updatedAt": "2026-11-20T18:24:40.392225+00:00",
-  "scope": "Published UltraBarStudio-Setup-*.exe assets across releases; not unique users or installations."
+  "installerDownloads": 1,
+  "updatedAt": "2026-11-20T22:09:52.202030+00:00",
+  "releaseTag": "v0.52.11",
+  "scope": "Windows installer downloads for the latest Studio release."
 }
