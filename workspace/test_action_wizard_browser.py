@@ -100,9 +100,10 @@ class ActionWizardTests(unittest.TestCase):
     def test_profile_menu_creates_and_saves_a_profile(self):
         with sync_playwright() as pw, self.workspace(pw) as (page, host, *_):
             select = page.get_by_label('Profile', exact=True)
-            select.press('Space')
+            expect(select).to_be_enabled()
             expect(select).to_have_css('appearance', 'base-select')
-            self.assertTrue(select.evaluate("node => node.matches(':open')"))
+            select.press('Space')
+            expect(page.locator('#edit-profile:open')).to_have_count(1)
             page.get_by_role('option', name='+ New profile…').click()
             dialog = page.get_by_role('dialog', name='New profile')
             expect(dialog).to_be_visible()
