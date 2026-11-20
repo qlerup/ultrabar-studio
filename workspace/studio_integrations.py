@@ -1,11 +1,12 @@
 """Package-scoped operations for trusted Studio connection providers."""
+import re
 from flask import jsonify, request
 import bambu
 import studio_contract
 from editor import EditError
 
 
-OPERATIONS = {'list', 'discover', 'probe', 'save', 'remove', 'reconnect'}
+OPERATIONS = {'list', 'discover', 'probe', 'save', 'remove', 'reconnect', 'preview'}
 
 
 class BambuLan:
@@ -33,6 +34,12 @@ class BambuLan:
         if operation == 'save':
             key = self.manager.save(body)
             return dict(id=key, items=self.manager.listing())
+        if operation == 'preview':
+            ids = body.get('ids')
+            if set(body) != {'ids'} or not isinstance(ids, list) or len(ids) > 16 or any(
+                    not isinstance(key, str) or not re.fullmatch('[a-f0-9]{32}', key) for key in ids):
+                raise EditError('Choose saved printers to preview.')
+            return dict(printers=self.manager.preview(dict.fromkeys(ids)))
         if set(body) != {'id'} or not isinstance(body['id'], str):
             raise EditError('Choose a saved connection.')
         key = body['id']

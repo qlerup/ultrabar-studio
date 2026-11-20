@@ -49,7 +49,7 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .bambu-preview{--bambu-art-size:min(86px,34%)}
 .bambu-preview .native-title{position:absolute;left:32px;right:62px;top:17px;font-weight:500}
 .bambu-preview::before{content:'';position:absolute;left:19px;top:23px;width:6px;height:6px;border-radius:50%;background:var(--widget-accent)}
-.bambu-preview .bambu-sample{position:absolute;right:16px;top:17px;color:#96aab5;font-size:10px}
+.bambu-preview .bambu-live{position:absolute;right:16px;top:17px;color:var(--widget-accent);font-size:10px}
 .bambu-preview .package-artwork{right:16px;top:54px;width:var(--bambu-art-size);height:auto;aspect-ratio:1;object-fit:contain}
 .bambu-preview .native-value,.bambu-preview .native-source{position:absolute;left:20px;right:18px;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bambu-preview:has(.package-artwork) :is(.native-value,.native-source){right:calc(24px + var(--bambu-art-size));max-width:none}
@@ -75,6 +75,15 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .studio-connection-discovery{display:grid;justify-items:start;gap:8px;margin:10px 0 16px}
 .studio-connection-discovery>button{border-color:#635b89;background:var(--accent-soft)}
 .studio-connection-discovery>button:hover:not(:disabled){border-color:var(--mint)}
+.studio-discovery-dialog{width:min(480px,calc(100vw - 32px))}
+.studio-discovery-dialog h3{margin:0 0 12px}
+.studio-discovery-dialog .studio-search-results{display:grid;margin-block:12px;gap:8px}
+.studio-discovery-dialog .studio-search-results:empty,.studio-discovery-dialog [role=status]:empty{display:none}
+.studio-discovery-choice{display:flex;align-items:center;gap:12px;padding:10px 12px;border:1px solid #3f4253;border-radius:5px;background:#202330;cursor:pointer}
+.studio-discovery-choice:has(input:checked){border-color:var(--mint);background:var(--accent-soft)}
+.studio-discovery-details{display:grid;min-width:0;overflow-wrap:anywhere}
+.studio-discovery-details .muted{font-size:11px}
+.studio-discovery-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:16px}
 .studio-connection-form .property-field{margin:12px 0}
 .studio-connection-form input:not([type=checkbox]){width:100%;box-sizing:border-box}
 .studio-certificate{border:1px solid #86e4c3;border-radius:8px;padding:16px;margin:16px 0}

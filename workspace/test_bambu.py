@@ -127,6 +127,25 @@ class PrinterTests(unittest.TestCase):
         self.root=Path(temp.name);self.context=SimpleNamespace(DATA_DIR=self.root)
         self.manager=bambu.Printers(self.context)
         self.start=patch.object(bambu.Link,'start').start();self.addCleanup(patch.stopall)
+        self.verify=patch.object(bambu,'verify_connection').start()
+
+    def test_reject_failed_connection_before_writing_or_replacing_a_saved_printer(self):
+        original=profile();self.manager.store([original])
+        self.verify.side_effect=EditError('The printer rejected the LAN access code.')
+        with self.assertRaisesRegex(EditError, 'rejected'):
+            self.manager.save(dict(original,code='WRONG123'))
+        self.assertEqual(self.manager.read(),[original])
+        self.start.assert_not_called()
+
+    def test_preview_connects_only_selected_saved_printers(self):
+        one,two=profile('a'),profile('b')
+        self.manager.store([one,two])
+        result=self.manager.preview([two['id'],'c'*32])
+        self.assertEqual(set(result),{two['id']})
+        self.assertNotIn('code',result[two['id']])
+        self.assertNotIn('pin',result[two['id']])
+        self.manager.preview([two['id']])
+        self.start.assert_called_once()
 
     @unittest.skipUnless(os.name=='nt','Windows DPAPI')
     def test_encrypted_connections_edit_remove_and_independent_live_links(self):
@@ -226,6 +245,32 @@ class TlsTests(unittest.TestCase):
                 else:
                     with self.assertRaises(EditError):bambu.tls('192.168.1.30',pin)
             thread.join(9);self.assertFalse(thread.is_alive());self.assertFalse(errors,errors);self.assertEqual(received,[b''])
+
+    def test_verify_connection_requires_login_and_accepted_report_subscription(self):
+        data=dict(profile(),pin=self.pin)
+        for accepted,subscribed in ((True,True),(True,False),(False,False)):
+            with self.subTest(accepted=accepted,subscribed=subscribed):
+                def printer(stream):
+                    header,body=bambu.read(stream)
+                    self.assertEqual(header,0x10)
+                    self.assertIn(data['code'].encode(),body)
+                    bambu.write(stream,0x20,b'\x00\x00' if accepted else b'\x00\x04')
+                    if accepted:
+                        header,body=bambu.read(stream)
+                        self.assertEqual(header,0x82)
+                        self.assertIn(('device/'+data['serial']+'/report').encode(),body)
+                        bambu.write(stream,0x90,b'\x00\x01\x01' if subscribed else b'\x00\x01\x80')
+
+                redirect,thread,errors=self.printer(printer)
+                with redirect:
+                    if subscribed:
+                        bambu.verify_connection(data)
+                    else:
+                        expected='report subscription' if accepted else 'LAN access code'
+                        with self.assertRaisesRegex(EditError,expected):bambu.verify_connection(data)
+                thread.join(9)
+                self.assertFalse(thread.is_alive())
+                self.assertFalse(errors,errors)
 
     def test_actual_tls_mqtt_status_and_confirmed_command(self):
         ready=threading.Event();finish=threading.Event();observed=[]

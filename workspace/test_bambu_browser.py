@@ -33,8 +33,15 @@ class BambuBrowserTests(unittest.TestCase):
             search=form.get_by_role('button',name='Search local network')
             expect(form.get_by_role('button').first).to_have_text('Search local network')
             search.click()
-            form.get_by_role('button',name='Found printer · 192.168.1.31').click()
+            discovery=page.get_by_role('dialog',name='Search local network')
+            add=discovery.get_by_role('button',name='Add',exact=True)
+            expect(add).to_be_disabled()
+            discovery.get_by_role('radio',name='Found printer',exact=False).check()
+            expect(page.locator('#connection-host')).to_have_value('')
+            add.click()
             expect(page.locator('#connection-host')).to_have_value('192.168.1.31')
+            expect(page.locator('#connection-serial')).to_have_value('TESTSERIAL')
+            expect(page.locator('#connection-name')).to_have_value('Found printer')
             status=page.locator('.studio-connection-status')
             expect(status).to_contain_text('Connecting')
             expect(page.locator('.studio-connection-host')).to_have_text('192.168.1.30')
@@ -52,7 +59,7 @@ class BambuBrowserTests(unittest.TestCase):
             self.assertEqual(len(requests),count)
 
     def test_studio_printer_setup_independent_selection_and_no_draft_secrets(self):
-        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu.widget',_storeVersion='2.0.0')
+        template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu',_storeVersion='2.0.0')
         template['_studio']=legacy_descriptor(template)
         template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in ('generic','h2d','h3c')]))
         template['_studio']['presentation']=dict(api=1,source=dict(scope='connection',key='model'),presets=[
@@ -65,13 +72,23 @@ class BambuBrowserTests(unittest.TestCase):
         def thumbnail(model):
             buffer=BytesIO(); Image.new('RGB',(30,40),'red' if model=='h2d' else 'blue').save(buffer,format='PNG')
             return b64encode(buffer.getvalue()).decode('ascii')
-        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(bambu,'thumbnail',side_effect=thumbnail),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
+        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(bambu,'verify_connection'),patch.object(bambu,'thumbnail',side_effect=thumbnail),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
+            page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[
+                dict(id='dk.ultrabar.bambu',name='Bambu',type='APPS'),
+                dict(id='example.another',name='Other Core app',type='APPS'),
+            ])))
             page.route('**/api/store/installed',lambda r:r.fulfill(json=dict(installed=[],widgets=[template])))
             page.route('**/api/studio/integrations/*/*/probe',lambda r:r.fulfill(json=dict(pin='b'*64)))
+            reading=dict(fresh=True,connection='Connected',gcode_state='RUNNING',mc_percent=81,mc_remaining_time=32)
+            page.route('**/api/studio/integrations/*/*/preview',lambda r:r.fulfill(json=dict(
+                printers={key:reading for key in r.request.post_data_json['ids']}
+            )))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
             page.locator('#mode-layout').click()
             item=page.locator('#widget-library').get_by_role('button',name='Bambu',exact=True)
             expect(item).to_be_visible();item.drag_to(page.locator('#core-screen'))
+            expect(page.locator('details[data-group=installed] [aria-label="Other Core app"]')).to_have_count(1)
+            expect(page.locator('#widget-library [aria-label="Bambu"]')).to_have_count(1)
             page.get_by_role('button',name='Manage printers',exact=True).click()
             expect(page.locator('#studio-connections')).to_be_visible()
             page.locator('#connection-name').fill('H2D workshop')
@@ -79,9 +96,9 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('#connection-host').fill('192.168.1.30')
             page.locator('#connection-serial').fill('SYNTHETIC123')
             page.locator('#connection-code').fill('LAN12345')
-            page.get_by_role('button',name='Check connection',exact=True).click()
+            page.get_by_role('button',name='Add',exact=True).click()
             expect(page.locator('.studio-fingerprint')).to_have_text('b'*64)
-            page.get_by_role('button',name='Trust certificate & save',exact=True).click()
+            page.get_by_role('button',name='Trust certificate & add',exact=True).click()
             expect(page.locator('.studio-connection-row')).to_have_count(1)
             self.assertEqual(server.bambu.listing()[0]['model'],'h2d')
             page.locator('.studio-connection-row').get_by_role('button',name='Edit',exact=True).click()
@@ -93,8 +110,8 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('#connection-host').fill('192.168.1.31')
             page.locator('#connection-serial').fill('SYNTHETIC456')
             page.locator('#connection-code').fill('LAN67890')
-            page.get_by_role('button',name='Check connection',exact=True).click()
-            page.get_by_role('button',name='Trust certificate & save',exact=True).click()
+            page.get_by_role('button',name='Add',exact=True).click()
+            page.get_by_role('button',name='Trust certificate & add',exact=True).click()
             expect(page.locator('.studio-connection-row')).to_have_count(2)
             page.set_viewport_size(dict(width=390,height=1000))
             out=Path(__file__).parent/'data/qa';out.mkdir(exist_ok=True,parents=True)
@@ -111,7 +128,8 @@ class BambuBrowserTests(unittest.TestCase):
             preview=page.locator('#core-canvas .bambu-preview')
             expect(preview.locator('.native-title')).to_have_text('H2D workshop')
             expect(preview.locator('.native-source')).to_have_text('Printing')
-            expect(preview.locator('.bambu-sample')).to_have_text('Sample')
+            expect(preview.locator('.bambu-live')).to_have_text('Live')
+            expect(preview.locator('.native-value')).to_have_text('81%')
             for width in (1600,390):
                 page.set_viewport_size(dict(width=width,height=1000))
                 self.assertTrue(preview.evaluate('''card => {
@@ -122,6 +140,10 @@ class BambuBrowserTests(unittest.TestCase):
                         value.bottom < status.top && image.bottom < bar.top;
                 }'''))
             page.set_viewport_size(dict(width=1600,height=1000))
+            reading.update(fresh=False,connection='Disconnected')
+            expect(preview.locator('.native-source')).to_have_text('Disconnected',timeout=7000)
+            expect(preview.locator('.native-value')).to_have_text('—')
+            reading.update(fresh=True,connection='Connected')
             first_thumbnail=image.get_attribute('src')
             page.locator('[data-connection-key=printerId]').select_option(ids[1])
             expect(image).to_have_js_property('naturalWidth',30)

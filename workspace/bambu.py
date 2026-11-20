@@ -179,6 +179,28 @@ def read(stream):
     raise ValueError('Invalid MQTT length')
 
 
+def authenticate(stream, profile):
+    stream.settimeout(6)
+    write(stream, 0x10, utf('MQTT') + b'\x04\xc2\x00\x1e' + utf('studio-'+uuid.uuid4().hex[:12]) + utf('bblp') + utf(profile['code']))
+    if read(stream) != (0x20, b'\x00\x00'):
+        raise EditError('The printer rejected the LAN access code. Check the code and LAN mode.')
+    write(stream, 0x82, b'\x00\x01' + utf('device/'+profile['serial']+'/report') + b'\x01')
+    header, body = read(stream)
+    if header != 0x90 or body not in (b'\x00\x01\x00', b'\x00\x01\x01'):
+        raise EditError('The printer rejected the report subscription. Check its serial number and LAN mode.')
+
+
+def verify_connection(profile):
+    try:
+        stream, _ = tls(profile['host'], profile['pin'])
+        with stream:
+            authenticate(stream, profile)
+    except EditError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise EditError('Could not connect to the printer. Check its IP, LAN mode and network access.') from exc
+
+
 def command(action, sequence):
     message = dict(sequence_id=str(sequence))
     if action == 'pushall':
@@ -343,14 +365,7 @@ class Link:
             self.stream = stream
             if self.closed.is_set():
                 return
-            stream.settimeout(6)
-            write(stream, 0x10, utf('MQTT') + b'\x04\xc2\x00\x1e' + utf('studio-'+uuid.uuid4().hex[:12]) + utf('bblp') + utf(self.profile['code']))
-            if read(stream) != (0x20, b'\x00\x00'):
-                raise ValueError('Login rejected')
-            write(stream, 0x82, b'\x00\x01' + utf('device/'+self.profile['serial']+'/report') + b'\x01')
-            header, body = read(stream)
-            if header != 0x90 or body not in (b'\x00\x01\x00', b'\x00\x01\x01'):
-                raise ValueError('Subscription rejected')
+            authenticate(stream, self.profile)
             with self.lock:
                 self.connected, self.status = True, 'Connected'
             self.publish('pushall')
@@ -477,6 +492,16 @@ class Printers:
         with self.lock:
             return {key: link.snapshot() for key, link in self.links.items()}
 
+    def preview(self, ids):
+        with self.lock:
+            missing = set(ids) - self.links.keys()
+            if missing:
+                for profile in self.read():
+                    if profile['id'] in missing:
+                        link = self.links[profile['id']] = Link(profile)
+                        link.start()
+            return {key: self.links[key].snapshot() for key in ids if key in self.links}
+
     def close(self):
         with self.lock:
             for link in self.links.values():
@@ -510,8 +535,12 @@ class Printers:
             if not identifier(model):
                 raise EditError('Choose a supported printer model.')
             profile = dict(id=old['id'] if old else uuid.uuid4().hex, name=name.strip(), host=host, serial=serial, code=code, pin=pin, controls=body.get('controls', False), model=model)
-            profiles = [profile if p is old else p for p in profiles] if old else profiles + [profile]
-            self.store(profiles)
+            updated = [profile if p is old else p for p in profiles] if old else profiles + [profile]
+        verify_connection(profile)
+        with self.lock:
+            if self.read() != profiles:
+                raise EditError('The saved printer list changed. Check it and try again.')
+            self.store(updated)
             if profile['id'] in self.links:
                 self.links.pop(profile['id']).close()
             link = self.links[profile['id']] = Link(profile)

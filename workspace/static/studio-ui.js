@@ -85,7 +85,9 @@ window.studioPackageUI=(()=>{
       function edit(item){
         if(saving)return;editing=item;pending=null;message('');form.replaceChildren(node('h4','',(item?'Edit ':'Add ')+config.itemLabel));
         const inputs={};
-        for(const field of config.fields){
+        const discoveryKeys=new Set(['name','host','serial']);
+        const fields=[...config.fields.filter(field=>discoveryKeys.has(field.key)),...config.fields.filter(field=>!discoveryKeys.has(field.key))];
+        for(const field of fields){
           const wrap=node('label','property-field',field.label),input=node(field.type==='choice'?'select':'input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
           if(field.type==='choice')for(const option of field.options){const o=node('option','',option.label);o.value=option.value;input.append(o);}
           else input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
@@ -95,20 +97,42 @@ window.studioPackageUI=(()=>{
         }
         if(config.setupHelp)form.append(node('p','muted',config.setupHelp));
         const discovery=node('div','studio-connection-discovery');
-        const results=node('div','studio-search-results'),search=button('Search local network',async()=>{
-          search.disabled=true;results.replaceChildren();
+        const search=button('Search local network',async()=>{
+          const picker=node('dialog','studio-connections-dialog studio-discovery-dialog');
+          const title=node('h3','','Search local network');title.id='studio-discovery-title';
+          picker.setAttribute('aria-labelledby',title.id);
+          const state=node('p','muted','Searching local network…');state.setAttribute('role','status');
+          const results=node('div','studio-search-results');
+          let selected=null;
+          const add=button('Add',()=>{
+            for(const key of discoveryKeys)if(inputs[key]&&typeof selected[key]==='string')inputs[key].value=selected[key];
+            resetApproval();picker.close();
+          },'primary');
+          add.disabled=true;
+          const actions=node('div','studio-discovery-actions');
+          actions.append(button('Cancel',()=>picker.close()),add);
+          picker.append(title,state,results,actions);
+          picker.addEventListener('close',()=>picker.remove(),{once:true});
+          dialog.append(picker);picker.showModal();
           try{
-            const data=await call(b,'discover');if(!dialog.open)return;
-            if(!data.items?.length)results.append(node('p','muted','No devices found. Enter the address and serial manually; multicast may be blocked.'));
-            for(const found of data.items||[])results.append(button(found.name+' · '+found.host,()=>{
-              for(const field of config.fields)if(field.type==='string'&&found[field.key]!==undefined&&(field.key!=='name'||!inputs.name.value))inputs[field.key].value=found[field.key];
-              pending=null;approval.hidden=true;submit.textContent='Check connection';results.replaceChildren();
-            }));
-          }catch(e){if(dialog.open)message(e.message,true);}finally{search.disabled=false;}
+            const data=await call(b,'discover');if(!picker.open)return;
+            state.textContent=data.items?.length?'':'No devices found. You can enter the address and serial manually.';
+            for(const found of data.items||[]){
+              const choice=node('label','studio-discovery-choice'),radio=node('input');
+              radio.type='radio';radio.name='studio-discovered-device';
+              radio.onchange=()=>{selected=found;add.disabled=false;};
+              const details=node('span','studio-discovery-details');
+              details.append(node('strong','',found.name),node('span','muted',found.host+' · '+found.serial));
+              choice.append(radio,details);results.append(choice);
+            }
+          }catch(e){if(picker.open)state.textContent=e.message;}
         });
-        discovery.append(search,results);form.insertBefore(discovery,form.children[1]||null);
-        const approval=node('section','studio-certificate');approval.hidden=true;const submit=node('button','primary','Check connection');submit.type='submit';form.append(approval,submit);
-        for(const input of Object.values(inputs))input.addEventListener('input',()=>{pending=null;approval.hidden=true;submit.textContent='Check connection';});
+        search.setAttribute('aria-haspopup','dialog');
+        discovery.append(search);form.insertBefore(discovery,form.children[1]||null);
+        const submitLabel=item?'Save changes':'Add';
+        const approval=node('section','studio-certificate');approval.hidden=true;const submit=node('button','primary',submitLabel);submit.type='submit';form.append(approval,submit);
+        function resetApproval(){pending=null;approval.hidden=true;submit.textContent=submitLabel;}
+        for(const input of Object.values(inputs))input.addEventListener('input',resetApproval);
         form.onsubmit=async event=>{
           event.preventDefault();if(saving)return;saving=true;submit.disabled=true;search.disabled=true;message('');
           const candidate=Object.fromEntries(config.fields.map(field=>[field.key,field.type==='boolean'?inputs[field.key].checked:field.type==='secret'?inputs[field.key].value:inputs[field.key].value.trim()]));if(editing)candidate.id=editing.id;
@@ -116,7 +140,7 @@ window.studioPackageUI=(()=>{
           try{
             if(!pending){
               const result=await call(b,'probe',{host:candidate.host});if(!dialog.open)return;
-              pending={...candidate,pin:result.pin};approval.replaceChildren(node('strong','','Approve device certificate'),node('p','muted','No access code has been sent to the device. Compare this SHA-256 fingerprint with a trusted connection before approving.'),node('code','studio-fingerprint',result.pin));approval.hidden=false;submit.textContent='Trust certificate & save';
+              pending={...candidate,pin:result.pin};approval.replaceChildren(node('strong','','Approve device certificate'),node('p','muted','Compare this SHA-256 fingerprint with a trusted connection before sending the access code.'),node('code','studio-fingerprint',result.pin));approval.hidden=false;submit.textContent=item?'Trust certificate & save':'Trust certificate & add';
             }else{
               const result=await call(b,'save',pending);remember(b,result);if(!dialog.open)return;
               for(const field of config.fields)if(field.type==='secret')inputs[field.key].value='';pending=null;renderList();saving=false;edit(null);message('Connection saved. Choose it for a widget, then Save and Deploy.');
@@ -147,7 +171,7 @@ window.studioPackageUI=(()=>{
       }
       return {...preview,imageUrl:thumbnails.get(thumbnail)};
     }
-    return {picker,presentation,clear:()=>{
+    return {picker,presentation,preview:(binding,ids)=>call(binding,'preview',{ids}),clear:()=>{
       cache.clear();previewRequests.clear();
       for(const url of thumbnails.values())URL.revokeObjectURL(url);
       thumbnails.clear();

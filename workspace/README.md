@@ -7,8 +7,10 @@ plus sign shows where a widget will be inserted between cards.
 Slot layout previews use the same near-square card proportions as CoreBAR.
 Resize widgets by dragging them into large slots or small 2×2 cells. The
 horizontal preview scrollbar has a wider handle.
-The printer dialog puts local discovery first in the setup form and shows saved
-printers with their connection status and compact actions.
+The printer dialog puts local discovery first and lets you select a printer
+before filling its name, address and serial. Studio verifies the connection
+before saving it. Bambu previews show live readings when connected, with one
+library entry when the Store widget replaces the legacy Core app.
 
 ## 0.52.10 update
 
