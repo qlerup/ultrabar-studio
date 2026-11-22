@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.27 Windows
+# UltraBar Studio — 0.52.28 Windows
+
+## 0.52.28 update
+
+- Remove the light rim around expanded widget panels by compositing the panel and its backing together.
 
 ## 0.52.27 update
 

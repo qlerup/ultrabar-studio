@@ -598,6 +598,7 @@ public final class BambuTile {
             path.cubicTo(l+current.width()*.65f,b+wave,l+current.width()*.35f,b-wave,l+radius,b);path.cubicTo(l+radius-k,b,l,b-radius+k,l,b-radius);path.lineTo(l,t+radius);path.cubicTo(l,t+radius-k,l+radius-k,t,l+radius,t);path.close();
         }
         protected void onDraw(Canvas c){
+            if (packageFrame != null) return;
             outline();
             int lifted=Color.rgb(Math.min(255,Color.red(background)+7),Math.min(255,Color.green(background)+10),Math.min(255,Color.blue(background)+12));
             paint.setColor(Color.WHITE);paint.setShader(new LinearGradient(current.left,current.top,current.right,current.bottom,new int[]{lifted,background},null,Shader.TileMode.CLAMP));paint.setStyle(Paint.Style.FILL);c.drawPath(path,paint);paint.setShader(null);
@@ -612,6 +613,10 @@ public final class BambuTile {
             // A path clip can leave hard pixels at the edge of opaque package frames.
             int layer = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
             try {
+                if (packageFrame != null) {
+                    // Mask the solid backing and the frame together to avoid a rim at the padding.
+                    canvas.drawColor(PackageScene.backgroundColor(packageFrame, sceneImages, background));
+                }
                 super.dispatchDraw(canvas);
                 canvas.drawPath(outside, eraseOutside);
             } finally {

@@ -59,6 +59,11 @@ final class PackageScene {
             c.drawBitmap(atlas,new Rect(sx,0,sx+sw,height),new RectF(dx,dy,dx+sw*scale,dy+height*scale),paint);dx+=sw*scale;
         }
     }
+    static int backgroundColor(JSONObject frame, JSONObject images, int fallback) {
+        Bitmap bitmap = image(frame.optString("png"), images);
+        return bitmap == null ? fallback : bitmap.getPixel(0, 0);
+    }
+
     static boolean draw(View view,Canvas c,JSONObject frame,JSONObject images){
         if(frame==null)return false;
         Bitmap bg=image(frame.optString("png"),images);if(bg==null)return false;
