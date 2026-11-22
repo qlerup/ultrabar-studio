@@ -513,9 +513,49 @@
     renderBambuUnfolded();
     document.body.append(dialog);dialog.showModal();refreshPrinterPreviews();
   }
+  function splitFlapPreview(w, card, spec, face){
+    const small=card.classList.contains('small-widget'), now=new Date(), epoch=Math.floor(now.getTime()/1000);
+    const twelve=spec.hourFormat==='12', seconds=!small && spec.showSeconds!==false;
+    const pairs=[twelve?(now.getHours()%12||12):now.getHours(),now.getMinutes()];
+    if(seconds)pairs.push(now.getSeconds());
+    const digits=pairs.map(n=>String(n).padStart(2,'0'));
+    const previous=Number(card.dataset.flapTick)===epoch-1?card.dataset.flapDigits?.split(','):[];
+    card.dataset.flapDigits=digits.join(',');card.dataset.flapTick=epoch;
+    const board=el('span','flap-board'), header=el('span','flap-header');
+    header.append(el('span','flap-name',w.name||'Clock'));
+    if(twelve){
+      const parts=new Intl.DateTimeFormat(undefined,{hour:'numeric',hour12:true}).formatToParts(now);
+      header.append(el('span','flap-period',parts.find(p=>p.type==='dayPeriod')?.value||''));
+    }
+    const tiles=el('span','flap-tiles');
+    tiles.setAttribute('aria-label',digits.join(':'));
+    function half(number,position){
+      const layer=el('span','flap-half '+position);
+      layer.setAttribute('aria-hidden','true');layer.append(el('span','',number));return layer;
+    }
+    digits.forEach((value,i)=>{
+      const tile=el('span','flap-tile'+(i===2?' flap-seconds':''));
+      tile.append(half(value,'upper'),half(value,'lower'));
+      const old=previous?.[i];
+      if(old && old!==value && face.durationMs){
+        tile.append(half(old,'lower old'),half(old,'upper falling'),half(value,'lower arriving'));
+      }
+      tiles.append(tile);
+    });
+    board.style.setProperty('--plate',face.plateColor);
+    board.style.setProperty('--flip-half',face.durationMs/2+'ms');
+    board.append(header,tiles);
+    if(spec.showDate!==false)board.append(el('span','flap-date',now.toLocaleDateString(undefined,small?
+      {day:'numeric',month:'short'}:{weekday:'short',day:'numeric',month:'short',year:'numeric'})));
+    card.replaceChildren(board);
+  }
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
     const presentation=packageUI.presentation(studioBinding(spec),spec);
+    if(spec.kind==='clock' && presentation.splitFlap){
+      splitFlapPreview(w,card,spec,presentation.splitFlap);
+      return;
+    }
     const printer=spec.kind==='bambu'?bambuPreview(spec):null;
     const printerName=printer?.name||presentation.connectionName;
     card.replaceChildren(el('strong','native-title',printerName||presentation.labels?.title||w.name||'Studio'));

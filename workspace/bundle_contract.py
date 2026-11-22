@@ -8,6 +8,8 @@ def validate(manifest,parse):
     descriptor=manifest['bundledWidgets']
     if not isinstance(descriptor,dict):raise ValueError('bundledWidgets must be a widget.json object.')
     templates=parse(json.dumps(descriptor).encode())
+    if any('splitFlap' in p for w in templates for p in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0, 52, 17):
+        raise ValueError('Split-flap displays require Studio 0.52.17+.')
     if any('sizes' in w for w in templates) and tuple(map(int,manifest['compatibility']['minStudioVersion'].split('.')))<(0,52,0):
         raise ValueError('Widget sizes require Studio 0.52.0 or newer.')
     if any('studio' in w for w in templates) and tuple(map(int,manifest['compatibility']['minStudioVersion'].split('.')))<(0,49,0):

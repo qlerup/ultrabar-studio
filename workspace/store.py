@@ -230,6 +230,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any('splitFlap' in p for w in widgets for p in w.get('studio', {}).get('presentation', {}).get('presets', [])) and valid_version(manifest['compatibility']['minStudioVersion']) < (0, 52, 17):
+        raise StoreError('Split-flap displays require Studio 0.52.17+.')
     if any('sizes' in widget for widget in widgets) and valid_version(manifest['compatibility']['minStudioVersion']) < (0, 52, 0):
         raise StoreError('Widget sizes require Studio 0.52.0 or newer.')
     if any('presentation' in w.get('studio',{}) or any(f['key']=='preset' for f in w.get('studio',{}).get('settings',{}).get('fields',[])) for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion'])<(0,51,0):

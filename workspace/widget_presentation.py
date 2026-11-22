@@ -27,9 +27,17 @@ def validate(presentation, panel):
         raise ValueError('presentation: declare 1-32 presets.')
     seen = set()
     for preset in presets:
-        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
+        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
             raise ValueError('presentation: presets must name distinct declared choices.')
         seen.add(preset['value'])
+        if 'splitFlap' in preset:
+            face = preset['splitFlap']
+            if not isinstance(face, dict) or set(face) != {'plateColor', 'durationMs'}:
+                raise ValueError('splitFlap requires plateColor and durationMs.')
+            if not isinstance(face['plateColor'], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', face['plateColor']):
+                raise ValueError('Invalid split-flap plate color.')
+            if type(face['durationMs']) is not int or not 0 <= face['durationMs'] <= 600:
+                raise ValueError('Split-flap duration must be 0-600 milliseconds.')
         labels = preset.get('labels', {})
         if not isinstance(labels, dict) or len(labels) > 32 or any(not identifier(k) or not isinstance(v, str) or not 1 <= len(v) <= 64 or any(ord(c) < 32 for c in v) for k, v in labels.items()):
             raise ValueError('presentation: labels must be bounded plain text.')
@@ -60,7 +68,7 @@ def resolve(presentation, settings, connection=None):
     values = settings if source['scope'] == 'setting' else (connection or {})
     selected = values.get(source['key'])
     preset = next((p for p in presentation['presets'] if p['value'] == selected), {})
-    return {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork') if key in preset}
+    return {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap') if key in preset}
 
 
 def bindings(specs, records):

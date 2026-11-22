@@ -36,6 +36,7 @@ public final class StudioCard extends View {
     private static final Handler main = new Handler(Looper.getMainLooper());
     private static boolean started = false;
     private final Paint paint = new Paint(3);
+    private final SplitFlap splitFlap = new SplitFlap();
     private String widgetId, title;
     private JSONObject bambuSpec;
     private ViewOutlineProvider fullOutline;
@@ -170,6 +171,12 @@ public final class StudioCard extends View {
             } else if (!small && parent.getOutlineProvider() == SMALL_OUTLINE) {
                 parent.setOutlineProvider(fullOutline);
             }
+        }
+        JSONObject presentation = spec == null ? null : spec.optJSONObject("_presentation");
+        JSONObject face = presentation == null ? null : presentation.optJSONObject("splitFlap");
+        if (face != null && "clock".equals(spec.optString("kind"))) {
+            splitFlap.draw(this, c, spec, face, title == null ? "Clock" : title, small);
+            return;
         }
         if(spec != null && small) { drawSmall(c, spec); return; }
         c.save();c.scale(scale,scale);float width=getWidth()/scale;

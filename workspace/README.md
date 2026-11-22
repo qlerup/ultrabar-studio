@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.16 Windows
+# UltraBar Studio — 0.52.17 Windows
+
+## 0.52.17 update
+
+- Render package-defined split-flap clock plates on Core and in the layout preview.
 
 ## 0.52.16 update
 
