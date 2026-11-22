@@ -1,6 +1,7 @@
 """Select the reviewed Flip Clock HD app through LineOS's screensaver setting."""
 import hashlib
 import json
+import threading
 
 import bridge
 
@@ -57,8 +58,7 @@ def changed_settings(current, enabled, delay, backup):
 def reconcile(server, target, device, enabled, delay=None):
     from editor import atomic_json
     from store import StoreError
-    name = hashlib.sha256(device.encode()).hexdigest()
-    path = server.DATA_DIR / 'store' / 'screensavers' / (name + '.json')
+    path = state_path(server, device)
     try:
         backup = json.loads(path.read_text(encoding='utf-8'))
         if (not isinstance(backup, dict) or not isinstance(backup.get('previous'), dict)
@@ -105,3 +105,56 @@ def reconcile(server, target, device, enabled, delay=None):
             path.unlink(missing_ok=True)
     except Exception as exc:
         raise StoreError('Could not verify the Core screensaver choice. Retry Deploy on the same Core.') from exc
+
+
+def state_path(server, device):
+    digest = hashlib.sha256(device.encode()).hexdigest()
+    return server.DATA_DIR / 'store' / 'screensavers' / (digest + '.json')
+
+
+class Runtime:
+    """Re-arm the LineOS idle timer when its protected exit receiver needs WiFi ADB."""
+
+    def __init__(self, server):
+        self.server = server
+        self.stop = threading.Event()
+        self.thread = None
+
+    def start(self):
+        self.thread = threading.Thread(target=self.run, daemon=True, name='FlipClockIdle')
+        self.thread.start()
+
+    def close(self):
+        self.stop.set()
+
+    def run(self):
+        active = None
+        showing = None
+        server = self.server
+        while not self.stop.wait(1):
+            target = server.connection.get('target')
+            snapshot = server.connection.get('snapshot') or {}
+            device = snapshot.get('device_id')
+            if not target or not device or not state_path(server, device).is_file():
+                active = None
+                showing = None
+                continue
+            key = (target, device)
+            try:
+                if key != active:
+                    active = key
+                    showing = None
+                showing = self.observe(target, device, showing)
+            except server.DeviceError:
+                active = None
+                showing = None
+
+    def observe(self, target, device, previous):
+        adb = self.server.adb
+        result = adb('-s', target, 'shell', 'dumpsys activity activities | grep mResumedActivity || true')
+        current = PACKAGE_ID + '/.ClockActivity' in result
+        if result and previous is not False and not current:
+            if adb('-s', target, 'shell', 'getprop', 'ro.serialno') == device:
+                adb('-s', target, 'shell', 'am', 'broadcast', '-a', 'com.ultrabar.EXIT_SCREENSAVER',
+                    '-p', 'com.ultrabar.launch', '--es', 'appId', PACKAGE_ID)
+        return current if result else previous

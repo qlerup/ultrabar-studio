@@ -34,3 +34,17 @@ class FlipClockTests(unittest.TestCase):
         current = dict(uri='other', featureEnabled=True, lockTime='TIME_5MIN')
         previous = dict(uri='flip', featureEnabled=True)
         self.assertEqual(flip_clock.changed_settings(current, False, None, dict(previous=previous, appliedLockTime='TIME_30S')), current)
+
+    def test_dismissal_rearms_lineos_once_on_the_same_core(self):
+        clock = 'mResumedActivity: dk.qlerup.flipclock/.ClockActivity'
+        home = 'mResumedActivity: com.ultrabar.launch/.HomeActivity'
+        adb = Mock(side_effect=[clock, home, 'core', 'Broadcast completed', home])
+        runtime = flip_clock.Runtime(SimpleNamespace(adb=adb))
+        state = runtime.observe('core:5555', 'core', None)
+        self.assertTrue(state)
+        state = runtime.observe('core:5555', 'core', state)
+        self.assertFalse(state)
+        self.assertFalse(runtime.observe('core:5555', 'core', state))
+        calls = [call for call in adb.call_args_list if 'broadcast' in call.args]
+        self.assertEqual(len(calls), 1)
+        self.assertIn('com.ultrabar.EXIT_SCREENSAVER', calls[0].args)

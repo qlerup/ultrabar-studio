@@ -357,6 +357,9 @@ native_widgets = NativeWidgets(sys.modules[__name__])
 from pc_standby import Standby
 pc_standby = Standby(sys.modules[__name__])
 
+from flip_clock import Runtime as FlipClockRuntime
+flip_clock_runtime = FlipClockRuntime(sys.modules[__name__])
+
 from store import register_store
 register_store(sys.modules[__name__])
 import app_settings
@@ -370,7 +373,9 @@ if __name__ == '__main__':
     from waitress import serve
     print('UltraBar Studio: http://127.0.0.1:8741', flush=True)
     pc_standby.start()
+    flip_clock_runtime.start()
     try:
         serve(app, host='127.0.0.1', port=8741, threads=4)
     finally:
+        flip_clock_runtime.close()
         pc_standby.close()
