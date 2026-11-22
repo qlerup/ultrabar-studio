@@ -17,6 +17,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 from flask import jsonify, request
 import updates
 import screen_sync
+import pc_standby
 import app_settings_contract
 import bundle_contract
 import studio_contract
@@ -550,6 +551,7 @@ class Store:
             device=body.get('device_id') or ''
             deferred=p['type']=='corebar-app'
             if screen_sync.applies(p):screen_sync.validate_identity(p)
+            if pc_standby.applies(p):pc_standby.validate_identity(p)
             with self.lock:
                 old=self.previous_record(p,self.records())
             self.update_job(name=p['name'],version=p['version'],is_update=bool(old and valid_version(p['version'])>valid_version(old['version'])))
@@ -634,7 +636,7 @@ class Store:
                 screen_sync.configure(server, target, prepared, launch=False)
             elif background is not None:screen_sync.configure(server,target,prepared,settings=background.get('settings',{}),background=True)
             else:screen_sync.configure(server, target, prepared)
-        elif background is not None:
+        elif background is not None and not pc_standby.applies(p):
             self.start_background(p['android']['packageId'],background.get('settings',{}))
 
     def start_core_install(self, body):
@@ -682,7 +684,7 @@ class Store:
     def stop_removed_background(self,previous,current,profiles=None):
         visible={w['id'] for p in profiles or [] for w in p.get('homeData',[]) if w.get('type')=='APPS'}
         removed={a['id'] for a in previous}-{a['id'] for a in current}-visible
-        for package_id in sorted(removed):
+        for package_id in sorted(removed - {pc_standby.PACKAGE_ID}):
             if package_id==screen_sync.PACKAGE_ID:screen_sync.start_sync(self.server,self.server.connection['target'],False)
             else:self.server.adb('-s',self.server.connection['target'],'shell','am','force-stop',package_id)
 
@@ -735,6 +737,10 @@ class Store:
         for package_id in sorted(requested):
             if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')
             p=dependencies.get(package_id)
+            if package_id == pc_standby.PACKAGE_ID:
+                if not p or not pc_standby.applies(p) or p['android']['versionCode'] < pc_standby.MIN_VERSION:
+                    raise StoreError('Update PC Standby from the Store, then Deploy to enable Studio monitoring.')
+                pc_standby.validate_identity(p)
             if p is None:
                 # Old profiles can contain app placeholders even after an APK was
                 # removed. Preserve those as before; only staged Store apps and

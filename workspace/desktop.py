@@ -33,6 +33,7 @@ def main():
     try:
         if server.PACKAGED:
             remove_old_installers(server.DATA_DIR / 'updates')
+        server.pc_standby.start()
         http = create_server(server.app, host='127.0.0.1', port=0, threads=4)
         port = http.effective_port
         server.app.config['ALLOWED_HOSTS'] = {f'127.0.0.1:{port}'}
@@ -87,6 +88,7 @@ def main():
         webview.start(gui='edgechromium', private_mode=False,
                       storage_path=str(server.DATA_DIR / 'webview'), icon=str(server.ROOT / 'assets' / 'studio.ico'))
     finally:
+        server.pc_standby.close()
         if http:
             http.task_dispatcher.shutdown()
             server.native_widgets.stop.set()

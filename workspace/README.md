@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.52.25 Windows
+# UltraBar Studio — 0.52.26 Windows
+
+## 0.52.26 update
+
+PC Standby 1.1.0 automatically connects to Studio when you deploy it in the
+background or on the Core bar. Studio answers pings from Core over the existing
+WiFi ADB connection, including when Studio is in the Windows system tray.
+Removing PC Standby and deploying restores the previous Core inactivity timeout.
 
 ## 0.52.25 update
 

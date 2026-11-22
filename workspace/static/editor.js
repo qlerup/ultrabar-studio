@@ -13,6 +13,7 @@
   const packageUI=window.studioPackageUI.create({api,onConnectionsChange:()=>{if(draft){renderCanvas();renderProperties();}},onError:text=>message(text,true)});
   const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
+  const pcStandbyId='dk.qlerup.corestandby';
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
   const types={CPU:'CPU usage',MEMORY:'RAM usage',STORAGE:'Disk usage',TIME:'Clock',APPS:'Core app',PC_CONTROL:'PC action'};
@@ -421,7 +422,7 @@
   function renderBackground(){
     const list=$('background-apps');list.replaceChildren();
     $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
-    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',appSettingsDefs.has(app.id)?'':app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
+    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',appSettingsDefs.has(app.id)?'':app.id===pcStandbyId?'Follows Studio':app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
   }
   function studioBinding(spec){
     return studioBindings.get(spec.packageId+':'+spec.widgetKey)||[...studioBindings.values()].find(b=>b.packageId===spec.packageId&&(b.kind===spec.kind||b.kindOptions?.includes(spec.kind)));
@@ -452,6 +453,8 @@
     panel.replaceChildren(el('h3','','Background app settings'),el('span','badge','NO BAR SPACE'),el('h4','',app.name));
     if(appSettingsDefs.has(app.id)){
       renderAppSettings(app.id,panel);
+    }else if(app.id===pcStandbyId){
+      panel.append(el('p','muted','Deploy connects PC Standby to Studio automatically. Core sleeps when Studio stops answering and wakes when it reconnects.'));
     }else if(app.id===screenSyncId){
       const wrap=el('label','property-field','Vivo screens'),select=el('select');select.id='background-sync-mode';option(select,'follow','Follow Core');option(select,'always','Always on');select.value=app.settings.enabled===false?'always':'follow';select.onchange=()=>change(()=>app.settings.enabled=select.value==='follow');wrap.append(select);panel.append(wrap);
       const delay=field('Wake delay (ms)',app.settings.wakeDelayMs??1000,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=3000&&n%250===0)change(()=>app.settings.wakeDelayMs=n);else{message('Use 0–3000 ms in steps of 250.',true);renderProperties();}},'number');const input=delay.querySelector('input');input.id='background-wake-delay';input.min='0';input.max='3000';input.step='250';panel.append(delay,el('p','muted','VivoCubes follow Core screen power. Wake delay applies when Core turns on. Deploy installs the app, sends these settings and starts syncing in the background.'));

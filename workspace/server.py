@@ -354,6 +354,9 @@ register_pc(sys.modules[__name__])
 from native_widgets import NativeWidgets
 native_widgets = NativeWidgets(sys.modules[__name__])
 
+from pc_standby import Standby
+pc_standby = Standby(sys.modules[__name__])
+
 from store import register_store
 register_store(sys.modules[__name__])
 import app_settings
@@ -366,4 +369,8 @@ studio_integrations.register(sys.modules[__name__])
 if __name__ == '__main__':
     from waitress import serve
     print('UltraBar Studio: http://127.0.0.1:8741', flush=True)
-    serve(app, host='127.0.0.1', port=8741, threads=4)
+    pc_standby.start()
+    try:
+        serve(app, host='127.0.0.1', port=8741, threads=4)
+    finally:
+        pc_standby.close()

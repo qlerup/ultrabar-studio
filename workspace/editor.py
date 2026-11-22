@@ -14,6 +14,7 @@ import bridge
 from library_icons import CoreIcons
 import widget_images
 import app_settings
+from pc_standby import placed as standby_placed
 
 
 class EditError(ValueError):
@@ -647,6 +648,10 @@ def register_editor(server):
                 note = 'Core home is open. Studio is still waiting for the widgets. Keep Studio connected.'
             else:
                 note = 'Core home is open with the updated layout.'
+            standby_enabled = standby_placed(draft['profiles'], draft.get('background_apps', []))
+            if standby_enabled or standby_placed(rollback['profiles'], rollback['background_apps']):
+                stage('Confirming PC Standby with Studio…')
+            server.pc_standby.reconcile(target, latest['device_id'], standby_enabled)
             server.store.mark_deployed(latest['device_id'],package_plan)
             return jsonify(draft=new_draft, snapshot=snapshot, backup=latest['backup'], acknowledged=acknowledged,
                            activated=activated, widgets_ready=widgets_ready, message='Settings saved and verified. '+note)
