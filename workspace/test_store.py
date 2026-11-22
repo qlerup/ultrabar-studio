@@ -38,6 +38,16 @@ class StoreTests(unittest.TestCase):
         body=dict(id=p['id'],version=p['version'],sha256=p['artifact']['sha256']);body.update(overrides)
         with patch.object(store,'catalog',return_value=[p]),patch.object(store,'fetch',side_effect=fetch):self.service.install(body)
         return self.service.status()
+    def test_install_keeps_utf8_library_records_readable(self):
+        package, payload = fixture()
+        package['name'] = 'Skærm ” — Mørke'
+        self.assertEqual(self.install(package, payload)['state'], 'complete')
+        next_package = dict(package, id='studio.next')
+        self.assertEqual(self.install(next_package, payload)['state'], 'complete')
+        records = self.service.records()
+        self.assertEqual(records['studio.test:pc']['name'], package['name'])
+        self.assertEqual(records['studio.next:pc']['name'], next_package['name'])
+
     def test_install_and_remove_declarative_plugin(self):
         p,raw=fixture();self.assertEqual(self.install(p,raw)['state'],'complete')
         self.assertEqual(self.service.templates()[0]['name'],'Test clock')

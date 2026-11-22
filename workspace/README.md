@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.23 Windows
+# UltraBar Studio — 0.52.24 Windows
+
+## 0.52.24 update
+
+Studio reads the installed package library as UTF-8 on Windows. Existing
+package names, descriptions and widget text with Unicode characters remain
+readable after installing or refreshing an app or widget.
 
 ## 0.52.23 update
 

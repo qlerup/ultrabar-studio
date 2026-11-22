@@ -321,7 +321,7 @@ class Store:
         self.stats=PackageStats()
     def records(self):
         try:
-            data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text())
+            data=json.loads((self.server.DATA_DIR/'store/installed.json').read_text(encoding='utf-8'))
             if not isinstance(data,dict): raise ValueError()
             return data
         except FileNotFoundError:return {}
