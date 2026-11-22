@@ -5,6 +5,8 @@
 - Choose a Bambu printer model before adding a printer through the Bambu widget.
 - Change a saved printer's model without re-entering its LAN access code or
   approving its certificate again.
+- The Bambu card shows the full print percentage in Studio. Open the unfolded
+  preview to see live temperatures for each nozzle reported by the printer.
 
 ## 0.52.11 update
 

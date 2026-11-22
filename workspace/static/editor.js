@@ -2,7 +2,7 @@
 (() => {
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
   let editorGeneration=0, pcMetrics={}, pcRequest=null;
-  let printerMetrics={}, printerRequest=false;
+  let printerMetrics={}, printerRequest=false, renderBambuUnfolded=null;
   let storePresets=[];
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
@@ -465,7 +465,53 @@
       layers:live&&Number.isFinite(printer.layer_num)?'Layer '+printer.layer_num+' / '+(printer.total_layer_num??'—'):'',
       none:''
     };
-    return {live,progress,status,name:printer?.name,primary:values[spec.primary||'progress'],secondary:live?values[spec.secondary||'remaining']:''};
+    return {live,progress,status,name:printer?.name,values,primary:values[spec.primary||'progress'],secondary:live?values[spec.secondary||'remaining']:''};
+  }
+  function showBambuUnfolded(widget){
+    const spec=nativeSpec(widget),dialog=el('dialog','studio-connections-dialog bambu-preview-dialog');
+    dialog.setAttribute('aria-labelledby','bambu-unfolded-title');
+    dialog.style.setProperty('--widget-accent',spec.accent);
+    const heading=el('div','studio-connections-heading'),title=el('h3','','');
+    title.id='bambu-unfolded-title';
+    heading.append(title,button('Close',()=>dialog.close()));
+    const content=el('div','bambu-unfolded-content');
+    dialog.append(heading,content);
+    renderBambuUnfolded=()=>{
+      const preview=bambuPreview(spec),{live,values}=preview;
+      const presentation=packageUI.presentation(studioBinding(spec),spec);
+      const printer=live?printerMetrics[spec.printerId]:{};
+      title.textContent=preview.name||presentation.connectionName||widget.name;
+      const summary=el('section','bambu-unfolded-summary');
+      summary.append(el('span','native-source',preview.status),el('strong','bambu-unfolded-progress',values.progress));
+      if(live&&spec.showJob!==false)summary.append(el('span','bambu-unfolded-job',values.job));
+      const track=el('progress','bambu-unfolded-track');
+      track.max=100;track.value=preview.progress??0;track.setAttribute('aria-label','Print progress');
+      summary.append(track);
+      if(live){
+        const details=[spec.showRemaining!==false&&values.remaining!=='—'?values.remaining+' left':'',spec.showLayers!==false?values.layers:''].filter(Boolean);
+        if(details.length)summary.append(el('span','muted',details.join(' · ')));
+      }
+      content.replaceChildren(summary);
+      if(spec.showTemperatures===false)return;
+      const readings=Array.isArray(printer.nozzle_readings)?printer.nozzle_readings:[];
+      const temperatures=el('dl','bambu-unfolded-temperatures');
+      const temperature=value=>Number.isFinite(value)?Math.round(value)+'°C':'—';
+      function addTemperature(label,value){
+        const tile=el('div','bambu-temperature');
+        tile.append(el('dt','',label),el('dd','',temperature(value)));
+        temperatures.append(tile);
+      }
+      for(const {tool,temperature:value} of readings){
+        addTemperature(presentation.labels?.['nozzle.'+tool]||'NOZZLE T'+tool,value);
+      }
+      if(!readings.length)addTemperature('NOZZLE',printer.nozzle_temper);
+      addTemperature('BED',printer.bed_temper);
+      addTemperature('CHAMBER',printer.chamber_temper);
+      content.append(temperatures);
+    };
+    dialog.addEventListener('close',()=>{renderBambuUnfolded=null;dialog.remove();},{once:true});
+    renderBambuUnfolded();
+    document.body.append(dialog);dialog.showModal();refreshPrinterPreviews();
   }
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
@@ -500,11 +546,12 @@
       const primary=spec.primary||'progress';
       const labels={state:'PRINTER STATUS',remaining:'TIME REMAINING',temperature:'ACTIVE NOZZLE'};
       card.classList.add('bambu-preview');
-      const arrow=el('span','bambu-unfold-arrow','↗');arrow.setAttribute('aria-hidden','true');
+      const unfold=el('span','bambu-unfold','Tap to unfold'),arrow=el('span','bambu-unfold-arrow','↗');
+      arrow.setAttribute('aria-hidden','true');unfold.append(arrow);
       if(printer.live)card.append(el('span','bambu-live','Live'));
       card.append(el('span','native-value'+(primary==='progress'?' bambu-percent':''),printer.live?printer.primary:'—'),
         el('span','native-source',printer.live?labels[primary]||printer.status:printer.status),el('span','native-detail',printer.secondary),
-        bar(printer.progress),el('span','bambu-unfold','Tap to unfold'),arrow);
+        bar(printer.progress),unfold);
     }else if(spec.kind==='clock'){
       const now=new Date(),format={hour:'2-digit',minute:'2-digit',hour12:spec.hourFormat==='12'};if(spec.showSeconds!==false)format.second='2-digit';
       card.append(el('span','native-source','CORE CLOCK'),el('span','native-clock-time',now.toLocaleTimeString([],format)));
@@ -715,7 +762,13 @@
     canvas.classList.toggle('mixed-widgets',grid);
     if(grid)canvas.style.setProperty('--layout-right',gridMargin+nextFreeColumn(positions)*cellPitch+'px');
     else canvas.style.removeProperty('--layout-right');
-    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);card.onclick=()=>{backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);});
+    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);
+      card.onclick=event=>{
+        if(event.target.closest('.bambu-unfold')){showBambuUnfolded(w);return;}
+        backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();
+      };
+      draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);
+    });
     [...canvas.children].forEach((card,i)=>{if(!nativeSpec(current().homeData[i]))renderStockPreview(current().homeData[i],card);});
     renderEmptySlots(canvas,positions);
     canvas.scrollLeft=position;requestAnimationFrame(syncCoreScroll);
@@ -732,6 +785,10 @@
       panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
       renderPackageSettings(panel,spec);
+      if(spec.kind==='bambu'){
+        const unfold=button('Preview unfolded widget',()=>showBambuUnfolded(w));
+        unfold.setAttribute('aria-haspopup','dialog');panel.append(unfold);
+      }
       panel.append(el('p','muted',spec.kind==='bambu'?'The preview shows live readings when the selected printer is connected. Save and Deploy to apply this widget to Core.':'Preview shows sample data. Save and Deploy to show this widget on Core. Keep Studio running for live PC data.'));
     }else panel.append(field('Icon size (%)',w.iconScale??100,v=>{const n=Number(v);if(Number.isInteger(n)&&n>=0&&n<=200)change(()=>w.iconScale=n);else message('Icon size must be 0-200.',true);},'number'));
     if(shortcut)renderPcWidgetSettings(w,panel);
@@ -984,6 +1041,7 @@
       const widget=current().homeData[index];
       if(widget&&nativeSpec(widget)?.kind==='bambu')renderNativePreview(widget,card);
     });
+    renderBambuUnfolded?.();
   }
   async function refreshPreviewMetrics(){
     if(pcRequest||drag||!current()?.homeData.some(usesPcMetrics))return;

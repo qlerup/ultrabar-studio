@@ -61,16 +61,16 @@ class BambuBrowserTests(unittest.TestCase):
     def test_studio_printer_setup_independent_selection_and_no_draft_secrets(self):
         template=dict(DEFAULTS,id='bambu-liquid',name='Bambu',kind='bambu',background='#14202b',accent='#86e4c3',_widgetPackage=True,_storePackage='studio.bambu',_storeVersion='2.0.0')
         template['_studio']=legacy_descriptor(template)
-        template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in ('generic','h2d','h3c')]))
+        template['_studio']['connection']['fields'].append(dict(key='model',label='Printer model',type='choice',required=False,options=[dict(value=k,label=k.upper()) for k in ('generic','h2c','h3c')]))
         template['_studio']['presentation']=dict(api=1,source=dict(scope='connection',key='model'),presets=[
-            dict(value='h2d',artwork=[dict(type='rect',points=[10,10,90,90],fill='accent')]),
+            dict(value='h2c',artwork=[dict(type='rect',points=[10,10,90,90],fill='accent')]),
             dict(value='h3c',artwork=[dict(type='oval',points=[10,10,90,90],fill='accent')]),
         ])
         from base64 import b64encode
         from io import BytesIO
         from PIL import Image
         def thumbnail(model):
-            buffer=BytesIO(); Image.new('RGB',(30,40),'red' if model=='h2d' else 'blue').save(buffer,format='PNG')
+            buffer=BytesIO(); Image.new('RGB',(30,40),'red' if model=='h2c' else 'blue').save(buffer,format='PNG')
             return b64encode(buffer.getvalue()).decode('ascii')
         with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(bambu.Link,'start'),patch.object(bambu,'verify_connection'),patch.object(bambu,'thumbnail',side_effect=thumbnail),patch.object(server.store,'records',return_value={'fixture':dict(id=template['_storePackage'],type='corebar-widget',widgets=[template])}):
             page.route('**/api/editor/catalog',lambda r:r.fulfill(json=dict(apps=[
@@ -83,9 +83,10 @@ class BambuBrowserTests(unittest.TestCase):
                 probes.append(route.request.post_data_json)
                 route.fulfill(json=dict(pin='b'*64))
             page.route('**/api/studio/integrations/*/*/probe',probe)
-            reading=dict(fresh=True,connection='Connected',gcode_state='RUNNING',mc_percent=81,mc_remaining_time=32)
+            reading=dict(fresh=True,connection='Connected',gcode_state='FINISH',mc_percent=100,mc_remaining_time=0)
+            nozzle_readings={}
             page.route('**/api/studio/integrations/*/*/preview',lambda r:r.fulfill(json=dict(
-                printers={key:reading for key in r.request.post_data_json['ids']}
+                printers={key:dict(reading,nozzle_readings=nozzle_readings.get(key,[])) for key in r.request.post_data_json['ids']}
             )))
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
             page.locator('#mode-layout').click()
@@ -95,7 +96,7 @@ class BambuBrowserTests(unittest.TestCase):
             expect(page.locator('#widget-library [aria-label="Bambu"]')).to_have_count(1)
             page.get_by_role('button',name='Manage printers',exact=True).click()
             expect(page.locator('#studio-connections')).to_be_visible()
-            page.locator('#connection-name').fill('H2D workshop')
+            page.locator('#connection-name').fill('H2C workshop')
             model=page.locator('#connection-model')
             expect(model).to_have_value('')
             page.locator('#connection-host').fill('192.168.1.30')
@@ -113,13 +114,13 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('.studio-connection-row').get_by_role('button',name='Edit',exact=True).click()
             expect(model).to_have_value('h3c')
             expect(page.locator('#connection-code')).to_have_value('')
-            model.select_option('h2d')
+            model.select_option('h2c')
             page.get_by_role('button',name='Save changes',exact=True).click()
             expect(page.locator('.studio-connection-notice')).to_contain_text('Connection saved')
             self.assertEqual(probes,[dict(host='192.168.1.30')])
-            self.assertEqual(server.bambu.listing()[0]['model'],'h2d')
+            self.assertEqual(server.bambu.listing()[0]['model'],'h2c')
             page.locator('.studio-connection-row').get_by_role('button',name='Edit',exact=True).click()
-            expect(model).to_have_value('h2d')
+            expect(model).to_have_value('h2c')
             page.get_by_role('button',name='Add printer',exact=True).click()
             expect(page.locator('#connection-code')).to_have_value('')
             page.locator('#connection-name').fill('H3C office')
@@ -139,23 +140,33 @@ class BambuBrowserTests(unittest.TestCase):
             expect(page.locator('[data-connection-key=printerId] option')).to_have_count(3)
             ids=page.locator('[data-connection-key=printerId] option').evaluate_all('(items)=>items.map(o=>o.value).filter(Boolean)')
             self.assertEqual(len(ids),2)
+            nozzle_readings.update({key:[dict(tool=tool,temperature=220+tool) for tool in range(count)]
+                                    for key,count in zip(ids,(2,9))})
             page.locator('[data-connection-key=printerId]').select_option(ids[0])
             image=page.locator('#core-canvas .bambu-preview img.package-artwork')
             expect(image).to_have_js_property('naturalWidth',30)
             preview=page.locator('#core-canvas .bambu-preview')
-            expect(preview.locator('.native-title')).to_have_text('H2D workshop')
-            expect(preview.locator('.native-source')).to_have_text('Printing')
+            expect(preview.locator('.native-title')).to_have_text('H2C workshop')
+            expect(preview.locator('.native-source')).to_have_text('Complete')
             expect(preview.locator('.bambu-live')).to_have_text('Live')
-            expect(preview.locator('.native-value')).to_have_text('81%')
+            expect(preview.locator('.native-value')).to_have_text('100%')
             for width in (1600,390):
                 page.set_viewport_size(dict(width=width,height=1000))
                 self.assertTrue(preview.evaluate('''card => {
                     const box = selector => card.querySelector(selector).getBoundingClientRect();
                     const image = box('.package-artwork'), value = box('.native-value');
                     const status = box('.native-source'), bar = box('.native-track');
-                    return value.right < image.left && status.right < image.left &&
+                    const text = card.querySelector('.native-value');
+                    return text.scrollWidth <= text.clientWidth &&
+                        value.right < image.left && status.right < image.left &&
                         value.bottom < status.top && image.bottom < bar.top;
                 }'''))
+                preview.locator('.bambu-unfold').click()
+                unfolded=page.get_by_role('dialog',name='H2C workshop')
+                expect(unfolded.locator('.bambu-temperature dt')).to_have_text(['NOZZLE T0','NOZZLE T1','BED','CHAMBER'])
+                expect(unfolded.locator('.bambu-temperature dd')).to_have_text(['220°C','221°C','—','—'])
+                self.assertTrue(unfolded.evaluate('dialog=>dialog.scrollWidth<=dialog.clientWidth+1'))
+                unfolded.get_by_role('button',name='Close',exact=True).click()
             page.set_viewport_size(dict(width=1600,height=1000))
             reading.update(fresh=False,connection='Disconnected')
             expect(preview.locator('.native-source')).to_have_text('Disconnected',timeout=7000)
@@ -165,6 +176,11 @@ class BambuBrowserTests(unittest.TestCase):
             page.locator('[data-connection-key=printerId]').select_option(ids[1])
             expect(image).to_have_js_property('naturalWidth',30)
             self.assertNotEqual(first_thumbnail,image.get_attribute('src'))
+            page.get_by_role('button',name='Preview unfolded widget').click()
+            unfolded=page.get_by_role('dialog',name='H3C office')
+            expect(unfolded.locator('.bambu-temperature dt')).to_have_text(['NOZZLE T'+str(tool) for tool in range(9)]+['BED','CHAMBER'])
+            expect(unfolded.locator('.bambu-temperature dd').nth(8)).to_have_text('228°C')
+            unfolded.get_by_role('button',name='Close',exact=True).click()
             page.locator('[data-connection-key=printerId]').select_option(ids[0])
             item.drag_to(page.locator('#core-screen'));page.locator('[data-connection-key=printerId]').select_option(ids[1])
             page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')
