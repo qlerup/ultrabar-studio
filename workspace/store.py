@@ -205,7 +205,9 @@ def widget_package(raw):
         if not isinstance(key,str) or not re.fullmatch(r'[a-z][a-z0-9-]{0,63}',key) or key in ids:raise StoreError('Widget IDs must be unique.')
         ids.add(key)
         base={k:v for k,v in w.items() if k in ('name','kind','background','textColor','accent')}
-        if w.get('kind')=='bambu':
+        if w.get('kind')=='scene' and (not isinstance(w.get('studio'),dict) or 'layout' not in w['studio']):
+            raise StoreError('A scene widget requires its own layout.')
+        if w.get('kind') in ('bambu','scene'):
             if not isinstance(w.get('name'),str) or not 1<=len(w['name'])<=100:raise StoreError('Invalid printer widget name.')
             for color in ('background','textColor','accent'):
                 if color in w and not re.fullmatch(r'#[a-fA-F0-9]{6}',str(w[color])):raise StoreError('Invalid widget color.')
@@ -230,6 +232,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any(w.get('kind')=='scene' or 'sounds' in w.get('studio',{}) or 'expanded' in w.get('studio',{}).get('layout',{}) or any(isinstance(v,dict) for v in w.get('studio',{}).get('layout',{}).values()) for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,23):
+        raise StoreError('Package panels and sounds require Studio 0.52.23+.')
     if any('sideTemperatures' in preset.get('nozzleGrid', {}) for w in widgets for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,22):
         raise StoreError('Side temperature boxes require Studio 0.52.22+.')
     if any('nozzleGrid' in preset for w in widgets for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,21):
@@ -772,12 +776,12 @@ def register_store(server):
     def widget_layout():
         import widget_scene
         body=request.get_json(silent=True) or {}
-        if not isinstance(body,dict) or not isinstance(body.get('spec'),dict) or body.get('size') not in ('small','large'):
+        if not isinstance(body,dict) or not isinstance(body.get('spec'),dict) or body.get('size') not in ('small','large','expanded'):
             raise StoreError('Invalid widget preview.')
         spec=dict(body['spec'])
         records=store.records()
         layout=widget_scene.installed(spec,records)
-        if not layout:raise StoreError('Install the widget package to preview its layout.')
+        if not layout or body['size'] not in layout:raise StoreError('Install a package with the requested layout.')
         studio_contract.apply_installed_settings({'preview':spec},records)
         stamp=time.time()
         metrics=server.companion.metrics.sample()

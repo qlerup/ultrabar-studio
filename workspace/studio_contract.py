@@ -30,14 +30,26 @@ def _text(value, name, limit=100):
 
 
 def validate(descriptor, kind):
-    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation', 'layout'} or type(descriptor.get('api')) is not int or descriptor['api'] not in (1, 2):
+    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation', 'layout','sounds'} or type(descriptor.get('api')) is not int or descriptor['api'] not in (1, 2):
         raise ValueError('studio: use declarative panel API 1; code and custom transports are unsupported.')
-    if not {'settings', 'connection'} & set(descriptor):
+    if not {'settings', 'connection'} & set(descriptor) and not (descriptor['api']==2 and 'layout' in descriptor):
         raise ValueError('studio: declare settings or a connection panel.')
     if 'layout' in descriptor:
         if descriptor['api'] != 2:raise ValueError('Widget layouts require panel API 2.')
         from scene_contract import validate as validate_layout
         validate_layout(descriptor['layout'])
+    if 'sounds' in descriptor:
+        sounds=descriptor['sounds']
+        if descriptor['api']!=2 or not isinstance(sounds,dict) or not 1<=len(sounds)<=16:
+            raise ValueError('Invalid package sounds.')
+        for event, sequence in sounds.items():
+            if not re.fullmatch('[a-z][a-z0-9_.]{0,63}',event) or not isinstance(sequence,list) or not 1<=len(sequence)<=32:
+                raise ValueError('Invalid package sound sequence.')
+            for note in sequence:
+                if (not isinstance(note,list) or len(note)!=2 or not all(type(v) in (float,int) for v in note)
+                        or not 0<=note[0]<=8000 or type(note[1]) is not int or not 1<=note[1]<=580):
+                    raise ValueError('Sound notes require frequency and milliseconds.')
+            if sum(note[1] for note in sequence)>580:raise ValueError('A package sound must fit the audio buffer.')
     if 'help' in descriptor:
         _text(descriptor['help'], 'help', 2000)
     if 'settings' in descriptor:

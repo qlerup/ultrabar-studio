@@ -32,6 +32,8 @@ public final class BambuTile {
         main.post(() -> { if (expanded != null) expanded.refresh(); });
     }
     public static void updateSpecs(JSONObject specs){widgetSpecs=specs==null?new JSONObject():specs;}
+    private static volatile JSONObject sceneImages = new JSONObject();
+    static void updateSceneImages(JSONObject images){sceneImages=images==null?new JSONObject():images;}
     static void updateArtwork(JSONObject images) { printerImages = images == null ? new JSONObject() : images; }
 
     private static Bitmap thumbnail(JSONObject snapshot) {
@@ -185,6 +187,8 @@ public final class BambuTile {
         private final LinearLayout body, hero, temperatures, sideColumn, actions;
         private TextView name, status, value, job, details, controlHint;
         private final ArrayList<TemperatureTile> temperatureTiles = new ArrayList<>();
+        private View packageView;
+        private JSONObject packageFrame;
         private boolean shortToolLabels;
         private TextView environment;
         private Button pause, stop, light;
@@ -285,7 +289,15 @@ public final class BambuTile {
             stop=btn("■  Stop",0xffffa6ab,()->new AlertDialog.Builder(getContext()).setTitle("Stop this print?").setMessage("The current print will end and cannot be resumed.").setNegativeButton("Keep printing",null).setPositiveButton("Stop print",(d,w)->execute(getContext(),spec,"stop")).show());
             light=btn("◉  Light",foreground,()->execute(getContext(),spec,snapshot(spec).optString("light").equals("on")?"light_off":"light_on"));
             for(Button button:new Button[]{pause,stop,light}){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(0,42,1);p.setMargins(0,0,6,0);actions.addView(button,p);}
-            body.addView(actions);refresh();
+            body.addView(actions);
+            packageView=new View(getContext()){
+                protected void onDraw(Canvas canvas){
+                    if(packageFrame!=null)PackageScene.draw(this,canvas,packageFrame,sceneImages);
+                }
+            };
+            packageView.setVisibility(GONE);
+            body.addView(packageView,0,new LinearLayout.LayoutParams(-1,0,1));
+            refresh();
             setOnKeyListener((v,key,event)->{if(key==KeyEvent.KEYCODE_BACK){if(event.getAction()==KeyEvent.ACTION_UP)close();return true;}return false;});
         }
         private TextView txt(String s,int size,int color,boolean bold){TextView v=new TextView(getContext());v.setText(s);v.setTextColor(color);v.setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX,size);v.setSingleLine(true);v.setEllipsize(android.text.TextUtils.TruncateAt.END);if(bold)v.setTypeface(Typeface.create("sans-serif-medium",0));return v;}
@@ -532,7 +544,20 @@ public final class BambuTile {
             return WidgetPresentation.label(currentSpec==null?spec:currentSpec,"nozzle."+tool,"NOZZLE T"+tool);
         }
         void refresh(){
-            JSONObject s=snapshot(spec);name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
+            JSONObject s=snapshot(spec);
+            JSONObject current=widgetSpecs.optJSONObject(spec.optString("_widgetId"));
+            JSONObject scenes=(current==null?spec:current).optJSONObject("_scene");
+            boolean stale=received==0 || SystemClock.elapsedRealtime()-received>=10000;
+            packageFrame=scenes==null?null:scenes.optJSONObject(stale && scenes.has("expandedOffline")?"expandedOffline":"expanded");
+            boolean packaged=packageFrame!=null;
+            packageView.setVisibility(packaged?VISIBLE:GONE);
+            ((View)name.getParent()).setVisibility(packaged?GONE:VISIBLE);
+            ((View)temperatures.getParent()).setVisibility(packaged?GONE:VISIBLE);
+            if(packaged){
+                body.setPadding(0,6,0,4);
+                packageView.invalidate();
+            }else{
+            name.setText(s.optString("name","Bambu Lab"));status.setText(fresh(s)?"●  "+state(s):"●  OFFLINE");status.setTextColor(fresh(s)?accent:muted);
             value.setText(metric(s,"progress"));job.setVisibility(spec.optBoolean("showJob",true)?VISIBLE:GONE);
             String filename=metric(s,"job");if(!filename.contentEquals(job.getText()))job.setText(filename);
             progress.setProgress(fresh(s)?Math.max(0,Math.min(100,s.optInt("mc_percent"))):0);
@@ -540,9 +565,10 @@ public final class BambuTile {
             if(spec.optBoolean("showLayers",true))summary+=(summary.isEmpty()?"":"  ·  ")+metric(s,"layers");details.setText(fresh(s)?summary:"Waiting for a live printer connection");
             temperatures.setVisibility(spec.optBoolean("showTemperatures",true)?VISIBLE:GONE);
             refreshTemperatures(s, fresh(s));
+            }
             String action=s.optString("gcode_state").equals("PAUSE")?"resume":"pause";pause.setText(action.equals("resume")?"▶  Resume":"Ⅱ  Pause");
             boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_"+(s.optString("light").equals("on")?"light_off":"light_on")));
-            String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility(spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);
+            String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility("bambu".equals(spec.optString("kind"))&&spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);
             boolean show=spec.optBoolean("showControls",true)&&s.optBoolean("controls")&&fresh(s);
             pause.setVisibility(show&&s.optBoolean("print_controls_available")?VISIBLE:GONE);stop.setVisibility(pause.getVisibility());
             String lightState=s.optString("light");light.setVisibility(show&&(lightState.equals("on")||lightState.equals("off"))?VISIBLE:GONE);

@@ -21,17 +21,18 @@ RUNTIME_SHA = 'fc60c38a6acb42d9eb2d5c0474bf84fd671c14870b9cab43129b38c5e364bb13'
 SUPPORTED_LINEOS = {'1.0.8', '1.0.9'}
 
 
-def alert_pcm(kind):
+def alert_pcm(kind, sequence=None):
     """Build the short alert on the PC as 16 kHz, mono signed PCM."""
-    notes = {'success': (523.25, 659.25, 783.99), 'error': (740, 440, 440)}[kind]
+    if sequence is None:
+        notes = {'success': (523.25, 659.25, 783.99), 'error': (740, 440, 440)}[kind]
+        sequence = [note for hz in notes for note in ((hz,160),(0,30))]
     samples = bytearray()
-    frames = 2560
-    for frequency in notes:
+    for frequency, milliseconds in sequence:
+        frames=16*milliseconds
         for index in range(frames):
             gain = min(1, index / 180, (frames - index - 1) / 380)
             sample = round(8100 * gain * math.sin(2 * math.pi * frequency * index / 16000))
             samples.extend(struct.pack('<h', sample))
-        samples.extend(bytes(960))
     return base64.b64encode(samples).decode('ascii')
 
 
@@ -67,7 +68,7 @@ def specifications(profiles):
             spec = payload.get('params')
             if widget.get('type') != 'PC_CONTROL' or not re.fullmatch(r'studio_native_[a-f0-9]{32}', key):
                 raise EditError('Invalid native widget ID or type.')
-            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock', 'bambu'):
+            if not isinstance(spec, dict) or spec.get('kind') not in ('cpu', 'memory', 'gpu', 'disk', 'clock', 'bambu','scene'):
                 raise EditError('Choose a supported Studio widget.')
             from bambu_contract import validate as validate_bambu
             try:validate_bambu(spec)
@@ -117,6 +118,7 @@ class NativeWidgets:
         self.printer_actions = {}
         self.presentations = {}
         self.layouts = {}
+        self.soundsets = {}
 
     def printer_action(self, event):
         # Transient events only: no file queue, retry or command replay on reconnect.
@@ -192,6 +194,8 @@ class NativeWidgets:
         records = self.server.store.records() if specs else {}
         import widget_scene
         layouts = {key:layout for key,spec in specs.items() if (layout:=widget_scene.installed(spec,records))}
+        soundsets = {(record.get('id'),widget.get('id')):widget.get('studio',{}).get('sounds',{})
+                     for record in records.values() for widget in record.get('widgets',[])}
         studio_contract.apply_installed_settings(specs, records)
         presentations = widget_presentation.bindings(specs, records) if specs else {}
         with self.lock:
@@ -204,6 +208,7 @@ class NativeWidgets:
             self.compact_profiles = compact_profiles or {}
             self.presentations = presentations
             self.layouts = layouts
+            self.soundsets = soundsets
             self.server.bambu.configure(specs)
             if not specs and not compact_profiles:
                 self.stop.set()
@@ -250,7 +255,7 @@ class NativeWidgets:
             while not self.stop.is_set():
                 try:
                     with self.lock:
-                        specs, presentations, layouts = self.specs, self.presentations, self.layouts
+                        specs, presentations, layouts, soundsets = self.specs, self.presentations, self.layouts, self.soundsets
                     options = alert_options(specs)
                     pending_alerts.extend(self.server.bambu.take_alerts(options))
                     now = time.monotonic()
@@ -309,7 +314,11 @@ class NativeWidgets:
                             if time.monotonic() - created < 8:
                                 if options[key] and alert not in wake_sent:
                                     wake_core()
-                                call_runtime('play_print_alert', alert_pcm(kind))
+                                sequence=next((sounds[kind] for spec in specs.values()
+                                               if spec.get('printerId')==key and spec.get('printAlerts')
+                                               for sounds in [soundsets.get((spec.get('packageId'),spec.get('widgetKey')),{})]
+                                               if kind in sounds),None)
+                                call_runtime('play_print_alert', alert_pcm(kind,sequence))
                     widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
                     models = {printer.get('model') for printer in printers.values()}
                     images = {model: image for model in models if (image := thumbnail(model))}
@@ -322,7 +331,8 @@ class NativeWidgets:
                         spec['_scene']=widget_scene.frames(spec,layout,metrics,printers,title,stamp)
                         if spec.get('kind')!='clock':
                             offline={'name':printers.get(spec.get('printerId'),{}).get('name') or title,'connection':'Offline'}
-                            for size in ('small','large'):
+                            offline['model']=printers.get(spec.get('printerId'),{}).get('model','')
+                            for size in layout:
                                 spec['_scene'][size+'Offline']=widget_scene.make(layout,size,spec,{},offline,title,stamp)
                     scene_images=widget_scene.compact_frames(widgets)
                     state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=metrics,

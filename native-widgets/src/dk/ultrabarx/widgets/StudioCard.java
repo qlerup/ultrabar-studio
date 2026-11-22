@@ -79,7 +79,7 @@ public final class StudioCard extends View {
                     File file=new File("/data/local/tmp/ultrabar-studio-metrics.json");
                     if(file.length()>0 && file.length()<4194304){
                         String text=new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8);
-                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;BambuTile.updateSpecs(next.optJSONObject("widgets"));BambuTile.updateArtwork(next.optJSONObject("printerImages"));previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
+                        if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;BambuTile.updateSpecs(next.optJSONObject("widgets"));BambuTile.updateArtwork(next.optJSONObject("printerImages"));BambuTile.updateSceneImages(next.optJSONObject("sceneImages"));previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
                     }
                 } catch(Exception ignored) { /* Last sample expires visibly below. */ }
                 BambuTile.update(state.optJSONObject("printers"),received);
@@ -159,7 +159,8 @@ public final class StudioCard extends View {
         super.onDraw(original);Canvas c=original;float scale=getHeight()/240f;if(scale<=0)return;
         int white=Color.rgb(239,246,242),muted=Color.rgb(155,177,165),accent=Color.rgb(148,217,187);
         JSONObject specs=state.optJSONObject("widgets"),spec=specs==null?null:specs.optJSONObject(widgetId);
-        bambuSpec=spec!=null&&"bambu".equals(spec.optString("kind"))?spec:null;
+        JSONObject frames=spec==null?null:spec.optJSONObject("_scene");
+        bambuSpec=spec!=null&&("bambu".equals(spec.optString("kind")) || frames!=null && frames.has("expanded"))?spec:null;
         if(bambuSpec!=null)try{bambuSpec.put("_widgetId",widgetId);}catch(Exception ignored){}
         setClickable(bambuSpec != null);
         boolean small = getHeight() < 160;

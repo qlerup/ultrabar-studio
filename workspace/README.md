@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.22 Windows
+# UltraBar Studio — 0.52.23 Windows
+
+## 0.52.23 update
+
+Installed widget packages can now supply their entire expanded panel and alert tones. Studio and Core display the same package-rendered panel. Widget authors can rearrange readings, add grids or change styles from their own repository.
 
 ## 0.52.22 update
 

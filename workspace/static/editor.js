@@ -512,6 +512,13 @@
     const content=el('div','bambu-unfolded-content');
     dialog.append(heading,content);
     renderBambuUnfolded=()=>{
+      const installed=studioBinding(spec);
+      if(installed?.descriptor.layout?.expanded){
+        title.textContent=widget.name;
+        content.classList.add('package-expanded-preview');
+        window.widgetScene.preview(content,widget.name,{...spec,background:widget.bgColor},'expanded',api,installed.version);
+        return;
+      }
       const preview=bambuPreview(spec),{live,values}=preview;
       const presentation=packageUI.presentation(studioBinding(spec),spec);
       const printer=live?printerMetrics[spec.printerId]:{};
@@ -583,7 +590,8 @@
       }
       content.append(temperatures);
     };
-    dialog.addEventListener('close',()=>{renderBambuUnfolded=null;dialog.remove();},{once:true});
+    const panelTimer=studioBinding(spec)?.descriptor.layout?.expanded ? setInterval(()=>renderBambuUnfolded?.(),3000) : null;
+    dialog.addEventListener('close',()=>{clearInterval(panelTimer);renderBambuUnfolded=null;dialog.remove();},{once:true});
     renderBambuUnfolded();
     document.body.append(dialog);dialog.showModal();refreshPrinterPreviews();
   }
@@ -882,7 +890,7 @@
     else canvas.style.removeProperty('--layout-right');
     current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);
       card.onclick=event=>{
-        if(event.target.closest('.bambu-unfold') || (event.target.closest('.package-scene') && nativeSpec(w)?.kind==='bambu' && event.offsetY>=card.clientHeight*.78)){showBambuUnfolded(w);return;}
+        if(event.target.closest('.bambu-unfold') || (event.target.closest('.package-scene') && (nativeSpec(w)?.kind==='bambu'||studioBinding(nativeSpec(w)||{})?.descriptor.layout?.expanded) && event.offsetY>=card.clientHeight*.78)){showBambuUnfolded(w);return;}
         backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();
       };
       draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);
@@ -905,7 +913,7 @@
       if(!packagePanel)panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
       renderPackageSettings(panel,spec,w);
-      if(spec.kind==='bambu'){
+      if(spec.kind==='bambu'||studioBinding(spec)?.descriptor.layout?.expanded){
         const unfold=button('Preview unfolded widget',()=>showBambuUnfolded(w));
         unfold.setAttribute('aria-haspopup','dialog');panel.append(unfold);
       }

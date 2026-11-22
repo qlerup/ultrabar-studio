@@ -13,6 +13,18 @@ from store import StoreError, require_widget_version, widget_package
 
 
 class StudioContractTests(unittest.TestCase):
+    def test_package_sound_changes_without_host_upgrade(self):
+        from native_widgets import alert_pcm
+        panel=dict(api=2,layout={s:{'elements':[dict(op='rect',box=[0,0,1000,1000],color='#123456')]} for s in ('small','large')},
+                   sounds={'success':[[440,50],[0,30]]})
+        validate(panel,'scene')
+        first=alert_pcm('success',panel['sounds']['success'])
+        panel['sounds']['success'][0]=[700,50]
+        validate(panel,'scene')
+        self.assertNotEqual(first,alert_pcm('success',panel['sounds']['success']))
+        panel['sounds']['success']=[[800,300],[900,300]]
+        with self.assertRaises(ValueError):validate(panel,'scene')
+
     def test_updated_library_package_drives_existing_card_without_core_app(self):
         from studio_contract import apply_installed_settings
         from widget_presentation import resolve as presentation

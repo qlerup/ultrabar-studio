@@ -39,7 +39,8 @@ class AppSettingsBrowserTests(unittest.TestCase):
         import store
         panel = dict(api=2,settings=dict(api=1,fields=[dict(key='faceColor',label='Face color',type='color',default='#123456')]))
         panel['layout']={size:[dict(op='rect',box=[0,0,24,24],color='$faceColor')] for size in ('large','small')}
-        widget = dict(id='face',name='Package clock',kind='clock',studio=panel)
+        panel['layout']['expanded']=[dict(op='rect',box=[0,0,1000,1000],color='$faceColor')]
+        widget = dict(id='face',name='Package clock',kind='scene',studio=panel)
         record = dict(id='test.clock',name='Test Clock',type='corebar-widget',version='1.0.0')
         def install():
             record['widgets']=store.widget_package(json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[widget])).encode())
@@ -54,6 +55,11 @@ class AppSettingsBrowserTests(unittest.TestCase):
             expect(color).to_have_value('#123456')
             pixel="""() => {const c=document.querySelector('#core-screen canvas.package-scene');return c && Array.from(c.getContext('2d').getImageData(6,6,1,1).data).slice(0,3).join(',')} """
             page.wait_for_function("()=>("+pixel+")()==='18,52,86'")
+            def expanded_pixel(rgb):
+                page.get_by_role('button',name='Preview unfolded widget').click()
+                page.wait_for_function("()=>("+pixel.replace('#core-screen canvas', 'dialog canvas')+")()==='"+rgb+"'")
+                page.get_by_role('dialog').get_by_role('button',name='Close').click()
+            expanded_pixel('18,52,86')
             color.fill('#654321')
             color.dispatch_event('change')
             page.locator('#draft-save').click()
@@ -65,6 +71,7 @@ class AppSettingsBrowserTests(unittest.TestCase):
             page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
             expect(page.get_by_label('Enable chimes')).to_be_checked()
             page.wait_for_function("()=>("+pixel+")()==='240,153,35'")
+            expanded_pixel('240,153,35')
             expect(color).to_have_value('#654321')
             expect(page.locator('#background-apps button')).to_have_count(0)
             page.get_by_label('Enable chimes').uncheck()

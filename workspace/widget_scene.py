@@ -56,6 +56,7 @@ def readings(spec,metrics,printer,title,now,small):
                     remaining=f'{minutes//60}h {minutes%60}m' if isinstance(minutes,int) and minutes>=0 else '—',
                     temperature=str(round(p['nozzle_temper']))+'°C' if isinstance(p.get('nozzle_temper'),(float,int)) else '—',
                     layers=str(p.get('layer_num','—'))+' / '+str(p.get('total_layer_num','—')),none='')
+        out.update(values)
         out.update(title=p.get('name') or title,status=status,live='Live' if live else '',progress=p.get('mc_percent',0) if live else 0,
                    primary=values.get(spec.get('primary','progress'),'—') if live else '—',secondary=values.get(spec.get('secondary','remaining'),'') if live else '')
     elif kind=='disk':
@@ -96,6 +97,22 @@ def fallback_art(spec):
 
 
 def make(layout,size,spec,metrics,printer,title,now,art=None):
+    if size=='expanded' or isinstance(layout[size],dict):
+        from package_panel import paint
+        settings={**spec,**spec.get('packageSettings',{})}
+        values=readings(spec,metrics,printer,title,now,False)
+        public_settings={k:v for k,v in settings.items() if not k.startswith('_')}
+        slots=spec.get('expandedSlots',3)
+        width=280*max(2,min(5,slots if type(slots) is int else 3))-20
+        live=printer.get('fresh',False)
+        public_printer=printer if live else {k:printer[k] for k in ('name','model','connection') if k in printer}
+        ctx=dict(settings=public_settings,values=values,printer=public_printer,metrics=metrics,
+                 labels=spec.get('_presentation',{}).get('labels',{}),narrow=width<700)
+        if size=='expanded':
+            return paint(layout[size],ctx,width,230,color('$background',settings,'#192325'))
+        w,h=(130,120) if size=='small' else (260,240)
+        ctx['narrow']=size=='small'
+        return paint(layout[size]['elements'],ctx,w,h,color('$background',settings,'#192325'))
     width,height=(130,120) if size=='small' else (260,240)
     settings={**spec,**spec.get('packageSettings',{})}
     values=readings(spec,metrics,printer,title,now,size=='small')
@@ -151,7 +168,7 @@ def frames(spec,layout,metrics,printers,title,now):
     from bambu_artwork import thumbnail
     printer=printers.get(spec.get('printerId'),{})
     art=thumbnail(printer.get('model')) if printer.get('model') else None
-    return {size:make(layout,size,spec,metrics,printer,title,now,art) for size in ('small','large')}
+    return {size:make(layout,size,spec,metrics,printer,title,now,art) for size in layout}
 
 def compact_frames(widgets):
     """Share identical PNGs across sizes, instances and profiles in one atomic update."""

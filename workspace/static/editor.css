@@ -163,6 +163,7 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 
 .canvas-widget.native-preview:has(.package-scene){padding:0}.package-scene{display:block;width:100%;height:100%;object-fit:fill}
 
+.package-expanded-preview canvas.package-scene{width:100%;height:auto}
 .nozzle-grid{grid-auto-rows:1fr}
 .nozzle-grid .bambu-temperature{align-content:center;padding-block:calc(10px + var(--cell-padding,0px)/2)}
 .nozzle-grid dd.nozzle-material{font-size:var(--material-size,12px);font-weight:600}

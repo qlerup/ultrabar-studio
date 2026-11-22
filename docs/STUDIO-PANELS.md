@@ -93,3 +93,13 @@ consumes its value. Declare `compatibility.minStudioVersion` of at least
 ### Shared widget layouts
 
 Panel API 2 accepts a `layout` object with a `large` and a `small` array. Each array declares up to 32 layers drawn in order. Use coordinates on a 260 by 240 canvas for large cards and 130 by 120 for small cards. Each layer declares an `op` and a `box` containing x, y, width and height. Supported operations are text, rect, bar, image and time. Bind a color to a field with `$fieldName`, text to a value with `@fieldName`, and visibility with `when`. For example, `{"op":"rect","box":[4,4,50,20],"color":"$plateColor"}` draws a plate in the selected color. Time layers continue ticking locally on Core. Studio previews the installed layout and Deploy supplies the same graphics to the home card. Keep the widget ID stable when changing layouts.
+
+### Package-owned expanded panels and sounds
+
+Studio 0.52.23 supports a third layout entry, `expanded`. The same installed JSON renders the expanded view in Studio and on Core. A standalone data-only widget may use `kind: "scene"` and supply its own layout.
+
+Small and large cards can use the same layout language by putting their array under `elements`. Earlier flat layouts continue to work.
+
+Each element has an `op` and a `box` of x, y, width and height in thousandths of its parent. Draw in array order. Use text, rectangles, swatches, progress bars, groups and repeated grids. Grid cells contain child elements. Bind a grid to an array with `source`; choose columns or rows, spacing, and optional fixed keyed slots. Text interpolates paths such as `{item.temperature}`. Paths start at settings, values, printer, metrics, labels or the current grid item. Set `when`, `equals` or `unless` to control visibility. The scope contains current measurements and per-instance settings. Colors accept literal RGB, a setting prefixed by a dollar sign or a data path prefixed by @. The Bambu source package includes a complete working layout.
+
+The optional `studio.sounds` object maps event names to arrays of [frequencyHz, durationMs]. A zero frequency is silence. Printer success and error events use the package's success and error sequences. Supported event sources and device operations are platform capabilities. Package design, text, colors, arrangement, and melodies can change in a package-only update. Keep the minimum Studio version pinned to the capabilities the package actually uses.
