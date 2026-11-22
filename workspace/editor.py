@@ -14,6 +14,7 @@ import bridge
 from library_icons import CoreIcons
 import widget_images
 import app_settings
+import flip_clock
 from pc_standby import placed as standby_placed
 
 
@@ -626,6 +627,10 @@ def register_editor(server):
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
+            clock_enabled = flip_clock.placed(draft['profiles'], draft.get('background_apps', []))
+            if clock_enabled or flip_clock.placed(rollback['profiles'], rollback['background_apps']):
+                stage('Selecting the Core screensaver...')
+            flip_clock.reconcile(server, server.connection['target'], latest['device_id'], clock_enabled)
             stage('Restarting the Core home screen…')
             target = server.connection['target']
             activated = open_home(server, target, restart=True)

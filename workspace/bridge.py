@@ -72,3 +72,10 @@ def request(target, adb, root, action, data):
         raise ValueError('Unsupported Studio request')
     with Stream(target, adb, root) as stream:
         return stream.query(action, data)
+
+
+def screensaver(target, adb, root, value=None):
+    with Stream(target, adb, root) as stream:
+        if value is None:
+            return stream.query(30740, dict(type='BASE_SET'))
+        return stream.query(30741, dict(type='BASE_SET', value=value))
