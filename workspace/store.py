@@ -18,7 +18,7 @@ from flask import jsonify, request
 import updates
 import screen_sync
 import pc_standby
-import flip_clock
+import core_screensaver
 import app_settings_contract
 import bundle_contract
 import studio_contract
@@ -553,7 +553,6 @@ class Store:
             deferred=p['type']=='corebar-app'
             if screen_sync.applies(p):screen_sync.validate_identity(p)
             if pc_standby.applies(p):pc_standby.validate_identity(p)
-            if flip_clock.applies(p):flip_clock.validate_identity(p)
             with self.lock:
                 old=self.previous_record(p,self.records())
             self.update_job(name=p['name'],version=p['version'],is_update=bool(old and valid_version(p['version'])>valid_version(old['version'])))
@@ -638,7 +637,7 @@ class Store:
                 screen_sync.configure(server, target, prepared, launch=False)
             elif background is not None:screen_sync.configure(server,target,prepared,settings=background.get('settings',{}),background=True)
             else:screen_sync.configure(server, target, prepared)
-        elif background is not None and not (pc_standby.applies(p) or flip_clock.applies(p)):
+        elif background is not None and not pc_standby.applies(p):
             self.start_background(p['android']['packageId'],background.get('settings',{}))
 
     def start_core_install(self, body):
@@ -686,7 +685,7 @@ class Store:
     def stop_removed_background(self,previous,current,profiles=None):
         visible={w['id'] for p in profiles or [] for w in p.get('homeData',[]) if w.get('type')=='APPS'}
         removed={a['id'] for a in previous}-{a['id'] for a in current}-visible
-        for package_id in sorted(removed - {pc_standby.PACKAGE_ID, flip_clock.PACKAGE_ID}):
+        for package_id in sorted(removed - {pc_standby.PACKAGE_ID}):
             if package_id==screen_sync.PACKAGE_ID:screen_sync.start_sync(self.server,self.server.connection['target'],False)
             else:self.server.adb('-s',self.server.connection['target'],'shell','am','force-stop',package_id)
 
@@ -736,6 +735,7 @@ class Store:
             requested.add(package['android']['packageId'])
         if not requested:return
         plan=[];existing_background=[]
+        screensaver = None
         for package_id in sorted(requested):
             if not ANDROID_ID.fullmatch(package_id):raise StoreError('Invalid Core app widget. Add the app from the library again.')
             p=dependencies.get(package_id)
@@ -743,10 +743,6 @@ class Store:
                 if not p or not pc_standby.applies(p) or p['android']['versionCode'] < pc_standby.MIN_VERSION:
                     raise StoreError('Update PC Standby from the Store, then Deploy to enable Studio monitoring.')
                 pc_standby.validate_identity(p)
-            if package_id == flip_clock.PACKAGE_ID:
-                if not p or not flip_clock.applies(p):
-                    raise StoreError('Install Flip Clock HD from the Store before deploying it.')
-                flip_clock.validate_identity(p)
             if p is None:
                 # Old profiles can contain app placeholders even after an APK was
                 # removed. Preserve those as before; only staged Store apps and
@@ -763,11 +759,22 @@ class Store:
                 raise StoreError('Add the missing Core app to the Studio library before deploying: '+package_id)
             if p.get('android',{}).get('packageId')!=package_id:raise StoreError('Invalid Core app library package.')
             notify('Verifying '+p['name']+'…')
-            plan.append((self.verified_app_path(p),p))
-        for path,p in plan:
-            notify('Preparing '+p['name']+' on CoreBAR…')
-            self.install_on_core(path,p,device,notify,background=background.get(p['android']['packageId']))
-        for package_id in existing_background:self.start_background(package_id,background[package_id].get('settings',{}))
+            path = self.verified_app_path(p)
+            service = core_screensaver.candidate(self.server, path, p)
+            if (p.get('original_id', p['id']) == core_screensaver.LEGACY_ID and service is None):
+                raise StoreError('Update Flip Clock HD from the Store before deploying its Core-side service.')
+            if service:
+                if screensaver is not None:
+                    raise StoreError('Choose one Core screensaver and remove the other before deploying.')
+                screensaver = service
+            plan.append((path, p, service))
+        for path, p, service in plan:
+            notify('Preparing '+p['name']+'…')
+            placement = None if service else background.get(p['android']['packageId'])
+            self.install_on_core(path, p, device, notify, background=placement)
+        for package_id in existing_background:
+            self.start_background(package_id, background[package_id].get('settings', {}))
+        return screensaver
 
     def remove_plugin(self,package_id):
         with self.lock:

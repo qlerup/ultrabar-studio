@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.52.29 Windows
+# UltraBar Studio — 0.52.30 Windows
+
+## 0.52.30 update
+
+Deploy activates reviewed Core-side screensaver apps that implement the generic
+screensaver contract. The selected Core app runs its own idle timer and handles
+touch while Studio is closed. Updating Flip Clock HD to 1.1.0 and deploying
+again moves existing installations to this mode.
 
 ## 0.52.29 update
 

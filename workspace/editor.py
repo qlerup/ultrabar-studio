@@ -14,7 +14,7 @@ import bridge
 from library_icons import CoreIcons
 import widget_images
 import app_settings
-import flip_clock
+import core_screensaver
 from pc_standby import placed as standby_placed
 
 
@@ -583,18 +583,10 @@ def register_editor(server):
             wake_for_deploy(server, server.connection['target'])
             stage('Preparing widget pictures on Core...')
             widget_images.deploy_pictures(server,draft['profiles'],server.connection['target'])
-            server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))
+            screensaver = server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))
             server.store.stop_removed_background(rollback['background_apps'],draft.get('background_apps',[]),draft['profiles'])
             stage('Applying app settings and waiting for confirmation...')
-            app_values = app_settings.deployment_values(server, draft)
-            clock_enabled = flip_clock.placed(draft['profiles'], draft.get('background_apps', []))
-            if clock_enabled and flip_clock.PACKAGE_ID not in app_values:
-                settings = app_settings.definitions(server).get(flip_clock.PACKAGE_ID)
-                if not settings:
-                    raise EditError('Install Flip Clock HD with Studio settings from the Store.')
-                app_values[flip_clock.PACKAGE_ID] = app_settings.exchange(
-                    server, flip_clock.PACKAGE_ID, settings['schema'])
-            app_settings.deploy(server, app_values)
+            app_settings.deploy(server, app_settings.deployment_values(server, draft))
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'], core_layouts)
@@ -635,10 +627,10 @@ def register_editor(server):
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
-            if clock_enabled or flip_clock.placed(rollback['profiles'], rollback['background_apps']):
-                stage('Selecting the Core screensaver...')
-            flip_clock.reconcile(server, server.connection['target'], latest['device_id'], clock_enabled,
-                                 app_values.get(flip_clock.PACKAGE_ID, {}).get('idleDelay'))
+            target = server.connection['target']
+            if screensaver:
+                stage('Configuring the Core screensaver...')
+            core_screensaver.reconcile(server, target, latest['device_id'], screensaver)
             stage('Restarting the Core home screen…')
             target = server.connection['target']
             activated = open_home(server, target, restart=True)
@@ -655,6 +647,8 @@ def register_editor(server):
                     server.native_widgets.ready.wait(8)
             activated = home_visible(server, target)
             widgets_ready = not needs_runtime or server.native_widgets.ready.is_set()
+            if screensaver:
+                core_screensaver.activate(server, target, latest['device_id'], screensaver)
             if not activated:
                 note = 'Studio could not confirm the Core home screen after reopening it. Your layout is already saved.'
             elif not widgets_ready:
