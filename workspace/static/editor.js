@@ -1130,7 +1130,8 @@
       const response=await fetch('/api/editor/deploy',{method:'POST',headers:{'X-Studio-Token':token,'Content-Type':'application/json'},body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,request_id:requestId})});
       const data=await response.json();if(!response.ok)throw new Error(data.error||'Deployment failed.');
       draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);label.textContent=data.message;
-      box.dataset.state='success';$('deploy-progress-title').textContent='Deployment complete';close.textContent='Done';
+      const complete=data.activated===true && data.widgets_ready===true;
+      box.dataset.state=complete?'success':'error';$('deploy-progress-title').textContent=complete?'Deployment complete':data.activated?'Layout saved - widgets pending':'Layout saved - home unavailable';close.textContent='Done';
       $('deploy-progress-help').textContent='You can close this window and continue editing.';
       setTimeout(()=>{captureScreen();captureCubes();},1000);
     }catch(error){box.dataset.state='error';$('deploy-progress-title').textContent='Deployment interrupted';close.textContent='Close';$('deploy-progress-help').textContent='Review the message above before trying again.';label.textContent=error.message;message(error.message,true);}

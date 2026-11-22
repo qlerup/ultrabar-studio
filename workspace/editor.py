@@ -38,6 +38,32 @@ def wake_for_deploy(server, target):
     raise server.DeviceError('Core did not leave standby. No settings were sent. Wake the screen and try Deploy again.')
 
 
+def home_visible(server, target):
+    try:
+        window = server.adb('-s', target, 'shell', 'dumpsys', 'window')
+        focus = r'^\s*mCurrentFocus=Window\{[^\n}]* com\.ultrabar\.launch/(?:com\.ultrabar\.launch)?\.ui\.activity\.HomeActivity[ }]'
+        return isinstance(window, str) and re.search(focus, window, re.MULTILINE) is not None
+    except server.DeviceError:
+        return False
+
+
+def open_home(server, target, restart):
+    # am start can time out after Android accepts the intent. Inspect the foreground
+    # window before retrying. Only the initial launch should stop the old process.
+    flags = ['-S'] if restart else []
+    try:
+        server.adb('-s', target, 'shell', 'am', 'start', '-W', *flags, '-n',
+                   'com.ultrabar.launch/.ui.activity.MainActivity')
+    except server.DeviceError:
+        pass
+    for attempt in range(12):
+        if home_visible(server, target):
+            return True
+        if attempt < 11:
+            time.sleep(.5)
+    return False
+
+
 def clean(value):
     # Never pass Fastjson class selectors supplied by the browser to LineOS.
     if isinstance(value, dict):
@@ -601,25 +627,30 @@ def register_editor(server):
             # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
             # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
             stage('Restarting the Core home screen…')
-            activated = False
-            try:
-                result = server.adb('-s', server.connection['target'], 'shell', 'am', 'start', '-W', '-S', '-n',
-                                    'com.ultrabar.launch/.ui.activity.MainActivity')
-                activated = isinstance(result, str) and 'Status: ok' in result
-            except server.DeviceError:
-                pass
-            stage('Waiting for widgets to become ready…')
-            server.native_widgets.configure(verified, server.connection['target'], core_layouts)
+            target = server.connection['target']
+            activated = open_home(server, target, restart=True)
+            stage('Waiting for widgets to become ready...')
+            server.native_widgets.configure(verified, target, core_layouts)
             needs_runtime = bool(server.native_widgets.specs or core_layouts)
-            if needs_runtime:
+            if activated and needs_runtime:
                 server.native_widgets.ready.wait(8)
-            native_note = '' if not needs_runtime or server.native_widgets.ready.is_set() else ' Studio is waiting for Core home to apply the widget layout; keep Studio connected.'
+            # Home can crash after the initial launch, while restoring its widgets.
+            if not home_visible(server, target):
+                stage('Opening the Core home screen again...')
+                activated = open_home(server, target, restart=False)
+                if activated and needs_runtime:
+                    server.native_widgets.ready.wait(8)
+            activated = home_visible(server, target)
+            widgets_ready = not needs_runtime or server.native_widgets.ready.is_set()
+            if not activated:
+                note = 'Studio could not confirm the Core home screen after reopening it. Your layout is already saved.'
+            elif not widgets_ready:
+                note = 'Core home is open. Studio is still waiting for the widgets. Keep Studio connected.'
+            else:
+                note = 'Core home is open with the updated layout.'
             server.store.mark_deployed(latest['device_id'],package_plan)
-            if not activated:native_note+=' Core home still needs a restart before updated widgets are visible.'
             return jsonify(draft=new_draft, snapshot=snapshot, backup=latest['backup'], acknowledged=acknowledged,
-                           activated=activated, message='Settings saved and verified. '+
-                           ('Core home restarted to load the new layout. Test changed module inputs on your hardware.' if activated else
-                            'Core home could not be restarted. Restart LineOS to activate the new layout.')+native_note)
+                           activated=activated, widgets_ready=widgets_ready, message='Settings saved and verified. '+note)
 
     @app.post('/api/editor/restore-draft')
     def restore_draft():

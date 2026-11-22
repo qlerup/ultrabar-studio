@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.15 Windows
+# UltraBar Studio — 0.52.16 Windows
+
+## 0.52.16 update
+
+- Verify that Core home is visible after deployment. Reopen it once if startup fails and report pending widgets separately from a completed deployment.
 
 ## 0.52.15 update
 

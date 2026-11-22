@@ -160,8 +160,18 @@ class NativeWidgets:
         assets = self.server.ROOT / 'assets/native'
         if hashlib.sha256((assets/'studio-runtime').read_bytes()).hexdigest() != RUNTIME_SHA:
             raise EditError('Native runtime integrity check failed. Reinstall Studio.')
-        adb('-s', target, 'push', str(assets/'studio-widgets.dex'), '/data/local/tmp/studio-widgets.dex')
-        adb('-s', target, 'shell', 'chmod', '644', '/data/local/tmp/studio-widgets.dex')
+        # An open launcher can still have the old file mapped during deployment.
+        # Publish the new file by rename so readers retain a complete old image.
+        staged = '/data/local/tmp/studio-widgets-' + uuid.uuid4().hex + '.tmp'
+        try:
+            adb('-s', target, 'push', str(assets/'studio-widgets.dex'), staged)
+            adb('-s', target, 'shell', 'chmod', '644', staged)
+            adb('-s', target, 'shell', 'mv', staged, '/data/local/tmp/studio-widgets.dex')
+        finally:
+            try:
+                adb('-s', target, 'shell', 'rm', '-f', staged)
+            except self.server.DeviceError:
+                pass
         present = adb('-s', target, 'shell', 'ls', '/data/local/tmp')
         if 'studio-runtime-16.7.19' not in present.split():
             adb('-s', target, 'push', str(assets/'studio-runtime'), RUNTIME)

@@ -26,6 +26,9 @@ class EditorTests(unittest.TestCase):
         self.client=server.app.test_client();self.headers={'Host':'127.0.0.1:8741','X-Studio-Token':server.SESSION_TOKEN}
         self.draft=self.client.get('/api/editor',headers=self.headers).json['draft']
         self.wake=patch.object(editor,'wake_for_deploy');self.wake_mock=self.wake.start();self.addCleanup(self.wake.stop)
+        home = patch.object(editor,'home_visible',return_value=True)
+        self.visible = home.start()
+        self.addCleanup(home.stop)
         for method in ('prepare','configure'):
             patcher=patch.object(server.native_widgets,method);patcher.start();self.addCleanup(patcher.stop)
 
@@ -176,6 +179,25 @@ class EditorTests(unittest.TestCase):
             response=self.post('/api/editor/deploy')
         self.assertEqual(response.status_code,200)
         self.assertEqual(order,['backup','wake','write'])
+
+    def test_late_home_crash_reopens_without_resending_layout(self):
+        self.visible.side_effect = [True, False, True, True]
+        with patch.object(server,'read_snapshot',return_value=self.snapshot), patch.object(editor.bridge,'request') as write, patch.object(server,'adb',return_value=b'x') as adb, patch.object(server,'parse_profiles',return_value={'profiles':profiles()}):
+            result = self.post('/api/editor/deploy')
+        self.assertTrue(result.json['activated'])
+        starts = [call.args for call in adb.call_args_list if 'start' in call.args]
+        self.assertEqual(len(starts), 2)
+        self.assertIn('-S', starts[0])
+        self.assertNotIn('-S', starts[1])
+        write.assert_called_once()
+
+    def test_missing_home_preserves_verified_layout_with_partial_status(self):
+        self.visible.return_value = False
+        with patch.object(editor.time,'sleep'), patch.object(server,'read_snapshot',return_value=self.snapshot), patch.object(editor.bridge,'request') as write, patch.object(server,'adb',return_value=b'x'), patch.object(server,'parse_profiles',return_value={'profiles':profiles()}):
+            result = self.post('/api/editor/deploy')
+        self.assertFalse(result.json['activated'])
+        self.assertEqual(result.json['draft']['profiles'], profiles())
+        write.assert_called_once()
 
     def test_progress_can_be_read_while_deploy_holds_device_lock(self):
         def waking(*args):
