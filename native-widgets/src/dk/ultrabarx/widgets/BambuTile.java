@@ -289,7 +289,7 @@ public final class BambuTile {
             View swatch;
             String lastColor = "";
 
-            TemperatureTile(int tint, int rowHeight) {
+            TemperatureTile(int tint, int rowHeight, int materialSize, int swatchSize) {
                 super(WaterLayer.this.getContext());
                 setOrientation(VERTICAL);
                 setGravity(Gravity.CENTER);
@@ -322,13 +322,13 @@ public final class BambuTile {
                     reading.setPadding(5,0,0,0);
                     LinearLayout footer=new LinearLayout(getContext());
                     footer.setGravity(Gravity.CENTER);
-                    filament=txt("",11,foreground,false);
+                    filament=txt("",materialSize,foreground,true);
                     footer.addView(filament);
                     swatch=new View(getContext());
-                    LinearLayout.LayoutParams chip=new LinearLayout.LayoutParams(9,9);
-                    chip.leftMargin=5;
+                    LinearLayout.LayoutParams chip=new LinearLayout.LayoutParams(swatchSize,swatchSize);
+                    chip.leftMargin=8;
                     footer.addView(swatch,chip);
-                    addView(footer,new LinearLayout.LayoutParams(-1,16));
+                    addView(footer,new LinearLayout.LayoutParams(-1,Math.max(materialSize+6,swatchSize+4)));
                     setPadding(2,1,2,2);
                 } else addView(reading, new LinearLayout.LayoutParams(-1, Math.min(36, rowHeight - 15)));
             }
@@ -354,15 +354,27 @@ public final class BambuTile {
             }
         }
 
-        private int lastMinimumRows;
+        private int lastMinimumRows, lastMaterialSize, lastSwatchSize, lastInset;
         private void layoutTemperatures(int nozzleCount) {
             int total = nozzleCount + 2;
             JSONObject current = widgetSpecs.optJSONObject(spec.optString("_widgetId"));
             JSONObject presentation = (current == null ? spec : current).optJSONObject("_presentation");
             int minimum = presentation == null ? 1 : Math.max(1, Math.min(3, presentation.optInt("minTemperatureRows", 1)));
             boolean grid = minimum > 1;
-            if (temperatureTiles.size() == (grid ? nozzleCount : total) && minimum == lastMinimumRows) return;
+            JSONObject style = grid ? presentation.optJSONObject("nozzleGrid") : null;
+            int materialSize = style == null ? 11 : style.optInt("materialSize",11);
+            int swatchSize = style == null ? 9 : style.optInt("swatchSize",9);
+            int inset = style == null ? 14 : style.optInt("verticalInset",14);
+            if (materialSize == lastMaterialSize && swatchSize == lastSwatchSize && inset == lastInset
+                    && temperatureTiles.size() == (grid ? nozzleCount : total) && minimum == lastMinimumRows) return;
             lastMinimumRows = minimum;
+            lastMaterialSize = materialSize;
+            lastSwatchSize = swatchSize;
+            lastInset = inset;
+            body.setPadding(30,inset,30,inset);
+            ViewGroup.LayoutParams nameParams = name.getLayoutParams();
+            nameParams.height = Math.max(24,18+inset);
+            name.setLayoutParams(nameParams);
             temperatureTiles.clear();
             temperatures.removeAllViews();
 
@@ -385,7 +397,7 @@ public final class BambuTile {
                         LinearLayout.LayoutParams cp=new LinearLayout.LayoutParams(0,-1,1);
                         if(col>0)cp.leftMargin=3;
                         if(r*columns+col < nozzleCount){
-                            TemperatureTile tile=new TemperatureTile(0xffffbc8c,0);
+                            TemperatureTile tile=new TemperatureTile(0xffffbc8c,0,materialSize,swatchSize);
                             row.addView(tile,cp);
                             temperatureTiles.add(tile);
                         }else row.addView(new View(getContext()),cp);
@@ -409,7 +421,7 @@ public final class BambuTile {
                 for (int column = 0; column < rowSize; column++) {
                     int index = temperatureTiles.size();
                     int tint = index < nozzleCount ? 0xffffbc8c : index == nozzleCount ? 0xffe6d58f : 0xffa4bdd1;
-                    TemperatureTile tile = new TemperatureTile(tint, height);
+                    TemperatureTile tile = new TemperatureTile(tint,height,materialSize,swatchSize);
                     LinearLayout.LayoutParams tileParams = new LinearLayout.LayoutParams(0, -1, 1);
                     if (column > 0) tileParams.leftMargin = 4;
                     row.addView(tile, tileParams);

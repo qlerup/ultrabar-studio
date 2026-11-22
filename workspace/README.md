@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.20 Windows
+# UltraBar Studio — 0.52.21 Windows
+
+## 0.52.21 update
+
+Widget packages can size the nozzle grid, material labels and filament swatches in the expanded card and layout preview.
 
 ## 0.52.20 update
 

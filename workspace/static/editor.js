@@ -543,6 +543,12 @@
         const columns=Math.ceil(Math.max(1,readings.length)/presentation.minTemperatureRows);
         temperatures.style.gridTemplateColumns='repeat('+columns+',minmax(0,1fr))';
         temperatures.classList.add('nozzle-grid');
+        if(presentation.nozzleGrid){
+          const {materialSize,swatchSize,verticalInset}=presentation.nozzleGrid;
+          temperatures.style.setProperty('--material-size',materialSize+'px');
+          temperatures.style.setProperty('--swatch-size',swatchSize+'px');
+          temperatures.style.setProperty('--cell-padding',(14-verticalInset)+'px');
+        }
       }
       const temperature=value=>Number.isFinite(value)?Math.round(value)+'°C':'—';
       function addTemperature(label,value){

@@ -230,6 +230,8 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any('nozzleGrid' in preset for w in widgets for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,21):
+        raise StoreError('Nozzle grid dimensions require Studio 0.52.21+.')
     if any(w.get('studio', {}).get('api') == 2 for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,18):
         raise StoreError('Package-defined widget settings require Studio 0.52.18+.')
 

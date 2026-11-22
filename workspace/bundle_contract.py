@@ -8,6 +8,8 @@ def validate(manifest,parse):
     descriptor=manifest['bundledWidgets']
     if not isinstance(descriptor,dict):raise ValueError('bundledWidgets must be a widget.json object.')
     templates=parse(json.dumps(descriptor).encode())
+    if any('nozzleGrid' in preset for w in templates for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,21):
+        raise ValueError('Nozzle grid dimensions require Studio 0.52.21+.')
     if any(w.get('studio', {}).get('api') == 2 for w in templates) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,18):
         raise ValueError('Package-defined widget settings require Studio 0.52.18+.')
     if any('splitFlap' in p for w in templates for p in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0, 52, 17):

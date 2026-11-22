@@ -27,11 +27,19 @@ def validate(presentation, panel):
         raise ValueError('presentation: declare 1-32 presets.')
     seen = set()
     for preset in presets:
-        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap', 'minTemperatureRows'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
+        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
             raise ValueError('presentation: presets must name distinct declared choices.')
         seen.add(preset['value'])
         if 'minTemperatureRows' in preset and (panel.get('api') != 2 or type(preset['minTemperatureRows']) is not int or not 1 <= preset['minTemperatureRows'] <= 3):
             raise ValueError('Temperature rows must be between one and three.')
+        if 'nozzleGrid' in preset:
+            grid = preset['nozzleGrid']
+            bounds = {'materialSize': (10, 20), 'swatchSize': (8, 22), 'verticalInset': (4, 14)}
+            if (panel.get('api') != 2 or preset.get('minTemperatureRows', 1) < 2
+                    or not isinstance(grid, dict) or set(grid) != set(bounds)
+                    or any(type(grid[k]) is not int or not low <= grid[k] <= high
+                           for k, (low, high) in bounds.items())):
+                raise ValueError('Invalid nozzle grid dimensions.')
         if 'splitFlap' in preset:
             face = preset['splitFlap']
             if not isinstance(face, dict) or set(face) - {'plateColor', 'durationMs', 'plateColorSetting'} or not {'plateColor','durationMs'} <= set(face):
@@ -73,7 +81,7 @@ def resolve(presentation, settings, connection=None):
     selected = (settings.get('packageSettings', {}).get(source['key'], values.get(source['key']))
                 if source['scope'] == 'setting' else values.get(source['key']))
     preset = next((p for p in presentation['presets'] if p['value'] == selected), {})
-    result = {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap', 'minTemperatureRows') if key in preset}
+    result = {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid') if key in preset}
     face = result.get('splitFlap', {})
     color = settings.get('packageSettings', {}).get(face.pop('plateColorSetting', None))
     if isinstance(color,str) and re.fullmatch(r'#[0-9a-fA-F]{6}', color):
