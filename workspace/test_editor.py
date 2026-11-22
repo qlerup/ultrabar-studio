@@ -20,6 +20,9 @@ class EditorTests(unittest.TestCase):
     def setUp(self):
         self.folder=tempfile.TemporaryDirectory()
         self.addCleanup(self.folder.cleanup)
+        screensaver = patch.object(editor.core_screensaver, 'reconcile')
+        screensaver.start()
+        self.addCleanup(screensaver.stop)
         self.patch=patch.object(server,'DATA_DIR',Path(self.folder.name));self.patch.start();self.addCleanup(self.patch.stop)
         self.snapshot=dict(target='10.10.0.181:5555',device_id='core1',profiles=profiles(),backup='a'*64+'.xml')
         self.conn=patch.dict(server.connection,dict(target=self.snapshot['target'],snapshot=self.snapshot));self.conn.start();self.addCleanup(self.conn.stop)

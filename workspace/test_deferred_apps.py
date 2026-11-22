@@ -29,6 +29,9 @@ class DeferredAppTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
+        screensaver = patch.object(editor.core_screensaver, 'reconcile')
+        screensaver.start()
+        self.addCleanup(screensaver.stop)
         for patcher in [patch.object(server, 'DATA_DIR', Path(self.tmp.name)), patch.dict(server.connection, target=None, snapshot=None)]:
             patcher.start(); self.addCleanup(patcher.stop)
         self.service = store.Store(server)
