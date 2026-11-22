@@ -148,7 +148,7 @@ class BambuBrowserTests(unittest.TestCase):
             preview=page.locator('#core-canvas .bambu-preview')
             expect(preview.locator('.native-title')).to_have_text('H2C workshop')
             expect(preview.locator('.native-source')).to_have_text('Complete')
-            expect(preview.locator('.bambu-live')).to_have_text('Live')
+            expect(preview.get_by_text('Live', exact=True)).to_have_count(0)
             expect(preview.locator('.native-value')).to_have_text('100%')
             for width in (1600,390):
                 page.set_viewport_size(dict(width=width,height=1000))

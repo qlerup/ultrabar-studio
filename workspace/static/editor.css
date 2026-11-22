@@ -49,7 +49,6 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .bambu-preview{--bambu-art-size:min(86px,34%)}
 .bambu-preview .native-title{position:absolute;left:32px;right:62px;top:17px;font-weight:500}
 .bambu-preview::before{content:'';position:absolute;left:19px;top:23px;width:6px;height:6px;border-radius:50%;background:var(--widget-accent)}
-.bambu-preview .bambu-live{position:absolute;right:16px;top:17px;color:var(--widget-accent);font-size:10px}
 .bambu-preview .package-artwork{right:16px;top:54px;width:var(--bambu-art-size);height:auto;aspect-ratio:1;object-fit:contain}
 .bambu-preview .native-value,.bambu-preview .native-source{position:absolute;left:20px;right:18px;max-width:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .bambu-preview:has(.package-artwork) :is(.native-value,.native-source){right:calc(24px + var(--bambu-art-size));max-width:none}

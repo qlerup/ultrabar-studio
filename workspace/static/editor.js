@@ -640,7 +640,6 @@
       card.classList.add('bambu-preview');
       const unfold=el('span','bambu-unfold','Tap to unfold'),arrow=el('span','bambu-unfold-arrow','↗');
       arrow.setAttribute('aria-hidden','true');unfold.append(arrow);
-      if(printer.live)card.append(el('span','bambu-live','Live'));
       card.append(el('span','native-value'+(primary==='progress'?' bambu-percent':''),printer.live?printer.primary:'—'),
         el('span','native-source',printer.live?labels[primary]||printer.status:printer.status),el('span','native-detail',printer.secondary),
         bar(printer.progress),unfold);

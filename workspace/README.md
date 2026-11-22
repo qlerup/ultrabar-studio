@@ -2,7 +2,7 @@
 
 ## 0.52.19 update
 
-Core App cards now use the library and Deploy workflow. The separate Install on Core button has been removed.
+Core App cards now use the library and Deploy workflow. The separate Install on Core button has been removed. The preview for older Bambu widgets also drops the Live label.
 
 ## 0.52.18 update
 
