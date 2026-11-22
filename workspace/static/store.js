@@ -40,8 +40,9 @@
       title.append(el('p','muted store-publisher',p.origin==='local'?'MANUAL APP / Not Store reviewed':p.publisher?'Uploaded by @'+p.publisher:'Uploader unavailable'));
       card.append(heading,el('p','store-card-description',p.description),el('p','muted',`Version ${p.version}${saved?' / In library: '+saved.version:''}`));
       if(needsStudio(p))card.append(el('p','store-version-notice',`Requires Studio ${p.compatibility.minStudioVersion} or newer. You have ${studioVersion}. Update Studio to use this ${p.type==='corebar-widget'?'widget':'app'}.`));
-      if(pendingDeploy[p.id]){const notice=el('p','store-deploy-notice','Available in your library. Deploy required on Core.');notice.setAttribute('role','status');card.append(notice);}
-      if(p.type==='corebar-app')card.append(el('p','muted','Install into your library. Add the app to your Core layout, then Deploy to install it on CoreBAR.'));
+      const standalone=saved?.type==='corebar-app'&&saved.deferred&&!saved.bundledWidgets;
+      if(pendingDeploy[p.id]){const notice=el('p','store-deploy-notice',standalone?'Available in your library. Ready to install on Core.':'Available in your library. Deploy required on Core.');notice.setAttribute('role','status');card.append(notice);}
+      if(p.type==='corebar-app'&&!saved)card.append(el('p','muted','Add the app to your library first. Standalone apps can be installed on Core without a layout change.'));
       let badges=null;if(p.links?.repository&&p.artifact?.url){badges=el('div','store-badges');badges.dataset.id=p.id;badges.setAttribute('aria-live','polite');for(const kind of ['downloads','issues']){const badge=el('span','store-stat');badge.dataset.stat=kind;badges.append(badge);}statsPackages.set(p.id,p);card.append(badges);}
       if(p.license)card.append(el('p','muted','License: '+p.license));
       if(p.compatibility)card.append(el('p','muted',`Requires Studio ${p.compatibility.minStudioVersion}+${p.compatibility.models?.length?' / '+p.compatibility.models.join(', '):''}`));
@@ -53,6 +54,12 @@
         b.onclick=()=>needsStudio(p)?openStudioUpdate(p):confirmInstall(p);tools.append(b);
       }
       if(saved){
+        if(standalone){
+          const install=el('button','','Install on Core');
+          install.disabled=active||!snapshot?.device_id||needsStudio(saved);
+          if(!snapshot?.device_id)install.title='Connect a CoreBAR to install this app.';
+          install.onclick=()=>confirmCoreInstall(saved);tools.append(install);
+        }
         if(pendingDeploy[p.id]){const deploy=el('button','','Review & deploy');deploy.disabled=active||needsStudio(p);deploy.onclick=()=>openDeploy(snapshot?.device_id);tools.append(deploy);}
         const remove=el('button','','Remove from library');remove.disabled=active;
         remove.onclick=async()=>{if(!confirm('Remove this package from the library? Existing draft and deployed widgets are kept. Remove them from your layout and Deploy to remove them from Core.'))return;try{await api('/api/store/remove-plugin',{method:'POST',body:JSON.stringify({id:p.id})});await local();window.dispatchEvent(new Event('studio-store-changed'));status('Package removed from library.');}catch(e){status(e.message,true);}};tools.append(remove);
@@ -78,10 +85,23 @@
     pending={id:p.id,version:p.version,sha256:p.artifact.sha256};
     if(p.origin==='local')pending.local=true;
     if(p.localToken){pending.token=p.localToken;pending.local=true;}
-    const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?'Add this app to your Studio library on this PC. No CoreBAR connection is needed. Add its widget to your layout and Deploy to install the app on Core.':p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions on Core during Deploy: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
+    const box=$('store-install-summary');box.replaceChildren(el('p','',p.name+' '+p.version),el('p','',p.type==='corebar-app'?'Add this app to your Studio library on this PC. No CoreBAR connection is needed. Use Install on Core for a standalone app, or place its widget and Deploy.':p.type==='corebar-widget'?'Add this package to Studio & App Store. Drag a widget onto the bar, edit its settings, then Deploy to activate it on Core.':'Install widget presets on this PC.'),el('p','',p.permissions.length?'Permissions on Core: '+p.permissions.join(', '):'Permissions: none'),el('p','muted','License: '+p.license));
     if(p.origin==='local')box.prepend(el('p','','Local development package. This folder has not been reviewed by the Store. Local widgets use a separate library identity; an APK updates the same Android app if already installed.'));
     if(p.id==='studio.vivo.screensync'||p.original_id==='studio.vivo.screensync')box.append(el('p','', 'During Deploy, setup uses root ADB and your existing approved Studio bridge connection to configure online VivoCubes. Existing app preferences are preserved. Open the widget and choose Follow Core to enable syncing.'));
     $('store-install-title').textContent=pendingInfo.is_update?'Update package?':'Install package?';$('store-install-confirm').textContent=pendingInfo.is_update?'Update':'Install';
+    $('store-install-dialog').showModal();
+  }
+  function confirmCoreInstall(app){
+    if(!snapshot?.device_id)return;
+    pendingInfo={coreInstall:true};
+    pending={id:app.id,device_id:snapshot.device_id,sha256:app.artifact.sha256};
+    const summary=$('store-install-summary');
+    summary.replaceChildren(el('p','',app.name+' '+app.version),
+      el('p','','Install on '+snapshot.model+' ('+snapshot.target+'). Open the app from CoreBAR once installation completes.'),
+      el('p','',app.permissions.length?'Permissions on Core: '+app.permissions.join(', '):'Permissions: none'));
+    if(app.origin==='local')summary.prepend(el('p','','This manual app has not been reviewed by the Store.'));
+    $('store-install-title').textContent='Install app on Core?';
+    $('store-install-confirm').textContent='Install on Core';
     $('store-install-dialog').showModal();
   }
   function showUpdate(value){
@@ -114,7 +134,7 @@
   $('store-progress-deploy').onclick=()=>{$('store-progress').close();openDeploy(progressDevice,true);};
   $('store-install-confirm').onclick=async()=>{const body=pending,info=pendingInfo;if(!body)return;pending=null;pendingInfo=null;$('store-install-dialog').close();
     if(info?.is_update){progressId=null;progressClosedEarly=false;progressDevice=snapshot?.device_id||null;showUpdate({...info,state:'running',message:'Starting update…'});}
-    try{job=await(await api(body.local?'/api/store/local/install':'/api/store/install',{method:'POST',body:JSON.stringify(body)})).json();status(job.message);render();if(info?.is_update)showUpdate({...info,...job});if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));}}
+    try{const endpoint=info?.coreInstall?'/api/store/install-on-core':body.local?'/api/store/local/install':'/api/store/install';job=await(await api(endpoint,{method:'POST',body:JSON.stringify(body)})).json();status(job.message,job?.state==='error');render();if(info?.is_update)showUpdate({...info,...job});if(job?.state!=='running'){await local();window.dispatchEvent(new Event('studio-store-changed'));}}
     catch(e){status(e.message,true);if(info?.is_update)showUpdate({...info,state:'error',message:e.message});}
   };
   function manualControls(){

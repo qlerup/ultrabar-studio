@@ -616,6 +616,41 @@ class Store:
         elif background is not None:
             self.start_background(p['android']['packageId'],background.get('settings',{}))
 
+    def start_core_install(self, body):
+        if (not isinstance(body, dict) or set(body) != {'id', 'device_id', 'sha256'} or
+                not isinstance(body['id'], str) or not ID.fullmatch(body['id']) or
+                not isinstance(body['sha256'], str) or not HEX.fullmatch(body['sha256'])):
+            raise StoreError('Choose an app from your library.')
+        device = (self.server.connection.get('snapshot') or {}).get('device_id')
+        if not device or device != body['device_id']:
+            raise StoreError('Connect to the CoreBAR you want to install on.')
+        with self.lock:
+            if self.job and self.job['state'] == 'running':
+                raise StoreError('Another installation is already running.')
+            record = self.records().get(body['id'] + ':pc', {})
+            if record.get('type') != 'corebar-app' or not record.get('deferred') or record.get('bundledWidgets'):
+                raise StoreError('Choose a standalone Core app from your library.')
+            package = self.dependencies().get(record['android']['packageId'])
+            if not package or package['id'] != record['id'] or (
+                    package['artifact']['sha256'] != body['sha256'] or self.fingerprint(package) != self.fingerprint(record)):
+                raise StoreError('The library app changed. Refresh Store and try again.')
+            self.job = dict(state='running', message='Verifying '+package['name']+'…', id=package['id'],
+                            name=package['name'], version=package['version'], can_cancel=False)
+        threading.Thread(target=self.install_library_app, args=(package, device), daemon=True, name='StudioCoreAppInstall').start()
+        return self.status()
+
+    def install_library_app(self, package, device):
+        try:
+            path = self.verified_app_path(package)
+            with self.server.device_lock:
+                self.install_on_core(path, package, device)
+                self.mark_deployed(device, {package['id']: self.fingerprint(package)})
+            self.update_job(state='complete', message=package['name']+' installed on CoreBAR.')
+        except (StoreError, self.server.DeviceError) as exc:
+            self.update_job(state='error', message=str(exc))
+        except (OSError, ValueError, subprocess.TimeoutExpired):
+            self.update_job(state='error', message='Installation could not be verified. Check the app on CoreBAR before retrying.')
+
     def start_background(self,package_id,settings):
         server=self.server;target=server.connection['target']
         if settings.get('launch',True):
@@ -638,6 +673,25 @@ class Store:
         except FileNotFoundError:return {}
         except (OSError,ValueError) as exc:
             raise StoreError('Could not read the Core app library. Install the required apps again from Store.') from exc
+
+    def verified_app_path(self, package):
+        validate_entry(package)
+        if package['type'] != 'corebar-app':
+            raise StoreError('Invalid Core app library package.')
+        if screen_sync.applies(package):
+            screen_sync.validate_identity(package)
+        compatibility = package['compatibility']
+        if valid_version(compatibility['minStudioVersion']) > valid_version(updates.VERSION) or compatibility['hostApi'] != 1:
+            raise StoreError('Update Studio before installing '+package['name']+'.')
+        artifact = package['artifact']
+        path = self.server.DATA_DIR/'store/app-packages'/(artifact['sha256']+'.apk')
+        try:
+            if path.stat().st_size != artifact['size'] or hashlib.sha256(path.read_bytes()).hexdigest() != artifact['sha256']:
+                raise StoreError('Core app package integrity check failed. Install it again from Store: '+package['name'])
+        except OSError as exc:
+            raise StoreError('Core app package is missing. Install it again from Store: '+package['name']) from exc
+        inspect_apk(self.server, path, package)
+        return path
 
     def deploy_dependencies(self,profiles,device,notify,background_apps=None):
         # No device access or package work unless an app is placed in a profile.
@@ -674,20 +728,9 @@ class Store:
                     if package_id in background:existing_background.append(package_id)
                     continue
                 raise StoreError('Add the missing Core app to the Studio library before deploying: '+package_id)
-            validate_entry(p)
-            if p['type']!='corebar-app' or p['android']['packageId']!=package_id:raise StoreError('Invalid Core app library package.')
-            if screen_sync.applies(p):screen_sync.validate_identity(p)
-            if valid_version(p['compatibility']['minStudioVersion'])>valid_version(updates.VERSION) or p['compatibility']['hostApi']!=1:raise StoreError('Update Studio before deploying '+p['name']+'.')
-            path=self.server.DATA_DIR/'store/app-packages'/(p['artifact']['sha256']+'.apk')
-            try:
-                if path.stat().st_size!=p['artifact']['size']:raise StoreError('Core app package integrity check failed. Install it again from Store: '+p['name'])
-                raw=path.read_bytes()
-            except OSError as exc:raise StoreError('Core app package is missing. Install it again from Store: '+p['name']) from exc
-            if hashlib.sha256(raw).hexdigest()!=p['artifact']['sha256']:
-                raise StoreError('Core app package integrity check failed. Install it again from Store: '+p['name'])
+            if p.get('android',{}).get('packageId')!=package_id:raise StoreError('Invalid Core app library package.')
             notify('Verifying '+p['name']+'…')
-            inspect_apk(self.server,path,p)
-            plan.append((path,p))
+            plan.append((self.verified_app_path(p),p))
         for path,p in plan:
             notify('Preparing '+p['name']+' on CoreBAR…')
             self.install_on_core(path,p,device,notify,background=background.get(p['android']['packageId']))
@@ -737,6 +780,8 @@ def register_store(server):
         return Response(store.icon(digest),mimetype='image/png',headers={'X-Content-Type-Options':'nosniff','Cache-Control':'private, max-age=3600'})
     @server.app.post('/api/store/install')
     def install():return jsonify(store.start(request.get_json(silent=True))),202
+    @server.app.post('/api/store/install-on-core')
+    def install_on_core():return jsonify(store.start_core_install(request.get_json(silent=True))),202
     @server.app.post('/api/store/cancel')
     def cancel_install():return jsonify(job=store.cancel(request.get_json(silent=True)))
     @server.app.post('/api/store/local/preview')

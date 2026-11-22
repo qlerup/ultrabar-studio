@@ -20,3 +20,29 @@ widgets continue using widgetApi 1 and per-block values. From Studio 0.49.0 they
 may own their settings UI and connection panels through a declarative `studio`
 descriptor; see [Studio panels](STUDIO-PANELS.md). Both mechanisms use the shared
 field renderer while retaining their separate setting scopes and transports.
+
+## Runtime and installation ownership
+
+Studio 0.52.15+ can install verified standalone Android apps directly on the
+connected Core with **Install on Core**. Store releases and manually added
+package folders use the same manifest, signature and device checks. This path
+does not deploy a layout or assign an app to start in the background.
+
+| Package | App and widget responsibilities | Studio responsibilities today |
+| --- | --- | --- |
+| Bambu Printer Panel | Core APK owns printer setup, credential storage, LAN telemetry and controls for the selected printer. | Install the APK and optionally relay supported display settings. |
+| Bambu home widget and legacy widget | The data-only package declares the model choices, artwork and per-card settings. Existing cards can follow separate printers. | The current connector owns the PC's saved printer profiles, streams telemetry to Core and relays printer actions. |
+| Vivo Screen Sync | Core APK runs screen sync and persists its mode and wake delay. | Verify the first-party signing identity and provision the approved Core bridge credential. Some older deployments also use a dedicated settings path. |
+| Clock & Date | Package declares time format and date preferences. Core supplies its local time. | Install and restore the shared native card host and relay layout settings. |
+| Drive Usage and System Monitor | Packages declare which readings and formatting to show. | Sample the Windows machine and relay those measurements to Core's native card host. |
+
+Third-party apps can use the standard signed APK workflow without a Studio code
+change. Apps should hold their own secrets, do protocol work in their own process
+and save their own preferences. For PC readings, Studio remains a transport for
+data produced on the PC. Native cards use the supported declarative renderers;
+the Store does not load contributor code into Core's privileged launcher.
+
+The standalone Bambu panel has its own app storage. A future migration of
+existing Bambu cards must preserve their per-printer bindings, saved layouts and
+explicit certificate trust, including deployments where the PC can reach a
+printer but Core cannot. Installing the panel does not perform that migration.

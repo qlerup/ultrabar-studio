@@ -68,6 +68,34 @@ class DeferredAppTests(unittest.TestCase):
             self.service.deploy_dependencies(profiles(), 'core', lambda _: None)
             adb.assert_not_called(); install.assert_not_called()
 
+    def test_library_app_can_install_directly_without_layout_or_background_settings(self):
+        self.package.update(id='publisher.standalone', name='Example app')
+        self.package['android'].update(packageId='dk.example.standalone', signerSha256='a'*64)
+        self.stage()
+        body = dict(id=self.package['id'], device_id='core', sha256=self.package['artifact']['sha256'])
+        with patch.object(server.store, 'job', None), patch.object(server, 'adb') as adb:
+            client = server.app.test_client()
+            headers = {'Host':'127.0.0.1:8741', 'X-Studio-Token':server.SESSION_TOKEN}
+            endpoint = '/api/store/install-on-core'
+            self.assertEqual(client.post(endpoint, headers=headers, json=body).status_code, 400)
+            with patch.dict(server.connection, target='192.168.1.20:5555', snapshot=dict(device_id='core', model='CB01')), \
+                    patch.object(store, 'inspect_apk') as inspect, patch.object(server.store, 'install_on_core') as install:
+                self.assertEqual(client.post(endpoint, headers=headers, json=dict(body,sha256='b'*64)).status_code, 400)
+                with patch.object(store.threading, 'Thread') as thread:
+                    response = client.post(endpoint, headers=headers, json=body)
+                    self.assertEqual(response.status_code, 202, response.json)
+                    thread.return_value.start.assert_called_once()
+                worker = thread.call_args.kwargs
+                worker['target'](*worker['args'])
+                inspect.assert_called_once()
+                install.assert_called_once()
+                self.assertEqual(install.call_args.args[2], 'core')
+                self.assertEqual(install.call_args.kwargs, {})
+                self.assertEqual(server.store.status()['state'], 'complete')
+                self.assertEqual(self.service.pending_deploy('core'), {})
+                self.assertIn(self.package['id'], self.service.pending_deploy('other'))
+            adb.assert_not_called()
+
     def test_any_core_app_can_be_staged_and_deployed_as_background(self):
         self.package.update(id='publisher.example', name='Example app')
         self.package['android'].update(packageId='dk.example.background', signerSha256='a'*64)

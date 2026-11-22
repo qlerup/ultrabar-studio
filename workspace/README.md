@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.14 Windows
+# UltraBar Studio — 0.52.15 Windows
+
+## 0.52.15 update
+
+- Install a standalone Android app from the Studio library directly on Core.
+  Store apps and manually added packages use the same installation checks.
+  Placing a card or deploying a layout is optional for standalone apps.
 
 ## 0.52.14 update
 
