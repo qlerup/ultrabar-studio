@@ -568,7 +568,7 @@ public final class BambuTile {
             }
             String action=s.optString("gcode_state").equals("PAUSE")?"resume":"pause";pause.setText(action.equals("resume")?"▶  Resume":"Ⅱ  Pause");
             boolean controls=spec.optBoolean("showControls",true)&&fresh(s);pause.setEnabled(controls&&s.optBoolean("can_"+action));stop.setEnabled(controls&&s.optBoolean("can_stop"));light.setEnabled(controls&&s.optBoolean("can_"+(s.optString("light").equals("on")?"light_off":"light_on")));
-            String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility("bambu".equals(spec.optString("kind"))&&spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);
+            String reason=s.optString("control_reason","");controlHint.setText(reason);controlHint.setVisibility(!packaged&&"bambu".equals(spec.optString("kind"))&&spec.optBoolean("showControls",true)&&!reason.isEmpty()?VISIBLE:GONE);
             boolean show=spec.optBoolean("showControls",true)&&s.optBoolean("controls")&&fresh(s);
             pause.setVisibility(show&&s.optBoolean("print_controls_available")?VISIBLE:GONE);stop.setVisibility(pause.getVisibility());
             String lightState=s.optString("light");light.setVisibility(show&&(lightState.equals("on")||lightState.equals("off"))?VISIBLE:GONE);

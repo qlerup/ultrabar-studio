@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.24 Windows
+# UltraBar Studio — 0.52.25 Windows
+
+## 0.52.25 update
+
+- Expanded panels supplied by widget packages no longer show the legacy control hint beneath the panel.
 
 ## 0.52.24 update
 
