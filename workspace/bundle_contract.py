@@ -8,6 +8,8 @@ def validate(manifest,parse):
     descriptor=manifest['bundledWidgets']
     if not isinstance(descriptor,dict):raise ValueError('bundledWidgets must be a widget.json object.')
     templates=parse(json.dumps(descriptor).encode())
+    if any(preset.get('images') for w in templates for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,24):
+        raise ValueError('Package image presets require Studio 0.52.24+.')
     if any(w.get('kind')=='scene' or 'sounds' in w.get('studio',{}) or 'expanded' in w.get('studio',{}).get('layout',{}) or any(isinstance(v,dict) for v in w.get('studio',{}).get('layout',{}).values()) for w in templates) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,23):
         raise ValueError('Package panels and sounds require Studio 0.52.23+.')
     if any('sideTemperatures' in preset.get('nozzleGrid', {}) for w in templates for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,22):

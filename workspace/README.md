@@ -6,6 +6,8 @@ Studio reads the installed package library as UTF-8 on Windows. Existing
 package names, descriptions and widget text with Unicode characters remain
 readable after installing or refreshing an app or widget.
 
+- Installed widget packages can select model-specific images and sizes shared by the Studio preview and Core.
+
 ## 0.52.23 update
 
 Installed widget packages can now supply their entire expanded panel and alert tones. Studio and Core display the same package-rendered panel. Widget authors can rearrange readings, add grids or change styles from their own repository.

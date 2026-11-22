@@ -27,7 +27,7 @@ def validate(presentation, panel):
         raise ValueError('presentation: declare 1-32 presets.')
     seen = set()
     for preset in presets:
-        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
+        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid', 'images'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
             raise ValueError('presentation: presets must name distinct declared choices.')
         seen.add(preset['value'])
         if 'minTemperatureRows' in preset and (panel.get('api') != 2 or type(preset['minTemperatureRows']) is not int or not 1 <= preset['minTemperatureRows'] <= 3):
@@ -56,6 +56,24 @@ def validate(presentation, panel):
                 raise ValueError('Invalid split-flap plate color.')
             if type(face['durationMs']) is not int or not 0 <= face['durationMs'] <= 600:
                 raise ValueError('Split-flap duration must be 0-600 milliseconds.')
+        images = preset.get('images', {})
+        if not isinstance(images, dict) or len(images) > 8:
+            raise ValueError('Declare up to eight named image overrides.')
+        for key, image in images.items():
+            if not identifier(key) or not isinstance(image, dict) or not image or set(image) - {'large', 'small', 'asset'}:
+                raise ValueError('Invalid named image override.')
+            for size, (width, height) in {'large': (260, 240), 'small': (130, 120)}.items():
+                if size not in image:
+                    continue
+                box = image[size]
+                if not isinstance(box, list) or len(box) != 4 or any(type(n) is not int for n in box):
+                    raise ValueError('An image override needs an integer rectangle.')
+                x, y, w, h = box
+                if min(x, y) < 0 or min(w, h) < 1 or x + w > width or y + h > height:
+                    raise ValueError('Image override outside widget bounds.')
+            if 'asset' in image and (not isinstance(image['asset'], str)
+                                     or not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_ -]{0,90}\.png', image['asset'])):
+                raise ValueError('A local image asset needs a plain PNG filename.')
         labels = preset.get('labels', {})
         if not isinstance(labels, dict) or len(labels) > 32 or any(not identifier(k) or not isinstance(v, str) or not 1 <= len(v) <= 64 or any(ord(c) < 32 for c in v) for k, v in labels.items()):
             raise ValueError('presentation: labels must be bounded plain text.')
@@ -87,7 +105,7 @@ def resolve(presentation, settings, connection=None):
     selected = (settings.get('packageSettings', {}).get(source['key'], values.get(source['key']))
                 if source['scope'] == 'setting' else values.get(source['key']))
     preset = next((p for p in presentation['presets'] if p['value'] == selected), {})
-    result = {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid') if key in preset}
+    result = {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap', 'minTemperatureRows', 'nozzleGrid', 'images') if key in preset}
     face = result.get('splitFlap', {})
     color = settings.get('packageSettings', {}).get(face.pop('plateColorSetting', None))
     if isinstance(color,str) and re.fullmatch(r'#[0-9a-fA-F]{6}', color):

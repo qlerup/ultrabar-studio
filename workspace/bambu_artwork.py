@@ -50,7 +50,20 @@ def thumbnail(model):
     return None
 
 
-def encode_thumbnail(path):
+@lru_cache(maxsize=32)
+def local_image(filename):
+    # The package selects a filename within an installed provider's image directory.
+    import re
+    if not re.fullmatch(r'[a-zA-Z0-9_][a-zA-Z0-9_ -]{0,90}\.png', filename):
+        return None
+    for root in installation_dirs():
+        path = root / 'Bambu Studio' / 'resources' / 'images' / filename
+        if encoded := encode_thumbnail(path, scene=True):
+            return encoded
+    return None
+
+
+def encode_thumbnail(path, *, scene=False):
     try:
         with Image.open(path, formats=['PNG']) as image:
             if max(image.size) > 2048:
@@ -62,6 +75,11 @@ def encode_thumbnail(path):
     if not bounds:
         return None
     picture = picture.crop(bounds)
+    if scene:
+        picture.thumbnail((260, 240), Image.Resampling.LANCZOS)
+        output = BytesIO()
+        picture.save(output, format='PNG')
+        return base64.b64encode(output.getvalue()).decode('ascii')
     for size in (100, 80, 64):
         picture.thumbnail((size, size), Image.Resampling.LANCZOS)
         output = BytesIO()

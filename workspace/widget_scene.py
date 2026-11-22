@@ -6,7 +6,7 @@ import math
 import os
 import time
 from functools import lru_cache
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 def encoded(image):
     buf=io.BytesIO()
@@ -139,11 +139,27 @@ def make(layout,size,spec,metrics,printer,title,now,art=None):
             amount=max(0,min(100,values.get(item['value']) or 0));end=round(w*amount/100)
             if end:draw.rounded_rectangle((x,y,x+end-1,y+h-1),radius=radius,fill=ink)
         elif op=='image':
-            art=art or fallback_art(spec)
-            if not art:continue
-            with Image.open(io.BytesIO(base64.b64decode(art))) as source:
-                pic=source.convert('RGBA');pic.thumbnail((w,h),Image.Resampling.LANCZOS)
-                image.paste(pic,(x+(w-pic.width)//2,y+(h-pic.height)//2),pic)
+            preset = spec.get('_presentation', {}).get('images', {}).get(item['value'], {})
+            picture = art
+            if item['value'] == 'printer' and spec.get('kind') == 'bambu':
+                from bambu_artwork import local_image, thumbnail
+                if preset.get('asset'):
+                    picture = local_image(preset['asset'])
+                if not picture and printer.get('model'):
+                    picture = thumbnail(printer['model'])
+            resize = bool(picture) and size in preset
+            if resize:
+                x, y, w, h = preset[size]
+            picture = picture or fallback_art(spec)
+            if not picture:
+                continue
+            with Image.open(io.BytesIO(base64.b64decode(picture))) as source:
+                pic = source.convert('RGBA')
+                if resize:
+                    pic = ImageOps.contain(pic, (w, h), Image.Resampling.LANCZOS)
+                else:
+                    pic.thumbnail((w,h), Image.Resampling.LANCZOS)
+                image.paste(pic, (x+(w-pic.width)//2, y+(h-pic.height)//2), pic)
         elif op=='time':
             value=item['value']
             twelve=spec.get('hourFormat')=='12'
@@ -165,10 +181,8 @@ def installed(spec,records):
     return widget.get('studio',{}).get('layout')
 
 def frames(spec,layout,metrics,printers,title,now):
-    from bambu_artwork import thumbnail
     printer=printers.get(spec.get('printerId'),{})
-    art=thumbnail(printer.get('model')) if printer.get('model') else None
-    return {size:make(layout,size,spec,metrics,printer,title,now,art) for size in layout}
+    return {size:make(layout,size,spec,metrics,printer,title,now) for size in layout}
 
 def compact_frames(widgets):
     """Share identical PNGs across sizes, instances and profiles in one atomic update."""
