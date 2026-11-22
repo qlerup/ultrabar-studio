@@ -1,6 +1,7 @@
 """Rasterize a package's expanded layout for both the browser and Core."""
 import math
 import re
+from functools import lru_cache
 from PIL import Image, ImageDraw
 from widget_scene import encoded, font
 
@@ -20,6 +21,16 @@ def template(pattern, data):
             val=int(val)
         return str(val)[:120] if isinstance(val,(str,float,int)) else '\u2014'
     return TOKEN.sub(part,pattern)
+
+@lru_cache(maxsize=64)
+def rounded_mask(width, height, radius):
+    scale = 4
+    mask = Image.new('L', (width * scale, height * scale))
+    ImageDraw.Draw(mask).rounded_rectangle(
+        (0, 0, mask.width - 1, mask.height - 1), radius=radius * scale, fill=255
+    )
+    return mask.resize((width, height), Image.Resampling.BOX)
+
 
 def paint(nodes, data, width, height, background):
     image=Image.new('RGB',(width,height),background)
@@ -51,7 +62,10 @@ def paint(nodes, data, width, height, background):
             radius=n.get('radius',0)
             bounds=(x,y,x+w-1,y+h-1)
             if op=='rect':
-                draw.rounded_rectangle(bounds,radius=radius,fill=ink)
+                if radius:
+                    image.paste(ink, (x, y, x + w, y + h), rounded_mask(w, h, radius))
+                else:
+                    draw.rectangle(bounds, fill=ink)
             elif op=='swatch':
                 side=min(n.get('size',16),w,h)
                 sx,sy=x+(w-side)//2,y+(h-side)//2

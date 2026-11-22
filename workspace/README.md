@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.26 Windows
+# UltraBar Studio — 0.52.27 Windows
+
+## 0.52.27 update
+
+- Smooth the corners of expanded widget panels and the rounded tiles drawn inside them.
 
 ## 0.52.26 update
 

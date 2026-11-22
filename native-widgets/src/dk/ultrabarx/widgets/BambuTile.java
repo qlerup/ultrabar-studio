@@ -183,6 +183,8 @@ public final class BambuTile {
         private final View source; private final ViewGroup host; private final JSONObject spec;
         private final int foreground,accent,background,muted;
         private final Paint paint = new Paint(3); private final Path path = new Path();
+        private final Path outside = new Path();
+        private final Paint eraseOutside = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF from = new RectF(), to = new RectF(), current = new RectF();
         private final LinearLayout body, hero, temperatures, sideColumn, actions;
         private TextView name, status, value, job, details, controlHint;
@@ -208,6 +210,7 @@ public final class BambuTile {
             int[] origin=new int[2],base=new int[2];source.getLocationOnScreen(origin);host.getLocationOnScreen(base);
             from.set(origin[0]-base[0],origin[1]-base[1],origin[0]-base[0]+source.getWidth(),origin[1]-base[1]+source.getHeight());
             radius=cornerRadius(source);
+            eraseOutside.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_OUT));
             ViewGroup row=null;View item=source;
             ViewParent ancestor=source.getParent();
             while(ancestor instanceof ViewGroup){ViewGroup v=(ViewGroup)ancestor;if(v.getClass().getName().contains("RecyclerView")||(v instanceof LinearLayout&&((LinearLayout)v).getOrientation()==LinearLayout.HORIZONTAL&&v.getChildCount()>1)){row=v;break;}item=v;ancestor=v.getParent();}
@@ -600,7 +603,21 @@ public final class BambuTile {
             paint.setColor(Color.WHITE);paint.setShader(new LinearGradient(current.left,current.top,current.right,current.bottom,new int[]{lifted,background},null,Shader.TileMode.CLAMP));paint.setStyle(Paint.Style.FILL);c.drawPath(path,paint);paint.setShader(null);
             paint.setStyle(Paint.Style.STROKE);paint.setStrokeWidth(1.2f);paint.setColor(0x55c5e9ed);c.drawPath(path,paint);paint.setStyle(Paint.Style.FILL);
         }
-        protected void dispatchDraw(Canvas c){outline();c.save();c.clipPath(path);super.dispatchDraw(c);c.restore();}
+        @Override protected void dispatchDraw(Canvas canvas) {
+            outline();
+            outside.rewind();
+            outside.setFillType(Path.FillType.EVEN_ODD);
+            outside.addRect(0, 0, getWidth(), getHeight(), Path.Direction.CW);
+            outside.addPath(path);
+            // A path clip can leave hard pixels at the edge of opaque package frames.
+            int layer = canvas.saveLayer(0, 0, getWidth(), getHeight(), null);
+            try {
+                super.dispatchDraw(canvas);
+                canvas.drawPath(outside, eraseOutside);
+            } finally {
+                canvas.restoreToCount(layer);
+            }
+        }
         private float touchX,touchY; private boolean swiping,inside;
         public boolean onTouchEvent(MotionEvent event){
             if(event.getActionMasked()==MotionEvent.ACTION_UP){
