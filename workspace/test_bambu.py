@@ -115,6 +115,22 @@ class ProtocolTests(unittest.TestCase):
         for value in (data['code'],data['serial'],data['host'],data['pin']):self.assertNotIn(value,snapshot)
         link.close();self.assertFalse(link.request('pause'))
 
+    def test_filament_follows_reported_ams_slot_and_rack_address(self):
+        state = bambu.State()
+        def accept(**patch):
+            state.accept(dict(print=dict(command='push_status', **patch)), 100)
+        accept(ams=dict(ams=[dict(id='32', tray=[
+            dict(id='8',tray_info_idx='custom',tray_type='PETG',tray_color='898989FF')])]))
+        accept(device=dict(nozzle=dict(info=[
+            dict(addr_id=8,id=0,temp=27,snow=8200,fila_id='custom',color_m='898989FF'),
+            dict(addr_id=0,id=16,temp=28,snow=65535,fila_id='GFG02',color_m='FFFFFFFF')])))
+        self.assertEqual(state.filament(8,True),dict(material='PETG',color='#898989'))
+        self.assertEqual(state.filament(0,True),dict(filamentProfile='GFG02',color='#FFFFFF'))
+        accept(device=dict(nozzle=dict(info=[dict(addr_id=8,id=24,temp=25)])))
+        self.assertEqual(state.filament(8,True)['material'],'PETG')
+        accept(device=dict(nozzle=dict(info=[dict(addr_id=8,id=24,snow=65535,fila_id='',color_m='00000000')])))
+        self.assertEqual(state.filament(8,True),{})
+
     def test_h3c_publishes_all_nine_printtools_to_core_across_swaps(self):
         printer = dict(profile(), model='h3c')
         manager = bambu.Printers(None)

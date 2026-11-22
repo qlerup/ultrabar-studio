@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.19 Windows
+# UltraBar Studio — 0.52.20 Windows
+
+## 0.52.20 update
+
+Expanded printer cards support equal-sized nozzle rows with per-tool filament materials and color swatches. Bed and chamber temperatures appear beside the print summary.
 
 ## 0.52.19 update
 

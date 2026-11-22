@@ -538,9 +538,11 @@
       }
       const readings=[...tools.values()].sort((a,b)=>a.tool-b.tool);
       const temperatures=el('dl','bambu-unfolded-temperatures');
-      if(presentation.minTemperatureRows>1){
+      const grid=presentation.minTemperatureRows>1;
+      if(grid){
         const columns=Math.ceil(Math.max(1,readings.length)/presentation.minTemperatureRows);
-        temperatures.style.gridTemplateColumns='repeat(auto-fit,minmax(min(100%,max(76px,calc((100% + 8px) / '+columns+' - 8px))),1fr))';
+        temperatures.style.gridTemplateColumns='repeat('+columns+',minmax(0,1fr))';
+        temperatures.classList.add('nozzle-grid');
       }
       const temperature=value=>Number.isFinite(value)?Math.round(value)+'°C':'—';
       function addTemperature(label,value){
@@ -548,12 +550,22 @@
         tile.append(el('dt','',label),el('dd','',temperature(value)));
         temperatures.append(tile);
       }
-      for(const {tool,temperature:value} of readings){
+      for(const {tool,temperature:value,material,filamentProfile,color} of readings){
         addTemperature(presentation.labels?.['nozzle.'+tool]||'NOZZLE T'+tool,value);
+        if(grid){
+          const footer=el('dd','nozzle-material',material||presentation.labels?.['filament.'+filamentProfile]||'—');
+          if(/^#[a-f0-9]{6}$/i.test(color||'')){
+            const chip=el('span','nozzle-swatch');chip.style.backgroundColor=color;chip.title=color;footer.append(chip);
+          }
+          temperatures.lastElementChild.append(footer);
+        }
       }
       if(!readings.length)addTemperature('NOZZLE',printer.nozzle_temper);
-      addTemperature('BED',printer.bed_temper);
-      addTemperature('CHAMBER',printer.chamber_temper);
+      if(grid)summary.append(el('span','muted','Bed '+temperature(printer.bed_temper)+'    Chamber '+temperature(printer.chamber_temper)));
+      else{
+        addTemperature('BED',printer.bed_temper);
+        addTemperature('CHAMBER',printer.chamber_temper);
+      }
       content.append(temperatures);
     };
     dialog.addEventListener('close',()=>{renderBambuUnfolded=null;dialog.remove();},{once:true});

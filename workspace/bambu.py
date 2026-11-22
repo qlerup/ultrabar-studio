@@ -224,6 +224,9 @@ class State:
     def __init__(self):
         self.data, self.report_at, self.state_at = {}, 0, 0
         self.alerts = deque(maxlen=4)
+        self.trays = {}
+        self.materials = {}
+        self.extruder_trays = {}
 
     def update_alert(self, patch, now):
         previous = self.data.get('gcode_state')
@@ -260,6 +263,7 @@ class State:
         self.report_at = now
         if 'gcode_state' in patch:
             self.state_at = now
+        self.update_trays(patch.get('ams'))
         device = patch.get('device', {})
         if isinstance(device, dict):
             for part, prefix in (('bed', 'bed'), ('ctc', 'chamber')):
@@ -276,12 +280,54 @@ class State:
                 info = extruder.get('info', [])
                 for item in info[:16] if isinstance(info, list) else []:
                     if isinstance(item, dict) and type(item.get('id')) is int and 0 <= item['id'] <= 15 and type(item.get('temp')) is int:
+                        if type(item.get('snow')) is int:
+                            self.extruder_trays[item['id']] = item['snow']
                         nozzles[item['id']] = (item['temp'] & 65535, (item['temp'] >> 16) & 65535)
                 active = nozzles.get(self.data.get('active_tool', 0))
                 if active:
                     self.data['nozzle_temper'], self.data['nozzle_target_temper'] = active
             self.update_printtools(device.get('nozzle'))
         return True
+
+    def update_trays(self, ams):
+        units = ams.get('ams') if isinstance(ams, dict) else None
+        if not isinstance(units, list):
+            return
+        for unit in units[:32]:
+            if not isinstance(unit, dict) or not re.fullmatch('[0-9]{1,3}',str(unit.get('id',''))):
+                continue
+            unit_id = int(unit['id'])
+            trays = unit.get('tray')
+            if not 0 <= unit_id < 255 or not isinstance(trays, list):
+                continue
+            for tray in trays[:32]:
+                if not isinstance(tray, dict) or not re.fullmatch('[0-9]{1,2}',str(tray.get('id',''))):
+                    continue
+                slot = int(tray['id'])
+                if slot < 32:
+                    self.trays[(unit_id << 8) | slot] = {
+                        k: v for k in ('tray_type', 'tray_color', 'tray_info_idx')
+                        if isinstance((v := tray.get(k)), str) and 0 < len(v) <= 64
+                    }
+
+    def filament(self, tool, rack):
+        nozzle = self.materials.get(('rack' if rack else 'tool', tool), {})
+        source = nozzle.get('snow', self.extruder_trays.get(tool) if not rack else None)
+        tray = self.trays.get(source, {})
+        profile = nozzle.get('fila_id')
+        if profile and tray.get('tray_info_idx') and profile != tray['tray_info_idx']:
+            tray = {}
+        result = {}
+        if tray.get('tray_type'):
+            result['material'] = tray['tray_type']
+        elif profile:
+            result['filamentProfile'] = profile
+        color = nozzle.get('color_m')
+        if not color or color == '00000000':
+            color = tray.get('tray_color')
+        if isinstance(color, str) and re.fullmatch(r'[0-9a-fA-F]{8}', color) and color[-2:] != '00':
+            result['color'] = '#' + color[:6].upper()
+        return result
 
     def update_printtools(self, nozzle):
         if not isinstance(nozzle, dict) or not isinstance(nozzle.get('info'), list):
@@ -290,6 +336,19 @@ class State:
             if not isinstance(item, dict):
                 continue
             address, live_id, packed = (item.get(key) for key in ('addr_id', 'id', 'temp'))
+            rack = type(address) is int and 0 <= address < 9 and live_id in (0, 16 + address)
+            plain = address is None and type(live_id) is int and 0 <= live_id < 16
+            if rack or plain:
+                key = ('rack', address) if rack else ('tool', live_id)
+                material = self.materials.setdefault(key, {})
+                for field in ('fila_id', 'color_m', 'snow'):
+                    if field in item:
+                        value = item[field]
+                        if (field == 'snow' and type(value) is int and 0 <= value <= 65535 or
+                                field != 'snow' and isinstance(value, str) and len(value) <= 64):
+                            material[field] = value
+                        else:
+                            material.pop(field, None)
             # SwapTek keeps the rack address when the mounted PrintTool reports live ID 0.
             if (type(address) is int and 0 <= address < 9 and type(live_id) is int and
                     live_id in (0, 16 + address) and type(packed) is int and 0 <= packed <= 0xffffffff):
@@ -386,7 +445,7 @@ class Link:
             readings = sorted(printtools.items()) if printtools else [(tool, reading[0]) for tool, reading in ordered_tools]
             data.update(name=self.profile['name'], model=model, connection=self.status, detail=self.detail, fresh=fresh,
                         controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(),
-                        nozzles=summary, nozzle_readings=[{'tool': tool, 'temperature': temperature} for tool, temperature in readings])
+                        nozzles=summary, nozzle_readings=[dict(tool=tool, temperature=temperature, **self.state.filament(tool, bool(printtools))) for tool, temperature in readings])
             data['control_reason'] = ('Enable controls in Studio' if not self.profile['controls'] else
                                       'Waiting for live printer status' if not fresh else
                                       'Waiting for printer confirmation' if self.queued or self.pending else
