@@ -75,7 +75,7 @@ def descriptor(server, package, widget):
         connection = panel.get('connection') if panel else None
         if not connection or connection['provider'] not in PROVIDERS:
             raise EditError('This app widget does not provide a supported connection panel.')
-        return connection
+        return dict(connection, panelApi=panel['api'])
 
 
 def register(server):
@@ -93,7 +93,9 @@ def register(server):
                     continue
                 key = field['key']
                 value = body.get(key)
-                if connection['provider'] == 'bambu-lan' and key == 'model' and value in (None, '', 'generic'):
+                if field.get('required') and not value:
+                    raise EditError('Choose '+field['label']+'.')
+                if connection['panelApi'] == 1 and connection['provider'] == 'bambu-lan' and key == 'model' and value in (None, '', 'generic'):
                     raise EditError('Choose a printer model.')
                 if key in body and value not in [option['value'] for option in field['options']]:
                     raise EditError('Choose one of this package\'s '+field['label']+' options.')

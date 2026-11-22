@@ -161,3 +161,5 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 @keyframes flap-arrive{from{transform:rotateX(90deg)}to{transform:rotateX(0)}}
 @keyframes flap-hide{to{visibility:hidden}}
 @media(prefers-reduced-motion:reduce){.flap-half.old,.flap-half.falling,.flap-half.arriving{display:none}}
+
+.canvas-widget.native-preview:has(.package-scene){padding:0}.package-scene{display:block;width:100%;height:100%;object-fit:fill}

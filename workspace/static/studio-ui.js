@@ -12,7 +12,7 @@ window.studioPackageUI=(()=>{
       input.id=prefix+'-'+field.key;input.dataset.setting=field.key;if(prefix==='app-setting')input.dataset.appSetting=field.key;
       if(choices){for(const choice of choices)option(input,choice.value,choice.label);input.value=value;}
       else if(field.type==='boolean'){input.type='checkbox';input.checked=value;}
-      else{input.type=['integer','number'].includes(field.type)?'number':field.type==='url'?'url':'text';input.value=value;if(field.maxLength)input.maxLength=field.maxLength;if(field.min!=null){input.min=field.min;input.max=field.max;input.step=field.step;input.required=true;}}
+      else{input.type=['integer','number'].includes(field.type)?'number':['color','url'].includes(field.type)?field.type:'text';input.value=value;if(field.maxLength)input.maxLength=field.maxLength;if(field.min!=null){input.min=field.min;input.max=field.max;input.step=field.step;input.required=true;}}
       input.onchange=()=>{if(!input.checkValidity()){input.reportValidity();return;}changed(field.key,field.type==='boolean'?input.checked:['integer','number'].includes(field.type)?Number(input.value):input.value);};
       wrap.append(input);if(field.help)wrap.append(node('small','muted',field.help));panel.append(wrap);
     }
@@ -90,9 +90,9 @@ window.studioPackageUI=(()=>{
         const fields=[...config.fields.filter(field=>discoveryKeys.has(field.key)),...config.fields.filter(field=>!discoveryKeys.has(field.key))];
         for(const field of fields){
           const wrap=node('label','property-field',field.label),input=node(field.type==='choice'?'select':'input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
-          const printerModel=config.provider==='bambu-lan'&&field.key==='model';
+          const printerModel=b.descriptor.api===1&&config.provider==='bambu-lan'&&field.key==='model';
           if(field.type==='choice'){
-            if(printerModel)option(input,'','Choose a printer model');
+            if(printerModel||field.required)option(input,'',printerModel?'Choose a printer model':'Choose '+field.label.toLowerCase());
             for(const choice of field.options)if(!printerModel||choice.value!=='generic')option(input,choice.value,choice.label);
           }
           else input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
@@ -165,7 +165,7 @@ window.studioPackageUI=(()=>{
     function presentation(binding,values){
       const config=binding?.descriptor?.presentation;if(!config)return {};
       const source=config.source,connection=binding.descriptor.connection;
-      if(source.scope==='setting')return config.presets.find(preset=>preset.value===values[source.key])||{};
+      if(source.scope==='setting')return config.presets.find(preset=>preset.value===(values.packageSettings?.[source.key]??values[source.key]??binding.descriptor.settings?.fields.find(f=>f.key===source.key)?.default))||{};
       const key=identity(binding),items=cache.get(key);
       if(!items&&values[connection.key]&&!previewRequests.has(key)){
         previewRequests.add(key);load(binding,true);

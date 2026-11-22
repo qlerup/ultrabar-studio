@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.17 Windows
+# UltraBar Studio — 0.52.18 Windows
+
+## 0.52.18 update
+
+Studio previews the layout from the installed widget. Deploy uses the same graphics for large and small cards on Core. Widget packages installed in Studio can declare their own settings, defaults and color pickers. Package updates refresh the editor and keep existing selections for each placed widget. Deploy sends those settings through the existing Core layout. The split-flap clock supports a package-selected plate color and printer presets can set a minimum number of temperature rows.
 
 ## 0.52.17 update
 

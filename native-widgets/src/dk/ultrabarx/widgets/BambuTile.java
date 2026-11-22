@@ -312,9 +312,14 @@ public final class BambuTile {
             }
         }
 
+        private int lastMinimumRows;
         private void layoutTemperatures(int nozzleCount) {
             int total = nozzleCount + 2;
-            if (temperatureTiles.size() == total) return;
+            JSONObject current = widgetSpecs.optJSONObject(spec.optString("_widgetId"));
+            JSONObject presentation = (current == null ? spec : current).optJSONObject("_presentation");
+            int minimum = presentation == null ? 1 : Math.max(1, Math.min(3, presentation.optInt("minTemperatureRows", 1)));
+            if (temperatureTiles.size() == total && minimum == lastMinimumRows) return;
+            lastMinimumRows = minimum;
             temperatureTiles.clear();
             temperatures.removeAllViews();
 
@@ -324,8 +329,9 @@ public final class BambuTile {
             temperatures.setLayoutParams(params);
             float width = (to.width() - body.getPaddingLeft() - body.getPaddingRight()) * weight / (1.15f + weight) - temperatures.getPaddingLeft();
             int columns = Math.max((total + 2) / 3, (int) (width / 48));
-            int rows = (total + columns - 1) / columns;
-            int largestRow = (total + rows - 1) / rows;
+            int rows = Math.min(total, Math.max(minimum, (total + columns - 1) / columns));
+            if (minimum > 1 && nozzleCount > 1) rows = Math.max(rows, Math.min(minimum, nozzleCount) + 1);
+            int largestRow = minimum > 1 && nozzleCount > 1 ? Math.max(2, (nozzleCount + rows - 2) / (rows - 1)) : (total + rows - 1) / rows;
             shortToolLabels = width / largestRow - 4 < 60;
             int height = rows == 1 ? 88 : rows == 2 ? 51 : 39;
 
@@ -336,6 +342,8 @@ public final class BambuTile {
                 temperatures.addView(row, rowParams);
                 int remainingRows = rows - rowIndex;
                 int rowSize = (total - temperatureTiles.size() + remainingRows - 1) / remainingRows;
+                if (minimum > 1 && nozzleCount > 1 && remainingRows > 1)
+                    rowSize = (nozzleCount - temperatureTiles.size() + remainingRows - 2) / (remainingRows - 1);
                 for (int column = 0; column < rowSize; column++) {
                     int index = temperatureTiles.size();
                     int tint = index < nozzleCount ? 0xffffbc8c : index == nozzleCount ? 0xffe6d58f : 0xffa4bdd1;
@@ -351,20 +359,29 @@ public final class BambuTile {
         private void refreshTemperatures(JSONObject s, boolean live) {
             ArrayList<String[]> nozzles = new ArrayList<>();
             JSONArray readings = live ? s.optJSONArray("nozzle_readings") : null;
+            JSONObject current = widgetSpecs.optJSONObject(spec.optString("_widgetId"));
+            JSONObject preset = (current == null ? spec : current).optJSONObject("_presentation");
+            JSONObject labels = preset == null ? null : preset.optJSONObject("labels");
+            java.util.TreeMap<Integer,String> tools = new java.util.TreeMap<>();
+            for (int tool = 0; tool < 16; tool++) {
+                if (labels != null && labels.has("nozzle." + tool)) tools.put(tool,"—");
+            }
             if (readings != null) {
                 for (int i = 0; i < Math.min(readings.length(), 16); i++) {
                     JSONObject nozzle = readings.optJSONObject(i);
                     if (nozzle != null && nozzle.has("tool")) {
-                        nozzles.add(new String[]{nozzleLabel(s,nozzle.optInt("tool")), temperature(nozzle, "temperature")});
+                        tools.put(nozzle.optInt("tool"), temperature(nozzle, "temperature"));
                     }
                 }
             } else if (live) {
                 // Older Studio versions send a formatted summary, including an extra Â before °.
-                Matcher tools = TOOL_TEMPERATURE.matcher(s.optString("nozzles"));
-                while (nozzles.size() < 2 && tools.find()) {
-                    nozzles.add(new String[]{nozzleLabel(s,Integer.parseInt(tools.group(1).substring(1))), tools.group(2) + "°C"});
+                Matcher summary = TOOL_TEMPERATURE.matcher(s.optString("nozzles"));
+                while (nozzles.size() < 2 && summary.find()) {
+                    nozzles.add(new String[]{nozzleLabel(s,Integer.parseInt(summary.group(1).substring(1))), summary.group(2) + "°C"});
                 }
             }
+            for (java.util.Map.Entry<Integer,String> tool : tools.entrySet())
+                nozzles.add(new String[]{nozzleLabel(s,tool.getKey()),tool.getValue()});
             if (nozzles.isEmpty()) nozzles.add(new String[]{"NOZZLE", live ? temperature(s, "nozzle_temper") : "—"});
 
             layoutTemperatures(nozzles.size());

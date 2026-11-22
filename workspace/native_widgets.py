@@ -93,6 +93,8 @@ def specifications(profiles):
                 if not isinstance(drives, list) or not 1 <= len(drives) <= 2 or any(not isinstance(d, str) or not re.fullmatch(r'[A-Z]:\\', d) for d in drives) or len(set(drives)) != len(drives):
                     raise EditError('Each disk widget can show at most two distinct drives.')
             effective = dict(spec, background=widget.get('bgColor') or '#192325')
+            effective.pop('_scene', None)
+            effective['_cardTitle'] = widget.get('name', '')
             if key in result and result[key] != effective:
                 raise EditError('Widgets with the same ID must use the same hardware source across profiles.')
             result[key] = effective
@@ -114,6 +116,7 @@ class NativeWidgets:
         self.token = None
         self.printer_actions = {}
         self.presentations = {}
+        self.layouts = {}
 
     def printer_action(self, event):
         # Transient events only: no file queue, retry or command replay on reconnect.
@@ -185,7 +188,12 @@ class NativeWidgets:
     def configure(self, profiles, target, compact_profiles=None):
         specs = specifications(profiles)
         import widget_presentation
-        presentations = widget_presentation.bindings(specs, self.server.store.records()) if specs else {}
+        import studio_contract
+        records = self.server.store.records() if specs else {}
+        import widget_scene
+        layouts = {key:layout for key,spec in specs.items() if (layout:=widget_scene.installed(spec,records))}
+        studio_contract.apply_installed_settings(specs, records)
+        presentations = widget_presentation.bindings(specs, records) if specs else {}
         with self.lock:
             if self.thread and self.thread.is_alive() and (target != self.target or self.stop.is_set()):
                 self.stop.set()
@@ -195,6 +203,7 @@ class NativeWidgets:
             self.specs = specs
             self.compact_profiles = compact_profiles or {}
             self.presentations = presentations
+            self.layouts = layouts
             self.server.bambu.configure(specs)
             if not specs and not compact_profiles:
                 self.stop.set()
@@ -241,7 +250,7 @@ class NativeWidgets:
             while not self.stop.is_set():
                 try:
                     with self.lock:
-                        specs, presentations = self.specs, self.presentations
+                        specs, presentations, layouts = self.specs, self.presentations, self.layouts
                     options = alert_options(specs)
                     pending_alerts.extend(self.server.bambu.take_alerts(options))
                     now = time.monotonic()
@@ -304,10 +313,22 @@ class NativeWidgets:
                     widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
                     models = {printer.get('model') for printer in printers.values()}
                     images = {model: image for model in models if (image := thumbnail(model))}
-                    state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=self.server.companion.metrics.sample(),
-                                 printers=printers, printerImages=images)
+                    metrics = self.server.companion.metrics.sample()
+                    import widget_scene
+                    for key,layout in layouts.items():
+                        spec=widgets[key]
+                        title=spec.get('_cardTitle','')
+                        stamp=time.time()
+                        spec['_scene']=widget_scene.frames(spec,layout,metrics,printers,title,stamp)
+                        if spec.get('kind')!='clock':
+                            offline={'name':printers.get(spec.get('printerId'),{}).get('name') or title,'connection':'Offline'}
+                            for size in ('small','large'):
+                                spec['_scene'][size+'Offline']=widget_scene.make(layout,size,spec,{},offline,title,stamp)
+                    scene_images=widget_scene.compact_frames(widgets)
+                    state = dict(sequence=uuid.uuid4().hex, widgets=widgets, metrics=metrics,
+                                 printers=printers, printerImages=images, sceneImages=scene_images)
                     payload = json.dumps(state,allow_nan=False).encode()
-                    if len(payload) >= 262144:
+                    if len(payload) >= (4194304 if scene_images else 262144):
                         raise EditError('Widget data exceeds the Core runtime limit. Reduce the number or size of package artwork presets.')
                     adb('-s', target, 'shell',
                         "cat > /data/local/tmp/ultrabar-studio-metrics.tmp && chmod 644 /data/local/tmp/ultrabar-studio-metrics.tmp && mv /data/local/tmp/ultrabar-studio-metrics.tmp /data/local/tmp/ultrabar-studio-metrics.json",

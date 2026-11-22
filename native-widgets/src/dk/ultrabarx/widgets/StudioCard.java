@@ -77,7 +77,7 @@ public final class StudioCard extends View {
             while(true){
                 try {
                     File file=new File("/data/local/tmp/ultrabar-studio-metrics.json");
-                    if(file.length()>0 && file.length()<262144){
+                    if(file.length()>0 && file.length()<4194304){
                         String text=new String(Files.readAllBytes(file.toPath()),StandardCharsets.UTF_8);
                         if(!text.equals(previous)){JSONObject next=new JSONObject(text);state=next;BambuTile.updateSpecs(next.optJSONObject("widgets"));BambuTile.updateArtwork(next.optJSONObject("printerImages"));previous=text;received=Math.abs(System.currentTimeMillis()-file.lastModified())<10000?SystemClock.elapsedRealtime():0;BambuTile.update(next.optJSONObject("printers"),received);}
                     }
@@ -171,6 +171,13 @@ public final class StudioCard extends View {
             } else if (!small && parent.getOutlineProvider() == SMALL_OUTLINE) {
                 parent.setOutlineProvider(fullOutline);
             }
+        }
+        JSONObject scene = spec == null ? null : spec.optJSONObject("_scene");
+        if (scene != null) {
+            String size = small ? "small" : "large";
+            boolean stale = received == 0 || SystemClock.elapsedRealtime()-received >= 10000;
+            String frame = stale && scene.has(size+"Offline") ? size+"Offline" : size;
+            if (PackageScene.draw(this, c, scene.optJSONObject(frame), state.optJSONObject("sceneImages"))) return;
         }
         JSONObject presentation = spec == null ? null : spec.optJSONObject("_presentation");
         JSONObject face = presentation == null ? null : presentation.optJSONObject("splitFlap");

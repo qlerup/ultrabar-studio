@@ -584,8 +584,7 @@ def register_editor(server):
             server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))
             server.store.stop_removed_background(rollback['background_apps'],draft.get('background_apps',[]),draft['profiles'])
             stage('Applying app settings and waiting for confirmation...')
-            requested={w['id'] for p in draft['profiles'] for w in p['homeData'] if w['type']=='APPS'}|{a['id'] for a in draft.get('background_apps',[])}
-            app_settings.deploy(server,{k:v for k,v in draft.get('app_settings',{}).items() if k in requested})
+            app_settings.deploy(server, app_settings.deployment_values(server, draft))
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'], core_layouts)

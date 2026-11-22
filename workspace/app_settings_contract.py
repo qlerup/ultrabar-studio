@@ -21,8 +21,8 @@ def validate_schema(schema):
             if name=='help' and name not in field:continue
             if not isinstance(field.get(name),str) or not 1<=len(field[name].strip())<=limit:fail(key+': invalid '+name+'.')
         kind=field.get('type')
-        if kind not in ('boolean','integer','number','string','url','choice'):fail(key+': unsupported type.')
-        specific={'boolean':set(),'integer':{'min','max','step'},'number':{'min','max','step'},'string':{'maxLength'},'url':{'maxLength'},'choice':{'options'}}[kind]
+        if kind not in ('boolean','integer','number','string','url','choice','color'):fail(key+': unsupported type.')
+        specific={'color':set(),'boolean':set(),'integer':{'min','max','step'},'number':{'min','max','step'},'string':{'maxLength'},'url':{'maxLength'},'choice':{'options'}}[kind]
         if (set(field)&{'min','max','step','maxLength','options'})-specific:fail(key+': properties do not match the field type.')
         if kind in ('integer','number'):
             for name in ('min','max','step'):
@@ -57,6 +57,7 @@ def validate_value(field,value):
                 parsed=urlsplit(value);valid=parsed.scheme in ('http','https') and bool(parsed.hostname) and parsed.username is None and parsed.password is None
                 parsed.port  # Reject invalid/non-numeric/out-of-range ports.
             except ValueError:valid=False
+    elif kind=='color':valid=isinstance(value,str) and re.fullmatch(r'#[0-9a-fA-F]{6}',value) is not None
     elif kind=='choice':valid=isinstance(value,str) and value in [o['value'] for o in field['options']]
     if not valid:raise ValueError(field['key']+': invalid '+kind+' value, range or step.')
     return value

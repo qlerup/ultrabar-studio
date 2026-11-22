@@ -12,6 +12,20 @@ class AppSettingsTests(unittest.TestCase):
         self.record=dict(type='corebar-app',name='Test settings',android=dict(packageId=self.package),settings=self.schema)
         self.temp=tempfile.TemporaryDirectory();self.addCleanup(self.temp.cleanup)
         self.context=SimpleNamespace(DATA_DIR=Path(self.temp.name),store=SimpleNamespace(records=lambda:{'app':self.record}),connection=dict(target='192.168.1.20:5555'))
+    def test_background_settings_upgrade_preserves_core_and_draft_values(self):
+        background = dict(id=self.package, settings={'launch': True})
+        draft = dict(profiles=[], background_apps=[background])
+        current = app_settings.validate_values(self.schema, dict(title='On Core'))
+        with patch.object(app_settings, 'exchange', return_value=current) as read:
+            self.assertEqual(app_settings.deployment_values(self.context, draft), {self.package: current})
+            read.assert_called_once_with(self.context, self.package, self.schema)
+            read.reset_mock()
+            background['settings'].update(delay=1500, title='Old name')
+            draft['app_settings'] = {self.package: dict(title='New name'), 'dk.other': {}}
+            self.assertEqual(app_settings.deployment_values(self.context, draft),
+                             {self.package: dict(current, delay=1500, title='New name')})
+            read.assert_called_once_with(self.context, self.package, self.schema)
+
     def adb(self,*args,**kwargs):
         if args[-2:]==('id','-u'):return '10077' if 'su' in args else '0'
         if 'dumpsys' in args:return '  userId=10077\n'

@@ -64,6 +64,31 @@ def exchange(server,package,schema,values=None):
     raise EditError('The app did not confirm its settings. Update it to a settings API 1 release and retry. Core may have changed; your draft is preserved.')
 
 
+def deployment_values(server, draft):
+    background = draft.get('background_apps', [])
+    placed = {widget['id'] for profile in draft['profiles'] for widget in profile['homeData'] if widget['type'] == 'APPS'}
+    requested = placed | {app['id'] for app in background}
+    values = {key: settings for key, settings in draft.get('app_settings', {}).items() if key in requested}
+    schemas = definitions(server)
+    for app in background:
+        package = app['id']
+        if package not in schemas:
+            continue
+        # Older drafts kept app fields on the background placement. The package
+        # declares which fields belong to it, including any newly added defaults.
+        placement = app.get('settings', {})
+        inherited = {field['key']: placement[field['key']] for field in schemas[package]['schema']['fields']
+                     if field['key'] != 'launch' and field['key'] in placement}
+        selected = {**inherited, **values.get(package, {})}
+        fields = {field['key'] for field in schemas[package]['schema']['fields']}
+        if fields - selected.keys():
+            # Preserve any settings already changed in the app itself.
+            current = exchange(server, package, schemas[package]['schema'])
+            selected = {**current, **selected}
+        values[package] = selected
+    return values
+
+
 def deploy(server,values):
     schemas=definitions(server)
     for package,settings in validate_all(server,values).items():exchange(server,package,schemas[package]['schema'],settings)

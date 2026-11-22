@@ -154,7 +154,7 @@
       const data=await(await api('/api/store/installed')).json();
       appSettingsDefs.clear();for(const p of data.installed||[])if(p.settings&&p.android?.packageId)appSettingsDefs.set(p.android.packageId,{name:p.name,schema:p.settings});
       studioBindings.clear();
-      for(const widget of data.widgets||[]){const descriptor=widget._studio||widget.studio;if(descriptor)studioBindings.set(widget._storePackage+':'+widget.id,{packageId:widget._storePackage,widgetKey:widget.id,kind:widget.kind,kindOptions:widget.kindOptions,descriptor});}
+      for(const widget of data.widgets||[]){const descriptor=widget._studio||widget.studio;if(descriptor)studioBindings.set(widget._storePackage+':'+widget.id,{packageId:widget._storePackage,widgetKey:widget.id,kind:widget.kind,kindOptions:widget.kindOptions,version:widget._storeVersion,rendererFields:widget._rendererFields,descriptor});}
       storeIconByPackage.clear();storeIconByApp.clear();
       for(const p of data.installed||[]){if(/^[a-f0-9]{64}$/.test(p.icon?.sha256||'')){storeIconByPackage.set(p.id,p.icon.sha256);if(p.android?.packageId)storeIconByApp.set(p.android.packageId,p.icon.sha256);}}
       storePresets=(data.widgets||[]).map((w,i)=>{
@@ -163,12 +163,21 @@
         t._storePackage=w._storePackage;t._storeKey=w._storePackage+':'+(w.id||i);
         if(w._bundledApp&&w.kind!=='bambu'){t._bundledApp=clone(w._bundledApp);nativeSpec(t).companionApp=w._bundledApp.id;}
         if(w.kindOptions)nativeSpec(t).kindOptions=[...w.kindOptions];
-        if(nativeSpec(t))for(const field of (w._studio||w.studio)?.settings?.fields||[])nativeSpec(t)[field.key]=w[field.key]??field.default;
+        if(nativeSpec(t))for(const field of (w._studio||w.studio)?.settings?.fields||[]){
+          if((w._studio||w.studio).api===2 && !(w._rendererFields||[]).includes(field.key))continue;
+          nativeSpec(t)[field.key]=w[field.key]??field.default;
+        }
         if(w._widgetPackage){Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion,widgetKey:w.id});if(w.kind==='clock')Object.assign(nativeSpec(t),{hourFormat:nativeSpec(t).hourFormat??w.hourFormat??'24',showSeconds:nativeSpec(t).showSeconds??w.showSeconds??true,showDate:nativeSpec(t).showDate??w.showDate??true});}
         else if(nativeSpec(t))Object.assign(nativeSpec(t),{packageId:w._storePackage,packageVersion:w._storeVersion});
         if(w.sizes)t._sizes=w.sizes;
         if(w.background)t.bgColor=w.background;
         if(nativeSpec(t)){if(w.textColor)nativeSpec(t).textColor=w.textColor;if(w.accent)nativeSpec(t).accent=w.accent;}
+        if((w._studio||w.studio)?.api===2){
+          for(const field of (w._studio||w.studio).settings?.fields||[]){
+            if(field.key==='background')t.bgColor=field.default;
+            else if(['accent','textColor'].includes(field.key)||w._rendererFields.includes(field.key))nativeSpec(t)[field.key]=field.default;
+          }
+        }
         return t;
       });
       if(draft&&(data.installed||[]).some(p=>p.id==='studio.bambu'&&p.type==='corebar-widget'&&p.source?.startsWith('https://github.com/qlerup/ultrabar-bambu/blob/'))){
@@ -393,23 +402,49 @@
     if(/^(android\.|com\.android\.|com\.ultrabar\.)/.test(w.id)){message('System apps cannot be added to Background apps.',true);return;}
     const existing=draft.background_apps.findIndex(a=>a.id===w.id);
     if(existing>=0){backgroundIndex=existing;renderBackground();renderProperties();return;}
-    change(()=>{for(const p of draft.profiles){p.homeData=p.homeData.filter(a=>a.type!=='APPS'||a.id!==w.id);removePlacement(p,w.id);}draft.background_apps.push({id:w.id,name:w.name||w.id,settings:w.id===screenSyncId?{enabled:true,wakeDelayMs:1000}:{launch:true}});backgroundIndex=draft.background_apps.length-1;});
+    change(()=>{
+      for(const profile of draft.profiles){
+        profile.homeData=profile.homeData.filter(item=>item.type!=='APPS'||item.id!==w.id);
+        removePlacement(profile,w.id);
+      }
+      const definition=appSettingsDefs.get(w.id);
+      let settings={launch:true};
+      if(definition){
+        settings={};
+      }else if(w.id===screenSyncId){
+        settings={enabled:true,wakeDelayMs:1000};
+      }
+      draft.background_apps.push({id:w.id,name:w.name||w.id,settings});
+      backgroundIndex=draft.background_apps.length-1;
+    });
   }
   function renderBackground(){
     const list=$('background-apps');list.replaceChildren();
     $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
-    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
+    draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',appSettingsDefs.has(app.id)?'':app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
   }
   function studioBinding(spec){
     return studioBindings.get(spec.packageId+':'+spec.widgetKey)||[...studioBindings.values()].find(b=>b.packageId===spec.packageId&&(b.kind===spec.kind||b.kindOptions?.includes(spec.kind)));
   }
-  function renderPackageSettings(panel,spec){
+  function renderPackageSettings(panel,spec,widget){
     const binding=studioBinding(spec);
     if(!binding){panel.append(el('p','muted','Install this widget package to load its settings.'));return;}
     const descriptor=binding.descriptor;
     const update=(key,value)=>change(()=>{spec[key]=value;if(descriptor.sources?.[key]==='pc.drives')delete spec.drives;});
     if(descriptor.connection)packageUI.picker(panel,binding,spec,update);
-    if(descriptor.settings)window.studioPackageUI.fields(panel,descriptor.settings,spec,update,{sources:descriptor.sources,metrics:pcMetrics,prefix:'widget-setting'});
+    if(descriptor.settings){
+      if(descriptor.api===2){
+        const colors=['background','textColor','accent'];
+        const shared=key=>colors.includes(key)||binding.rendererFields.includes(key);
+        const values=Object.fromEntries(descriptor.settings.fields.map(f=>[f.key,
+          (f.key==='background'?widget.bgColor:shared(f.key)?spec[f.key]:spec.packageSettings?.[f.key])??f.default]));
+        window.studioPackageUI.fields(panel,descriptor.settings,values,(key,value)=>{
+          if(key==='background')change(()=>widget.bgColor=value);
+          else if(shared(key))update(key,value);
+          else change(()=>{spec.packageSettings={...spec.packageSettings,[key]:value};});
+        },{sources:descriptor.sources,metrics:pcMetrics,prefix:'widget-setting'});
+      }else window.studioPackageUI.fields(panel,descriptor.settings,spec,update,{sources:descriptor.sources,metrics:pcMetrics,prefix:'widget-setting'});
+    }
     if(descriptor.help)panel.append(el('p','muted',descriptor.help));
   }
   function renderBackgroundProperties(panel){
@@ -431,7 +466,7 @@
     const section=el('section','app-settings-form');section.append(el('h4','',definition.name+' settings'));
     const defaults=Object.fromEntries(definition.schema.fields.map(f=>[f.key,f.default]));
     const legacy=draft.background_apps.find(a=>a.id===packageId)?.settings;
-    if(packageId===screenSyncId&&legacy)for(const key of Object.keys(defaults))if(Object.hasOwn(legacy,key))defaults[key]=legacy[key];
+    if(legacy)for(const key of Object.keys(defaults))if(key!=='launch'&&Object.hasOwn(legacy,key))defaults[key]=legacy[key];
     const values={...defaults,...draft.app_settings?.[packageId]};
     section.append(el('p','muted',draft.app_settings?.[packageId]?'Saved in this draft. Settings apply to this app across all profiles after Deploy.':'Defaults are shown. Read from Core to load the app’s current settings before editing.'));
     window.studioPackageUI.fields(section,definition.schema,values,(key,value)=>{
@@ -493,8 +528,20 @@
       }
       content.replaceChildren(summary);
       if(spec.showTemperatures===false)return;
-      const readings=Array.isArray(printer.nozzle_readings)?printer.nozzle_readings:[];
+      const reported=Array.isArray(printer.nozzle_readings)?printer.nozzle_readings:[];
+      const tools=new Map(reported.map(reading=>[reading.tool,reading]));
+      for(const key of Object.keys(presentation.labels||{})){
+        if(/^nozzle[.][0-9]+$/.test(key)){
+          const tool=Number(key.slice(6));
+          if(!tools.has(tool))tools.set(tool,{tool});
+        }
+      }
+      const readings=[...tools.values()].sort((a,b)=>a.tool-b.tool);
       const temperatures=el('dl','bambu-unfolded-temperatures');
+      if(presentation.minTemperatureRows>1){
+        const columns=Math.ceil(Math.max(1,readings.length)/presentation.minTemperatureRows);
+        temperatures.style.gridTemplateColumns='repeat(auto-fit,minmax(min(100%,max(76px,calc((100% + 8px) / '+columns+' - 8px))),1fr))';
+      }
       const temperature=value=>Number.isFinite(value)?Math.round(value)+'°C':'—';
       function addTemperature(label,value){
         const tile=el('div','bambu-temperature');
@@ -542,7 +589,7 @@
       }
       tiles.append(tile);
     });
-    board.style.setProperty('--plate',face.plateColor);
+    board.style.setProperty('--plate',spec.packageSettings?.[face.plateColorSetting]??face.plateColor);
     board.style.setProperty('--flip-half',face.durationMs/2+'ms');
     board.append(header,tiles);
     if(spec.showDate!==false)board.append(el('span','flap-date',now.toLocaleDateString(undefined,small?
@@ -551,6 +598,11 @@
   }
   function renderNativePreview(w,card){
     const spec=nativeSpec(w);card.classList.add('native-preview');card.style.backgroundColor=w.bgColor||'#192325';card.style.color=spec.textColor||'#eef6f2';card.style.setProperty('--widget-accent',spec.accent);
+    const installed=studioBinding(spec);
+    if(installed?.descriptor.layout){
+      window.widgetScene.preview(card,w.name,{...spec,background:w.bgColor},isSmall(w)?'small':'large',api,installed.version);
+      return;
+    }
     const presentation=packageUI.presentation(studioBinding(spec),spec);
     if(spec.kind==='clock' && presentation.splitFlap){
       splitFlapPreview(w,card,spec,presentation.splitFlap);
@@ -804,7 +856,7 @@
     else canvas.style.removeProperty('--layout-right');
     current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);
       card.onclick=event=>{
-        if(event.target.closest('.bambu-unfold')){showBambuUnfolded(w);return;}
+        if(event.target.closest('.bambu-unfold') || (event.target.closest('.package-scene') && nativeSpec(w)?.kind==='bambu' && event.offsetY>=card.clientHeight*.78)){showBambuUnfolded(w);return;}
         backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();
       };
       draggable(card,{kind:'widget-move',index:i});dropzone(card,data=>{if(data.kind==='widget-new')addWidget(data.widget,i);if(data.kind==='widget-move')moveWidget(data.index,i);});canvas.append(card);
@@ -820,11 +872,13 @@
     if(backgroundIndex>=0){renderBackgroundProperties($('widget-properties'));return;}
     const panel=$('widget-properties');panel.replaceChildren(el('h3','','Widget settings'));const w=current().homeData[widgetIndex];if(!w){panel.append(el('p','muted','Select a card to edit it.'));return;}
     const spec=nativeSpec(w),shortcut=pcWidgetSpec(w);
-    panel.append(el('span','badge',spec?'Studio widget':shortcut?(shortcut.kind==='url'?'Website':'PC app'):w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)),field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
+    const packagePanel=spec&&studioBinding(spec)?.descriptor.api===2;
+    panel.append(el('span','badge',spec?'Studio widget':shortcut?(shortcut.kind==='url'?'Website':'PC app'):w.type),field('Display name',w.name||'',v=>change(()=>w.name=v)));
+    if(!packagePanel)panel.append(field('Background color',/^#[a-f0-9]{6}$/i.test(w.bgColor)?w.bgColor:(spec?'#192325':'#202a2b'),v=>change(()=>w.bgColor=v),'color'));
     if(spec){
-      panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
+      if(!packagePanel)panel.append(field('Text color',spec.textColor||'#eef6f2',v=>change(()=>spec.textColor=v),'color'),field('Accent color',spec.accent,v=>change(()=>spec.accent=v),'color'));
       if(spec.packageId)panel.append(el('p','muted','Store package: '+spec.packageId+' / '+spec.packageVersion));
-      renderPackageSettings(panel,spec);
+      renderPackageSettings(panel,spec,w);
       if(spec.kind==='bambu'){
         const unfold=button('Preview unfolded widget',()=>showBambuUnfolded(w));
         unfold.setAttribute('aria-haspopup','dialog');panel.append(unfold);

@@ -230,6 +230,9 @@ def widget_package(raw):
 
 
 def require_widget_version(widgets,manifest):
+    if any(w.get('studio', {}).get('api') == 2 for w in widgets) and valid_version(manifest['compatibility']['minStudioVersion']) < (0,52,18):
+        raise StoreError('Package-defined widget settings require Studio 0.52.18+.')
+
     if any('splitFlap' in p for w in widgets for p in w.get('studio', {}).get('presentation', {}).get('presets', [])) and valid_version(manifest['compatibility']['minStudioVersion']) < (0, 52, 17):
         raise StoreError('Split-flap displays require Studio 0.52.17+.')
     if any('sizes' in widget for widget in widgets) and valid_version(manifest['compatibility']['minStudioVersion']) < (0, 52, 0):
@@ -371,6 +374,10 @@ class Store:
     def templates(self):
         with self.lock:
             templates=[dict(widget,_storePackage=p['id'],_storeVersion=p['version'],_studio=studio_contract.resolve(widget),**({'_bundledApp':dict(id=p['android']['packageId'],name=p['name'])} if p.get('bundledWidgets') else {})) for p in self.records().values() if p['type'] in ('studio-plugin','corebar-widget') or p.get('bundledWidgets') for widget in p.get('widgets',[])]
+            for template in templates:
+                panel = template.get('_studio') or {}
+                if panel.get('api') == 2:
+                    template['_rendererFields'] = sorted(studio_contract.SETTINGS.get(template['kind'], {}))
             templates.extend(dict(id=p['android']['packageId'],name=p['name'],type='APPS',iconScale=100,_storePackage=p['id'],_storeVersion=p['version']) for p in self.records().values() if p.get('deferred') and p['type']=='corebar-app' and not p.get('bundledWidgets'))
             return templates
     def status(self):
@@ -613,7 +620,9 @@ class Store:
         if not re.search(r'\bversionCode='+str(p['android']['versionCode'])+r'\b',dump):raise StoreError('Installation completed but its version could not be verified. Check Core before retrying.')
         if prepared is not None:
             notify('Configuring Screen Sync for your connected VivoCubes…')
-            if background is not None:screen_sync.configure(server,target,prepared,settings=background.get('settings',{}),background=True)
+            if background is not None and p.get('settings'):
+                screen_sync.configure(server, target, prepared, launch=False)
+            elif background is not None:screen_sync.configure(server,target,prepared,settings=background.get('settings',{}),background=True)
             else:screen_sync.configure(server, target, prepared)
         elif background is not None:
             self.start_background(p['android']['packageId'],background.get('settings',{}))
@@ -755,6 +764,28 @@ def register_store(server):
         with store.lock:installed=list(store.records().values())
         packages=catalog()+list(store.manual_packages().values());store.remember_icons(installed+packages)
         return jsonify(packages=[dict(p,links=package_links(p)) for p in packages],installed=[dict(p,links=package_links(p)) for p in installed],manual=list(store.manual_packages().values()),job=store.status(),pending_deploy=store.pending_deploy((server.connection.get('snapshot') or {}).get('device_id')))
+    @server.app.post('/api/store/widget-layout')
+    def widget_layout():
+        import widget_scene
+        body=request.get_json(silent=True) or {}
+        if not isinstance(body,dict) or not isinstance(body.get('spec'),dict) or body.get('size') not in ('small','large'):
+            raise StoreError('Invalid widget preview.')
+        spec=dict(body['spec'])
+        records=store.records()
+        layout=widget_scene.installed(spec,records)
+        if not layout:raise StoreError('Install the widget package to preview its layout.')
+        studio_contract.apply_installed_settings({'preview':spec},records)
+        stamp=time.time()
+        metrics=server.companion.metrics.sample()
+        printers=server.bambu.sample() if spec.get('kind')=='bambu' else {}
+        printer=printers.get(spec.get('printerId'),{})
+        from bambu_artwork import thumbnail
+        art=thumbnail(printer.get('model')) if printer.get('model') else None
+        import widget_presentation
+        bindings=widget_presentation.bindings({'preview':spec},records)
+        spec=widget_presentation.apply({'preview':spec},bindings,{'bambu-lan':printers})['preview']
+        return jsonify(widget_scene.make(layout,body['size'],spec,metrics,printer,str(body.get('title',''))[:100],stamp,art))
+
     @server.app.get('/api/store/installed')
     def installed():
         with store.lock:

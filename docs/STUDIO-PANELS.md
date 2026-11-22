@@ -66,3 +66,30 @@ Validation covers descriptors, installed-package authorization, provider dispatc
 legacy package loading, Store persistence, per-widget values, secret isolation,
 generated fields, live status, focus preservation and dialog cleanup. Tests use
 offline fixtures; they do not establish physical printer/Core acceptance.
+
+## Package-defined settings in Studio 0.52.18
+
+A widget installed in Studio can set `widgets[].studio.api` to `2`. Declare the
+editor controls in `studio.settings.fields`. Each field supplies its own key,
+label, type and default. The same Studio version reads added fields, choices
+and defaults when the package is updated. Values belong to each placed card.
+Use a stable package ID, widget ID and field key across releases.
+
+For example, a package can declare a color as
+`{"key":"plate","label":"Plate color","type":"color","default":"#353839"}`
+and set `plateColorSetting` to `plate` in its split-flap presentation preset.
+A choice field can select a package-defined presentation through
+`presentation.source`. A printer presentation preset can specify
+`minTemperatureRows` from 1 to 3. The existing Core layout applies these values
+on Deploy. Publish changes to the widget JSON through the existing Store listing.
+
+Supported field types are boolean, integer, number, string, URL, choice and
+color. New field keys are stored under `packageSettings`, separately from the
+card identity and transport settings. A field supplies configuration. A feature
+that uses it also needs a renderer, presentation or device capability that
+consumes its value. Declare `compatibility.minStudioVersion` of at least
+`0.52.18` for panel API 2.
+
+### Shared widget layouts
+
+Panel API 2 accepts a `layout` object with a `large` and a `small` array. Each array declares up to 32 layers drawn in order. Use coordinates on a 260 by 240 canvas for large cards and 130 by 120 for small cards. Each layer declares an `op` and a `box` containing x, y, width and height. Supported operations are text, rect, bar, image and time. Bind a color to a field with `$fieldName`, text to a value with `@fieldName`, and visibility with `when`. For example, `{"op":"rect","box":[4,4,50,20],"color":"$plateColor"}` draws a plate in the selected color. Time layers continue ticking locally on Core. Studio previews the installed layout and Deploy supplies the same graphics to the home card. Keep the widget ID stable when changing layouts.

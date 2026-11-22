@@ -34,3 +34,42 @@ class AppSettingsBrowserTests(unittest.TestCase):
             page.screenshot(path=str(out/'app-settings-1920.png'),full_page=True)
             page.set_viewport_size(dict(width=390,height=900));page.screenshot(path=str(out/'app-settings-390.png'),full_page=True)
             self.assertEqual(saved['profiles'],saved['base_profiles'])
+
+    def test_installed_widget_updates_open_panel_and_preserves_instances(self):
+        import store
+        panel = dict(api=2,settings=dict(api=1,fields=[dict(key='faceColor',label='Face color',type='color',default='#123456')]))
+        panel['layout']={size:[dict(op='rect',box=[0,0,24,24],color='$faceColor')] for size in ('large','small')}
+        widget = dict(id='face',name='Package clock',kind='clock',studio=panel)
+        record = dict(id='test.clock',name='Test Clock',type='corebar-widget',version='1.0.0')
+        def install():
+            record['widgets']=store.widget_package(json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[widget])).encode())
+        install()
+        with sync_playwright() as pw,fixture.ActionWizardTests().workspace(pw) as (page,host,root,program,picker,legacy),patch.object(server.store,'records',return_value={'test.clock:pc':record}):
+            page.route('**/api/store/installed',lambda route:route.fulfill(json=dict(installed=[record], widgets=server.store.templates())))
+            page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
+            page.locator('#mode-layout').click()
+            item=page.locator('#widget-library').get_by_role('button',name='Package clock',exact=True)
+            item.drag_to(page.locator('#core-screen'))
+            color=page.locator('#widget-setting-faceColor')
+            expect(color).to_have_value('#123456')
+            pixel="""() => {const c=document.querySelector('#core-screen canvas.package-scene');return c && Array.from(c.getContext('2d').getImageData(6,6,1,1).data).slice(0,3).join(',')} """
+            page.wait_for_function("()=>("+pixel+")()==='18,52,86'")
+            color.fill('#654321')
+            color.dispatch_event('change')
+            page.locator('#draft-save').click()
+            expect(page.locator('#draft-status')).to_contain_text('Draft saved')
+            panel['settings']['fields'].append(dict(key='chimes',label='Enable chimes',type='boolean',default=True))
+            for layers in panel['layout'].values():layers[0]['color']='#f09923'
+            record['version']='1.1.0'
+            install()
+            page.evaluate("window.dispatchEvent(new Event('studio-store-changed'))")
+            expect(page.get_by_label('Enable chimes')).to_be_checked()
+            page.wait_for_function("()=>("+pixel+")()==='240,153,35'")
+            expect(color).to_have_value('#654321')
+            expect(page.locator('#background-apps button')).to_have_count(0)
+            page.get_by_label('Enable chimes').uncheck()
+            page.locator('#draft-save').click()
+            expect(page.locator('#draft-status')).to_contain_text('Draft saved')
+            saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
+            cards=[w for profile in saved['profiles'] for w in profile['homeData'] if w.get('name')=='Package clock']
+            self.assertEqual(cards[0]['param']['payload']['params']['packageSettings'],{'chimes':False,'faceColor':'#654321'})

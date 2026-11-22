@@ -81,7 +81,7 @@ def write_private_file(server, target, path, uid, raw):
     return server.adb('-s', target, 'exec-out', 'cat', path, binary=True) == raw
 
 
-def configure(server, target, prepared, settings=None, background=False):
+def configure(server, target, prepared, settings=None, background=False, *, launch=True):
     from store import StoreError
     dump = server.adb('-s', target, 'shell', 'dumpsys', 'package', PACKAGE_ID).split('Hidden system packages:', 1)[0]
     match = re.search(r'^\s*userId=(\d+)\s*$', dump, re.M)
@@ -96,6 +96,9 @@ def configure(server, target, prepared, settings=None, background=False):
         path = base + '/' + name
         if not write_private_file(server, target, path, uid, raw):
             raise StoreError('Screen Sync installed, but setup could not be verified. Check the connection and retry Deploy.')
+    if not launch:
+        # Packages with the settings API start their own service on confirmed apply.
+        return
     if settings is not None or background:
         settings=settings or {}
         validate_settings(settings)

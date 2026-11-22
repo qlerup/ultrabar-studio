@@ -27,13 +27,17 @@ def validate(presentation, panel):
         raise ValueError('presentation: declare 1-32 presets.')
     seen = set()
     for preset in presets:
-        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
+        if not isinstance(preset, dict) or set(preset)-{'value', 'labels', 'artwork', 'splitFlap', 'minTemperatureRows'} or not isinstance(preset.get('value'), str) or preset['value'] not in choices or preset['value'] in seen:
             raise ValueError('presentation: presets must name distinct declared choices.')
         seen.add(preset['value'])
+        if 'minTemperatureRows' in preset and (panel.get('api') != 2 or type(preset['minTemperatureRows']) is not int or not 1 <= preset['minTemperatureRows'] <= 3):
+            raise ValueError('Temperature rows must be between one and three.')
         if 'splitFlap' in preset:
             face = preset['splitFlap']
-            if not isinstance(face, dict) or set(face) != {'plateColor', 'durationMs'}:
+            if not isinstance(face, dict) or set(face) - {'plateColor', 'durationMs', 'plateColorSetting'} or not {'plateColor','durationMs'} <= set(face):
                 raise ValueError('splitFlap requires plateColor and durationMs.')
+            if 'plateColorSetting' in face and (panel.get('api') != 2 or not any(f['type']=='color' and f['key']==face['plateColorSetting'] for f in panel.get('settings',{}).get('fields',[]))):
+                raise ValueError('Choose a declared plate color setting.')
             if not isinstance(face['plateColor'], str) or not re.fullmatch(r'#[0-9a-fA-F]{6}', face['plateColor']):
                 raise ValueError('Invalid split-flap plate color.')
             if type(face['durationMs']) is not int or not 0 <= face['durationMs'] <= 600:
@@ -66,9 +70,15 @@ def validate(presentation, panel):
 def resolve(presentation, settings, connection=None):
     source = presentation['source']
     values = settings if source['scope'] == 'setting' else (connection or {})
-    selected = values.get(source['key'])
+    selected = (settings.get('packageSettings', {}).get(source['key'], values.get(source['key']))
+                if source['scope'] == 'setting' else values.get(source['key']))
     preset = next((p for p in presentation['presets'] if p['value'] == selected), {})
-    return {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap') if key in preset}
+    result = {key: copy.deepcopy(preset[key]) for key in ('labels', 'artwork', 'splitFlap', 'minTemperatureRows') if key in preset}
+    face = result.get('splitFlap', {})
+    color = settings.get('packageSettings', {}).get(face.pop('plateColorSetting', None))
+    if isinstance(color,str) and re.fullmatch(r'#[0-9a-fA-F]{6}', color):
+        face['plateColor'] = color
+    return result
 
 
 def bindings(specs, records):

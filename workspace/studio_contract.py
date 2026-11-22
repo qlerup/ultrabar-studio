@@ -2,7 +2,7 @@
 import copy
 import json
 import re
-from app_settings_contract import validate_schema
+from app_settings_contract import validate_schema, validate_value
 
 
 MIN_VERSION = (0, 49, 0)
@@ -30,10 +30,14 @@ def _text(value, name, limit=100):
 
 
 def validate(descriptor, kind):
-    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation'} or type(descriptor.get('api')) is not int or descriptor['api'] != 1:
+    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation', 'layout'} or type(descriptor.get('api')) is not int or descriptor['api'] not in (1, 2):
         raise ValueError('studio: use declarative panel API 1; code and custom transports are unsupported.')
     if not {'settings', 'connection'} & set(descriptor):
         raise ValueError('studio: declare settings or a connection panel.')
+    if 'layout' in descriptor:
+        if descriptor['api'] != 2:raise ValueError('Widget layouts require panel API 2.')
+        from scene_contract import validate as validate_layout
+        validate_layout(descriptor['layout'])
     if 'help' in descriptor:
         _text(descriptor['help'], 'help', 2000)
     if 'settings' in descriptor:
@@ -41,6 +45,12 @@ def validate(descriptor, kind):
         allowed = SETTINGS.get(kind, {})
         for field in schema['fields']:
             key = field['key']
+            if descriptor['api'] == 2 and key not in allowed:
+                if key in {'accent', 'background', 'textColor'} and field['type'] != 'color':
+                    raise ValueError('Widget colors must use a color field.')
+                if key in {'constructor', 'prototype', '__proto__'}:
+                    raise ValueError('Invalid package setting name.')
+                continue
             if key not in allowed or field['type'] != allowed[key][0]:
                 raise ValueError('studio: unsupported setting for '+str(kind)+': '+key+'.')
             choices = allowed[key][1]
@@ -155,3 +165,25 @@ def resolve(widget):
     if descriptor is None:
         descriptor = legacy_descriptor(widget)
     return validate(descriptor, widget.get('kind')) if descriptor is not None else None
+
+def apply_installed_settings(specs, records):
+    """Resolve each placed card using its installed Studio package, including upgrades."""
+    widgets = {(record.get('id'), widget.get('id')): widget for record in records.values()
+               for widget in record.get('widgets', [])}
+    for spec in specs.values():
+        template = widgets.get((spec.get('packageId'), spec.get('widgetKey')), {})
+        panel = template.get('studio', {})
+        if panel.get('api') != 2:
+            continue
+        renderer_fields = SETTINGS.get(template['kind'], {})
+        saved = spec.get('packageSettings', {})
+        if not isinstance(saved, dict):
+            raise ValueError('Invalid saved widget settings.')
+        custom = {}
+        for field in panel.get('settings', {}).get('fields', []):
+            key = field['key']
+            if key in renderer_fields or key in ('background', 'textColor', 'accent'):
+                spec[key] = validate_value(field, spec.get(key, field['default']))
+            else:
+                custom[key] = validate_value(field, saved.get(key, field['default']))
+        spec['packageSettings'] = custom

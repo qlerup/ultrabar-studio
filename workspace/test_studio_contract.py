@@ -13,6 +13,31 @@ from store import StoreError, require_widget_version, widget_package
 
 
 class StudioContractTests(unittest.TestCase):
+    def test_updated_library_package_drives_existing_card_without_core_app(self):
+        from studio_contract import apply_installed_settings
+        from widget_presentation import resolve as presentation
+        fields = [dict(key='mode',label='Mode',type='choice',default='quiet',
+                       options=[dict(value='quiet',label='Quiet'),dict(value='normal',label='Normal')]),
+                  dict(key='plate',type='color',label='Plate',default='#ddeeff')]
+        panel = dict(api=2,settings=dict(api=1,fields=fields))
+        face = dict(api=1,source=dict(scope='setting',key='mode'),
+                    presets=[dict(value='quiet',splitFlap=dict(plateColor='#000000',plateColorSetting='plate',durationMs=350))])
+        panel['presentation'] = face
+        widget=dict(kind='clock',name='Example',id='face',studio=panel)
+        raw=json.dumps(dict(widgetApi=1,runtime='studio-native-v1',widgets=[widget])).encode()
+        templates=widget_package(raw)
+        records={'example:pc':dict(id='example',type='corebar-widget',widgets=templates)}
+        specs={'a':dict(kind='clock',packageId='example',widgetKey='face',packageSettings={'plate':'#123456'}),
+               'b':dict(kind='clock',packageId='example',widgetKey='face')}
+        apply_installed_settings(specs, records)
+        self.assertEqual(presentation(face,specs['a'])['splitFlap']['plateColor'],'#123456')
+        self.assertEqual(presentation(face,specs['b'])['splitFlap']['plateColor'],'#ddeeff')
+        fields.append(dict(key='chime',label='Chime',type='boolean',default=True))
+        records['example:pc']['widgets']=[widget]
+        apply_installed_settings(specs,records)
+        self.assertEqual(specs['a']['packageSettings'],dict(mode='quiet',plate='#123456',chime=True))
+        self.assertNotIn('chime', specs['a'])
+
     def test_widget_size_declarations_and_minimum_version(self):
         def parse(sizes):
             widget = dict(id='clock', name='Clock', kind='clock', sizes=sizes)
