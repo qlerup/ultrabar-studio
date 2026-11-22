@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.21 Windows
+# UltraBar Studio — 0.52.22 Windows
+
+## 0.52.22 update
+
+Printer widget packages can place temperature readings in individual boxes to the right of their nozzle grid.
 
 ## 0.52.21 update
 

@@ -182,7 +182,7 @@ public final class BambuTile {
         private final int foreground,accent,background,muted;
         private final Paint paint = new Paint(3); private final Path path = new Path();
         private final RectF from = new RectF(), to = new RectF(), current = new RectF();
-        private final LinearLayout body, hero, temperatures, actions;
+        private final LinearLayout body, hero, temperatures, sideColumn, actions;
         private TextView name, status, value, job, details, controlHint;
         private final ArrayList<TemperatureTile> temperatureTiles = new ArrayList<>();
         private boolean shortToolLabels;
@@ -272,7 +272,13 @@ public final class BambuTile {
             hero.addView(environment);
             middle.addView(hero,new LinearLayout.LayoutParams(0,-2,1.15f));
             temperatures=new LinearLayout(getContext());temperatures.setOrientation(LinearLayout.VERTICAL);temperatures.setPadding(12,0,0,0);
-            middle.addView(temperatures,new LinearLayout.LayoutParams(0,-2,1));body.addView(middle,new LinearLayout.LayoutParams(-1,0,1));
+            middle.addView(temperatures,new LinearLayout.LayoutParams(0,-2,1));
+            sideColumn=new LinearLayout(getContext());
+            sideColumn.setOrientation(LinearLayout.VERTICAL);
+            sideColumn.setPadding(6,0,0,0);
+            sideColumn.setVisibility(GONE);
+            middle.addView(sideColumn,new LinearLayout.LayoutParams(0,-1));
+            body.addView(middle,new LinearLayout.LayoutParams(-1,0,1));
             controlHint=txt("",11,muted,false);body.addView(controlHint);
             actions=new LinearLayout(getContext());
             pause=btn("Ⅱ  Pause",accent,()->execute(getContext(),spec,snapshot(spec).optString("gcode_state").equals("PAUSE")?"resume":"pause"));
@@ -323,10 +329,16 @@ public final class BambuTile {
                     LinearLayout footer=new LinearLayout(getContext());
                     footer.setGravity(Gravity.CENTER);
                     filament=txt("",materialSize,foreground,true);
-                    footer.addView(filament);
+                    filament.setGravity(Gravity.CENTER);
+                    filament.setHorizontallyScrolling(false);
+                    filament.setAutoSizeTextTypeUniformWithConfiguration(9,materialSize,1,android.util.TypedValue.COMPLEX_UNIT_PX);
+                    footer.addView(filament,new LinearLayout.LayoutParams(-2,-1));
                     swatch=new View(getContext());
                     LinearLayout.LayoutParams chip=new LinearLayout.LayoutParams(swatchSize,swatchSize);
-                    chip.leftMargin=8;
+                    chip.leftMargin=to.width()<640 ? 4 : 8;
+                    footer.addOnLayoutChangeListener((v,l,t,r,b,ol,ot,oright,ob)->{
+                        if(r-l!=oright-ol) filament.setMaxWidth(Math.max(1,r-l-swatchSize-chip.leftMargin));
+                    });
                     footer.addView(swatch,chip);
                     addView(footer,new LinearLayout.LayoutParams(-1,Math.max(materialSize+6,swatchSize+4)));
                     setPadding(2,1,2,2);
@@ -354,6 +366,7 @@ public final class BambuTile {
             }
         }
 
+        private String lastSideFields = "";
         private int lastMinimumRows, lastMaterialSize, lastSwatchSize, lastInset;
         private void layoutTemperatures(int nozzleCount) {
             int total = nozzleCount + 2;
@@ -365,8 +378,23 @@ public final class BambuTile {
             int materialSize = style == null ? 11 : style.optInt("materialSize",11);
             int swatchSize = style == null ? 9 : style.optInt("swatchSize",9);
             int inset = style == null ? 14 : style.optInt("verticalInset",14);
-            if (materialSize == lastMaterialSize && swatchSize == lastSwatchSize && inset == lastInset
+            JSONArray sideFields = style == null ? null : style.optJSONArray("sideTemperatures");
+            String sideKey = sideFields == null ? "" : sideFields.toString();
+            if (sideKey.equals(lastSideFields) && materialSize == lastMaterialSize && swatchSize == lastSwatchSize && inset == lastInset
                     && temperatureTiles.size() == (grid ? nozzleCount : total) && minimum == lastMinimumRows) return;
+            lastSideFields = sideKey;
+            sideColumn.removeAllViews();
+            int sideWidth = sideFields == null ? 0 : Math.min(192,Math.round(to.width()*.15f));
+            sideColumn.getLayoutParams().width = sideWidth;
+            if(sideFields!=null){
+                for(int i=0;i<sideFields.length();i++){
+                    TemperatureTile tile=new TemperatureTile(0xffc7ddeb,72,materialSize,swatchSize);
+                    tile.setTag(sideFields.optString(i));
+                    LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,0,1);
+                    if(i>0)lp.topMargin=4;
+                    sideColumn.addView(tile,lp);
+                }
+            }
             lastMinimumRows = minimum;
             lastMaterialSize = materialSize;
             lastSwatchSize = swatchSize;
@@ -383,11 +411,15 @@ public final class BambuTile {
             params.weight = weight;
             params.height = grid ? -1 : -2;
             temperatures.setLayoutParams(params);
-            float width = (to.width() - body.getPaddingLeft() - body.getPaddingRight()) * weight / (1.15f + weight) - temperatures.getPaddingLeft();
+            float heroWeight = sideWidth > 0 && to.width()<640 ? .8f : 1.15f;
+            LinearLayout.LayoutParams heroParams = (LinearLayout.LayoutParams) hero.getLayoutParams();
+            heroParams.weight = heroWeight;
+            hero.setLayoutParams(heroParams);
+            float width = (to.width() - sideWidth - body.getPaddingLeft() - body.getPaddingRight()) * weight / (heroWeight + weight) - temperatures.getPaddingLeft();
             if (grid) {
                 int rows = Math.min(minimum,nozzleCount);
                 int columns = (nozzleCount + rows - 1) / rows;
-                shortToolLabels = width / columns < 96;
+                shortToolLabels = width / columns < (sideWidth > 0 ? 120 : 96);
                 for (int r=0;r<rows;r++) {
                     LinearLayout row = new LinearLayout(getContext());
                     LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1,0,1);
@@ -474,7 +506,18 @@ public final class BambuTile {
                 tile.showFilament(material,color.matches("#[0-9a-fA-F]{6}") ? color : "");
             }
             boolean grid=lastMinimumRows>1;
-            environment.setVisibility(grid && temperatures.getVisibility()==VISIBLE ? VISIBLE : GONE);
+            boolean sideBoxes=sideColumn.getChildCount()>0;
+            boolean visible=temperatures.getVisibility()==VISIBLE;
+            sideColumn.setVisibility(visible && sideBoxes ? VISIBLE : GONE);
+            environment.setVisibility(visible && grid && !sideBoxes ? VISIBLE : GONE);
+            if(sideBoxes){
+                for(int i=0;i<sideColumn.getChildCount();i++){
+                    TemperatureTile tile=(TemperatureTile)sideColumn.getChildAt(i);
+                    String key=(String)tile.getTag();
+                    tile.show(labels==null ? key : labels.optString(key,key), live ? temperature(s,key) : "\u2014");
+                }
+                return;
+            }
             if(grid){
                 environment.setText("Bed "+(live ? temperature(s,"bed_temper") : "—")
                     +"    Chamber "+(live ? temperature(s,"chamber_temper") : "—"));

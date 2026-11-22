@@ -551,10 +551,10 @@
         }
       }
       const temperature=value=>Number.isFinite(value)?Math.round(value)+'°C':'—';
-      function addTemperature(label,value){
+      function addTemperature(label,value,parent=temperatures){
         const tile=el('div','bambu-temperature');
         tile.append(el('dt','',label),el('dd','',temperature(value)));
-        temperatures.append(tile);
+        parent.append(tile);
       }
       for(const {tool,temperature:value,material,filamentProfile,color} of readings){
         addTemperature(presentation.labels?.['nozzle.'+tool]||'NOZZLE T'+tool,value);
@@ -567,6 +567,15 @@
         }
       }
       if(!readings.length)addTemperature('NOZZLE',printer.nozzle_temper);
+      const sideFields=presentation.nozzleGrid?.sideTemperatures;
+      if(grid && sideFields?.length){
+        const group=el('div','bambu-temperature-panel');
+        const side=el('dl','bambu-side-temperatures');
+        for(const key of sideFields)addTemperature(presentation.labels?.[key]||key,printer[key],side);
+        group.append(temperatures,side);
+        content.append(group);
+        return;
+      }
       if(grid)summary.append(el('span','muted','Bed '+temperature(printer.bed_temper)+'    Chamber '+temperature(printer.chamber_temper)));
       else{
         addTemperature('BED',printer.bed_temper);

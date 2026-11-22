@@ -36,10 +36,16 @@ def validate(presentation, panel):
             grid = preset['nozzleGrid']
             bounds = {'materialSize': (10, 20), 'swatchSize': (8, 22), 'verticalInset': (4, 14)}
             if (panel.get('api') != 2 or preset.get('minTemperatureRows', 1) < 2
-                    or not isinstance(grid, dict) or set(grid) != set(bounds)
+                    or not isinstance(grid, dict) or set(grid)-{'sideTemperatures'} != set(bounds)
                     or any(type(grid[k]) is not int or not low <= grid[k] <= high
                            for k, (low, high) in bounds.items())):
                 raise ValueError('Invalid nozzle grid dimensions.')
+            if 'sideTemperatures' in grid:
+                fields = grid['sideTemperatures']
+                if (not isinstance(fields, list) or not 1 <= len(fields) <= 3
+                        or any(not isinstance(key, str) or not re.fullmatch('[a-z][a-z0-9_]{0,30}_temper', key) for key in fields)
+                        or len(fields) != len(set(fields))):
+                    raise ValueError('Declare one to three distinct temperature readings for the side column.')
         if 'splitFlap' in preset:
             face = preset['splitFlap']
             if not isinstance(face, dict) or set(face) - {'plateColor', 'durationMs', 'plateColorSetting'} or not {'plateColor','durationMs'} <= set(face):
