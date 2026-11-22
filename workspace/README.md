@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.11 Windows
+# UltraBar Studio — 0.52.12 Windows
+
+## 0.52.12 update
+
+- Choose a Bambu printer model before adding a printer through the Bambu widget.
+- Change a saved printer's model without re-entering its LAN access code or
+  approving its certificate again.
 
 ## 0.52.11 update
 

@@ -53,7 +53,8 @@ window.studioPackageUI=(()=>{
         row.querySelector('.studio-connection-host').textContent=item.host;
       }
       async function refresh(live=false){
-        const data=await call(b,'list');if(!dialog.open||(live&&saving))return;remember(b,data);
+        const previous=cache.get(identity(b));
+        const data=await call(b,'list');if(!dialog.open||(live&&(saving||previous!==cache.get(identity(b)))))return;remember(b,data);
         const rows=[...list.querySelectorAll('.studio-connection-row')];
         if(!live||rows.length!==items().length||rows.some(row=>!items().some(item=>item.id===row.dataset.connectionId)))renderList();
         else for(const row of rows)updateRowStatus(row,items().find(item=>item.id===row.dataset.connectionId));
@@ -89,10 +90,16 @@ window.studioPackageUI=(()=>{
         const fields=[...config.fields.filter(field=>discoveryKeys.has(field.key)),...config.fields.filter(field=>!discoveryKeys.has(field.key))];
         for(const field of fields){
           const wrap=node('label','property-field',field.label),input=node(field.type==='choice'?'select':'input');input.dataset.connectionField=field.key;input.id='connection-'+field.key;
-          if(field.type==='choice')for(const option of field.options){const o=node('option','',option.label);o.value=option.value;input.append(o);}
+          const printerModel=config.provider==='bambu-lan'&&field.key==='model';
+          if(field.type==='choice'){
+            if(printerModel)option(input,'','Choose a printer model');
+            for(const choice of field.options)if(!printerModel||choice.value!=='generic')option(input,choice.value,choice.label);
+          }
           else input.type=field.type==='secret'?'password':field.type==='boolean'?'checkbox':'text';
-          if(field.type==='boolean')input.checked=!!item?.[field.key];else input.value=field.type==='secret'?'':field.type==='choice'?(field.options.some(o=>o.value===item?.[field.key])?item[field.key]:field.options[0].value):item?.[field.key]||'';
-          input.required=!!field.required&&!(field.type==='secret'&&item);input.autocomplete='off';if(field.maxLength)input.maxLength=field.maxLength;
+          if(field.type==='boolean')input.checked=!!item?.[field.key];
+          else if(field.type==='choice')input.value=[...input.options].some(o=>o.value===item?.[field.key])?item[field.key]:input.options[0].value;
+          else input.value=field.type==='secret'?'':item?.[field.key]||'';
+          input.required=(printerModel||!!field.required)&&!(field.type==='secret'&&item);input.autocomplete='off';if(field.maxLength)input.maxLength=field.maxLength;
           wrap.append(input);if(field.type==='secret'&&item)wrap.append(node('small','muted','Leave blank to keep the saved value.'));if(field.help)wrap.append(node('small','muted',field.help));form.append(wrap);inputs[field.key]=input;
         }
         if(config.setupHelp)form.append(node('p','muted',config.setupHelp));
@@ -104,7 +111,7 @@ window.studioPackageUI=(()=>{
           const state=node('p','muted','Searching local network…');state.setAttribute('role','status');
           const results=node('div','studio-search-results');
           let selected=null;
-          const add=button('Add',()=>{
+          const add=button('Use printer',()=>{
             for(const key of discoveryKeys)if(inputs[key]&&typeof selected[key]==='string')inputs[key].value=selected[key];
             resetApproval();picker.close();
           },'primary');
@@ -131,22 +138,25 @@ window.studioPackageUI=(()=>{
         discovery.append(search);form.insertBefore(discovery,form.children[1]||null);
         const submitLabel=item?'Save changes':'Add';
         const approval=node('section','studio-certificate');approval.hidden=true;const submit=node('button','primary',submitLabel);submit.type='submit';form.append(approval,submit);
-        function resetApproval(){pending=null;approval.hidden=true;submit.textContent=submitLabel;}
+        function updateSubmit(){submit.disabled=saving||Object.values(inputs).some(input=>input.tagName==='SELECT'&&input.required&&!input.value);}
+        function resetApproval(){pending=null;approval.hidden=true;submit.textContent=submitLabel;updateSubmit();}
         for(const input of Object.values(inputs))input.addEventListener('input',resetApproval);
+        updateSubmit();
         form.onsubmit=async event=>{
           event.preventDefault();if(saving)return;saving=true;submit.disabled=true;search.disabled=true;message('');
           const candidate=Object.fromEntries(config.fields.map(field=>[field.key,field.type==='boolean'?inputs[field.key].checked:field.type==='secret'?inputs[field.key].value:inputs[field.key].value.trim()]));if(editing)candidate.id=editing.id;
           for(const input of Object.values(inputs))input.disabled=true;
           try{
-            if(!pending){
+            const keepConnection=config.provider==='bambu-lan'&&item&&candidate.host===item.host&&candidate.serial===item.serial&&!candidate.code;
+            if(!pending&&!keepConnection){
               const result=await call(b,'probe',{host:candidate.host});if(!dialog.open)return;
               pending={...candidate,pin:result.pin};approval.replaceChildren(node('strong','','Approve device certificate'),node('p','muted','Compare this SHA-256 fingerprint with a trusted connection before sending the access code.'),node('code','studio-fingerprint',result.pin));approval.hidden=false;submit.textContent=item?'Trust certificate & save':'Trust certificate & add';
             }else{
-              const result=await call(b,'save',pending);remember(b,result);if(!dialog.open)return;
+              const result=await call(b,'save',pending||candidate);remember(b,result);if(!dialog.open)return;
               for(const field of config.fields)if(field.type==='secret')inputs[field.key].value='';pending=null;renderList();saving=false;edit(null);message('Connection saved. Choose it for a widget, then Save and Deploy.');
             }
           }catch(e){if(dialog.open)message(e.message,true);}
-          finally{saving=false;submit.disabled=false;search.disabled=false;for(const input of Object.values(inputs))input.disabled=false;}
+          finally{saving=false;search.disabled=false;for(const input of Object.values(inputs))input.disabled=false;updateSubmit();}
         };
       }
       renderList();edit(null);document.body.append(dialog);

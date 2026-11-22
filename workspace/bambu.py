@@ -514,7 +514,7 @@ class Printers:
         name, serial, code, pin = (body.get(k, '') for k in ('name', 'serial', 'code', 'pin'))
         if not isinstance(name, str) or not 1 <= len(name.strip()) <= 48 or any(ord(c) < 32 for c in name):
             raise EditError('Give the printer a name of 1â€“48 characters.')
-        if not isinstance(serial, str) or not re.fullmatch('[A-Za-z0-9]{6,32}', serial) or not isinstance(code, str) or not isinstance(pin, str) or not re.fullmatch('[a-f0-9]{64}', pin) or type(body.get('controls', False)) is not bool:
+        if not isinstance(serial, str) or not re.fullmatch('[A-Za-z0-9]{6,32}', serial) or not isinstance(code, str) or type(body.get('controls', False)) is not bool:
             raise EditError('Enter the serial number, LAN access code and approve the printer certificate.')
         host = private_host(body.get('host'))
         with self.lock:
@@ -522,7 +522,13 @@ class Printers:
             old = next((p for p in profiles if p['id'] == body.get('id')), None)
             if body.get('id') and old is None:
                 raise EditError('This printer no longer exists. Refresh the printer list.')
-            if not code and old and old['host'] == host and old['serial'] == serial:
+            same_device = old is not None and old['host'] == host and old['serial'] == serial
+            keep_connection = same_device and not code and 'pin' not in body
+            if keep_connection:
+                pin = old['pin']
+            elif not isinstance(pin, str) or not re.fullmatch('[a-f0-9]{64}', pin):
+                raise EditError('Approve the printer certificate before saving a new or changed connection.')
+            if not code and same_device:
                 code = old['code']
             if not re.fullmatch('[A-Za-z0-9]{8}', code):
                 raise EditError('Enter the 8-character LAN access code.')
@@ -536,11 +542,17 @@ class Printers:
                 raise EditError('Choose a supported printer model.')
             profile = dict(id=old['id'] if old else uuid.uuid4().hex, name=name.strip(), host=host, serial=serial, code=code, pin=pin, controls=body.get('controls', False), model=model)
             updated = [profile if p is old else p for p in profiles] if old else profiles + [profile]
-        verify_connection(profile)
+        if not keep_connection:
+            verify_connection(profile)
         with self.lock:
             if self.read() != profiles:
                 raise EditError('The saved printer list changed. Check it and try again.')
             self.store(updated)
+            link = self.links.get(profile['id'])
+            if keep_connection and link and old['controls'] == profile['controls']:
+                with link.lock:
+                    link.profile = profile
+                return profile['id']
             if profile['id'] in self.links:
                 self.links.pop(profile['id']).close()
             link = self.links[profile['id']] = Link(profile)

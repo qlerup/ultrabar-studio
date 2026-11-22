@@ -89,6 +89,12 @@ def register(server):
             raise EditError('App connection parameters must be an object.')
         if operation == 'save':
             for field in connection['fields']:
-                if field['type'] == 'choice' and field['key'] in body and body[field['key']] not in [option['value'] for option in field['options']]:
+                if field['type'] != 'choice':
+                    continue
+                key = field['key']
+                value = body.get(key)
+                if connection['provider'] == 'bambu-lan' and key == 'model' and value in (None, '', 'generic'):
+                    raise EditError('Choose a printer model.')
+                if key in body and value not in [option['value'] for option in field['options']]:
                     raise EditError('Choose one of this package\'s '+field['label']+' options.')
         return jsonify(PROVIDERS[connection['provider']](server).invoke(operation, body))

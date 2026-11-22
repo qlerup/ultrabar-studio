@@ -111,11 +111,21 @@ class PrinterTests(unittest.TestCase):
         old=profile();self.manager.store([old])
         self.assertEqual(self.manager.read(),[old])
         self.assertEqual(self.manager.listing()[0]['model'],'generic')
-        self.manager.save(dict(old,model='h2d',code=''))
+        self.manager.preview([old['id']])
+        link=self.manager.links[old['id']]
+        editable={key:value for key,value in old.items() if key not in ('pin','code')}
+        self.manager.save(dict(editable,model='h2d',code=''))
         saved=self.manager.read()[0]
         self.assertEqual(saved['model'],'h2d');self.assertEqual(saved['code'],old['code'])
+        self.assertEqual(saved['pin'],old['pin'])
+        self.assertIs(self.manager.links[old['id']],link)
+        self.verify.assert_not_called()
+        self.start.assert_called_once()
         self.assertEqual(self.manager.listing()[0]['model'],'h2d')
         self.assertEqual(self.manager.links[old['id']].snapshot()['model'],'h2d')
+        for change in (dict(host='192.168.1.32'),dict(serial='NEWSERIAL'),dict(code='NEW12345')):
+            with self.subTest(change=change),self.assertRaisesRegex(EditError,'Approve the printer certificate'):
+                self.manager.save(dict(editable,**change))
         self.manager.save(dict(old,code=''))
         self.assertEqual(self.manager.read()[0]['model'],'h2d')
         for model in ('not/a/model', {}, None):
