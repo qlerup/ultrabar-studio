@@ -23,9 +23,9 @@ class FlipClockTests(unittest.TestCase):
                        else 'dk.qlerup.flipclock/.ClockActivity')
             server = SimpleNamespace(DATA_DIR=Path(data), ROOT=Path(data), adb=adb)
             with patch.object(flip_clock.bridge, 'screensaver', side_effect=bridge):
-                flip_clock.reconcile(server, 'core:5555', 'core', True)
-                self.assertEqual(state, dict(original, uri=flip_clock.HOST, featureEnabled=True))
-                flip_clock.reconcile(server, 'core:5555', 'core', True)
+                flip_clock.reconcile(server, 'core:5555', 'core', True, '20')
+                self.assertEqual(state, dict(original, uri=flip_clock.HOST, featureEnabled=True, lockTime='TIME_30S'))
+                flip_clock.reconcile(server, 'core:5555', 'core', True, '20')
                 state['lockTime'] = 'TIME_3MIN'
                 flip_clock.reconcile(server, 'core:5555', 'core', False)
                 self.assertEqual(state, dict(original, lockTime='TIME_3MIN'))
@@ -33,4 +33,4 @@ class FlipClockTests(unittest.TestCase):
     def test_removal_preserves_a_manually_selected_screensaver(self):
         current = dict(uri='other', featureEnabled=True, lockTime='TIME_5MIN')
         previous = dict(uri='flip', featureEnabled=True)
-        self.assertEqual(flip_clock.changed_settings(current, False, previous), current)
+        self.assertEqual(flip_clock.changed_settings(current, False, None, dict(previous=previous, appliedLockTime='TIME_30S')), current)

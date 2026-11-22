@@ -6,7 +6,7 @@ Deploy selects Flip Clock HD as the LineOS screensaver when placed in the
 layout or Background apps. Removing it and deploying restores the previous
 screensaver choice. PC Standby continues to control display sleep separately.
 
-Choose the theme, date and seconds in Studio before Deploy.
+Choose the theme, date, seconds and inactivity delay in Studio before Deploy. Tap the Core screen to dismiss the clock.
 
 ## 0.52.28 update
 

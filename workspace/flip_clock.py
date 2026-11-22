@@ -8,6 +8,8 @@ PACKAGE_ID = 'dk.qlerup.flipclock'
 STORE_ID = 'qlerup.core.flip-clock-hd'
 SIGNER = 'a2ffc4fd3545404750bd482b0332a30727e581dc70fd4f0cc6d34b22837f1fc8'
 HOST = 'ultra-flip-hd'
+LOCK_TIMES = {'20': 'TIME_30S', '40': 'TIME_2MIN', '60': 'TIME_3MIN',
+              '80': 'TIME_4MIN', '100': 'TIME_5MIN'}
 
 
 def applies(entry):
@@ -28,37 +30,50 @@ def placed(profiles, background):
         for profile in profiles for widget in profile.get('homeData', []))
 
 
-def changed_settings(current, enabled, previous=None):
+def selected(config):
+    return config.get('uri') == HOST and config.get('ver', 0) < 2
+
+
+def changed_settings(current, enabled, delay, backup):
     if enabled:
-        return dict(current, uri=HOST, featureEnabled=True)
-    if previous is None or current.get('uri') != HOST:
+        return dict(current, uri=HOST, featureEnabled=True, ver=0, lockTime=LOCK_TIMES[delay])
+    if backup is None or not selected(current):
         return current
+    previous = backup['previous']
     restored = dict(current)
-    if 'uri' in previous:
-        restored['uri'] = previous['uri']
-    else:
-        restored.pop('uri', None)
+    fields = ['uri', 'ver']
     if current.get('featureEnabled') is True:
-        restored['featureEnabled'] = previous['featureEnabled']
+        fields.append('featureEnabled')
+    if current.get('lockTime') == backup['appliedLockTime']:
+        fields.append('lockTime')
+    for field in fields:
+        if field in previous:
+            restored[field] = previous[field]
+        else:
+            restored.pop(field, None)
     return restored
 
 
-def reconcile(server, target, device, enabled):
+def reconcile(server, target, device, enabled, delay=None):
     from editor import atomic_json
     from store import StoreError
     name = hashlib.sha256(device.encode()).hexdigest()
     path = server.DATA_DIR / 'store' / 'screensavers' / (name + '.json')
     try:
-        previous = json.loads(path.read_text(encoding='utf-8'))
-        if not isinstance(previous, dict) or type(previous.get('featureEnabled')) is not bool:
+        backup = json.loads(path.read_text(encoding='utf-8'))
+        if (not isinstance(backup, dict) or not isinstance(backup.get('previous'), dict)
+                or type(backup['previous'].get('featureEnabled')) is not bool
+                or backup.get('appliedLockTime') not in LOCK_TIMES.values()):
             raise ValueError('Invalid screensaver backup')
     except FileNotFoundError:
-        previous = None
+        backup = None
     except (OSError, ValueError) as exc:
         raise StoreError('Flip Clock HD could not read the saved screensaver choice.') from exc
 
-    if not enabled and previous is None:
+    if not enabled and backup is None:
         return
+    if enabled and delay not in LOCK_TIMES:
+        raise StoreError('Choose a supported Flip Clock HD screensaver delay in Studio.')
     if server.adb('-s', target, 'shell', 'getprop', 'ro.serialno') != device:
         raise StoreError('Core changed before applying the screensaver. Reconnect and retry Deploy.')
     if enabled:
@@ -72,9 +87,11 @@ def reconcile(server, target, device, enabled):
         current = bridge.screensaver(target, server.adb, server.ROOT)
         if type(current.get('featureEnabled')) is not bool:
             raise ValueError('Invalid LineOS screensaver state')
-        if enabled and current.get('uri') != HOST:
-            atomic_json(path, current)
-        updated = changed_settings(current, enabled, previous)
+        updated = changed_settings(current, enabled, delay, backup)
+        if enabled and not selected(current):
+            atomic_json(path, dict(previous=current, appliedLockTime=updated['lockTime']))
+        elif enabled and backup and backup['appliedLockTime'] != updated['lockTime']:
+            atomic_json(path, dict(backup, appliedLockTime=updated['lockTime']))
         if updated != current:
             try:
                 bridge.screensaver(target, server.adb, server.ROOT, updated)
@@ -82,7 +99,7 @@ def reconcile(server, target, device, enabled):
                 # A missing acknowledgement can still mean LineOS saved the change.
                 pass
             actual = bridge.screensaver(target, server.adb, server.ROOT)
-            if any(actual.get(field) != updated.get(field) for field in ('uri', 'featureEnabled', 'lockTime')):
+            if any(actual.get(field) != updated.get(field) for field in ('uri', 'featureEnabled', 'lockTime', 'ver')):
                 raise ValueError('LineOS did not retain its screensaver setting')
         if not enabled:
             path.unlink(missing_ok=True)
