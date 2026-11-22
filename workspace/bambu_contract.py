@@ -1,6 +1,6 @@
 """Supported, data-only Bambu widget options. No contributor code or credentials."""
 FIELDS = {'printerId', 'primary', 'secondary', 'expandedSlots', 'showJob', 'showTemperatures',
-          'showLayers', 'showRemaining', 'showControls', 'liquidMotion'}
+          'showLayers', 'showRemaining', 'showControls', 'liquidMotion', 'printAlerts', 'wakeOnAlert'}
 DEFAULTS = dict(primary='progress', secondary='remaining', expandedSlots=3,
                 showJob=True, showTemperatures=True, showLayers=True,
                 showRemaining=True, showControls=True, liquidMotion=True)

@@ -1,5 +1,6 @@
 """Studio owns Bambu LAN connections. Only sanitized telemetry reaches Core."""
 import base64
+from collections import deque
 import ctypes
 import hashlib
 import ipaddress
@@ -214,14 +215,38 @@ def command(action, sequence):
     return dict(print=dict(message, command=action, param=''))
 
 
+ACTIVE_PRINT = {'PREPARE', 'RUNNING', 'PAUSE'}
+# A cancelled task and a programmed pause can also carry print_error codes.
+NON_ERROR_CODES = {0, 0x0300400C, 0x03008013}
+
+
 class State:
     def __init__(self):
         self.data, self.report_at, self.state_at = {}, 0, 0
+        self.alerts = deque(maxlen=4)
+
+    def update_alert(self, patch, now):
+        previous = self.data.get('gcode_state')
+        current = patch.get('gcode_state', previous)
+        old_error = self.data.get('print_error', 0)
+        error = patch.get('print_error', old_error)
+        if type(error) is not int or not 0 <= error <= 0xffffffff:
+            error = old_error
+        if self.fresh(now) and previous in ACTIVE_PRINT:
+            if current == 'FINISH':
+                self.alerts.append(('success', now))
+            elif ((current in ACTIVE_PRINT or current == 'FAILED') and
+                  error not in NON_ERROR_CODES and error != old_error):
+                self.alerts.append(('error', now))
+            elif current == 'FAILED' and error == 0 and old_error in NON_ERROR_CODES:
+                self.alerts.append(('error', now))
+        self.data['print_error'] = error
 
     def accept(self, root, now):
         patch = root.get('print')
         if not isinstance(patch, dict) or patch.get('command') != 'push_status':
             return False
+        self.update_alert(patch, now)
         def merge(target, value):
             for key, item in value.items():
                 if isinstance(item, dict) and isinstance(target.get(key), dict):
@@ -310,6 +335,7 @@ class Link:
         self.detail = 'Waiting for printer status'
         self.queued = self.pending = None
         self.packet_id = self.sequence = 1
+        self.retry_at = None
 
     def start(self):
         threading.Thread(target=self.run, daemon=True, name='StudioBambu').start()
@@ -430,9 +456,12 @@ class Link:
             with self.lock:
                 self.connected = False
                 self.queued = self.pending = None
-                self.state = State()
             if self.stream:
                 self.stream.close()
+            with self.lock:
+                self.state = State()
+                if not self.closed.is_set():
+                    self.retry_at = time.monotonic() + 20
 
 
 class Printers:
@@ -491,6 +520,23 @@ class Printers:
     def sample(self):
         with self.lock:
             return {key: link.snapshot() for key, link in self.links.items()}
+
+    def take_alerts(self, enabled):
+        now = time.monotonic()
+        alerts = []
+        with self.lock:
+            for key in self.active:
+                link = self.links.get(key)
+                if link is None:
+                    continue
+                with link.lock:
+                    if key in enabled:
+                        if link.retry_at is not None and now >= link.retry_at:
+                            self.links[key] = Link(link.profile)
+                            self.links[key].start()
+                        alerts.extend((kind, stamp, key) for kind, stamp in link.state.alerts if 0 <= now - stamp < 8)
+                    link.state.alerts.clear()
+        return sorted(alerts, key=lambda alert: alert[1])
 
     def preview(self, ids):
         with self.lock:

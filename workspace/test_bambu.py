@@ -17,7 +17,7 @@ import unittest
 from unittest.mock import Mock, patch
 import bambu
 from editor import EditError
-from native_widgets import NativeWidgets
+from native_widgets import NativeWidgets, alert_options, alert_pcm
 import server
 
 
@@ -27,6 +27,51 @@ def profile(key='a'):
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_print_alerts_follow_live_transitions_and_ignore_repeated_reports(self):
+        state = bambu.State()
+
+        def report(now, **values):
+            state.accept(dict(print=dict(command='push_status', **values)), now)
+
+        report(10, gcode_state='FINISH')
+        report(11, gcode_state='RUNNING', print_error=0)
+        report(12, gcode_state='PAUSE', print_error=0x03008005)
+        report(13, print_error=0x03008005)
+        report(14, gcode_state='RUNNING', print_error=0)
+        report(15, gcode_state='FINISH')
+        report(16, gcode_state='FINISH')
+        self.assertEqual(list(state.alerts), [('error', 12), ('success', 15)])
+
+    def test_print_alerts_ignore_programmed_pause_cancel_and_stale_transitions(self):
+        state = bambu.State()
+        for now, status, error in [
+            (10, 'RUNNING', 0), (11, 'PAUSE', 0x03008013),
+            (12, 'FAILED', 0x0300400C), (13, 'PREPARE', 0),
+            (50, 'FINISH', 0), (51, 'RUNNING', 0), (52, 'FAILED', 0),
+        ]:
+            state.accept(dict(print=dict(command='push_status', gcode_state=status, print_error=error)), now)
+        self.assertEqual(list(state.alerts), [('error', 52)])
+
+    def test_print_alert_delivery_is_per_printer_and_expires(self):
+        printers = bambu.Printers(None)
+        one, two = 'a' * 32, 'b' * 32
+        printers.active = {one, two}
+        for key in printers.active:
+            printers.links[key] = bambu.Link(profile(key[0]))
+            printers.links[key].state.alerts.extend([('success', 90), ('error', 99)])
+        specs = {
+            'quiet': dict(kind='bambu', printerId=one, printAlerts=True, wakeOnAlert=False),
+            'wake': dict(kind='bambu', printerId=one, printAlerts=True),
+            'off': dict(kind='bambu', printerId=two),
+        }
+        options = alert_options(specs)
+        self.assertEqual(options, {one: True})
+        with patch.object(bambu.time, 'monotonic', return_value=100):
+            self.assertEqual(printers.take_alerts(options), [('error', 99, one)])
+            self.assertEqual(printers.take_alerts(options), [])
+        self.assertNotEqual(alert_pcm('success'), alert_pcm('error'))
+        self.assertLessEqual(len(alert_pcm('success')), 25000)
+
     def test_discovery_uses_peer_and_never_follows_advertised_urls(self):
         raw=b'HTTP/1.1 200 OK\r\nST: urn:bambulab-com:device:3dprinter:1\r\nUSN: SERIAL123\r\nDevName.bambu.com: Workshop\r\nLOCATION: http://127.0.0.1/private\r\n\r\n'
         found=bambu.announcement(raw,'192.168.1.20')

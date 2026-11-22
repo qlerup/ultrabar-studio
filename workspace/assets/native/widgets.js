@@ -37,6 +37,44 @@ Java.perform(function () {
             try { profiles = next; resolve(updateLayout()); }
             catch (error) { reject(new Error(String(error))); }
         })));
+    rpc.exports.playPrintAlert = pcm => new Promise((resolve, reject) => Java.perform(() => {
+        try {
+            if (typeof pcm !== 'string' || pcm.length > 25000) throw new Error('Invalid print alert audio');
+            const Base64 = Java.use('android.util.Base64');
+            const bytes = Base64.decode.overload('java.lang.String', 'int').call(Base64, pcm, 0);
+            if (!bytes.length || bytes.length % 2) throw new Error('Invalid print alert sample count');
+            const app = Java.use('android.app.ActivityThread').currentApplication();
+            const audio = Java.cast(app.getSystemService('audio'), Java.use('android.media.AudioManager'));
+            const Track = Java.use('android.media.AudioTrack');
+            const clock = Java.use('android.os.SystemClock');
+            const media = 3;
+            const track = Track.$new(media, 16000, 4, 2, bytes.length, 0);
+            let outputType;
+            try {
+                if (track.write.overload('[B', 'int', 'int').call(track, bytes, 0, bytes.length) !== bytes.length)
+                    throw new Error('Could not buffer print alert');
+                const original = audio.getStreamVolume(media);
+                const target = Math.round(audio.getStreamMaxVolume(media) * 0.8);
+                try {
+                    audio.setStreamVolume(media, target, 0);
+                    track.play();
+                    const deadline = Number(clock.elapsedRealtime()) + 1500;
+                    while (track.getPlaybackHeadPosition() < bytes.length / 2) {
+                        if (Number(clock.elapsedRealtime()) >= deadline)
+                            throw new Error('Print alert playback timed out');
+                        clock.sleep(20);
+                    }
+                    const device = track.getRoutedDevice();
+                    clock.sleep(70);
+                    outputType = device === null ? 0 : device.getType();
+                } finally {
+                    if (audio.getStreamVolume(media) === target)
+                        audio.setStreamVolume(media, original, 0);
+                }
+            } finally { track.release(); }
+            resolve(outputType);
+        } catch (error) { reject(error); }
+    }));
     setInterval(() => {
         if (layoutPending || (!Object.keys(profiles).length && !mixedLayout)) return;
         layoutPending = true;

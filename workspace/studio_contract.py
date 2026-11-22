@@ -14,7 +14,7 @@ SETTINGS = {
         'primary': ('choice', {'progress', 'state', 'remaining', 'temperature'}),
         'secondary': ('choice', {'remaining', 'state', 'job', 'layers', 'temperature', 'none'}),
         'expandedSlots': ('integer', None),
-        **{key: ('boolean', None) for key in ('showJob', 'showTemperatures', 'showLayers', 'showRemaining', 'showControls', 'liquidMotion')},
+        **{key: ('boolean', None) for key in ('showJob', 'showTemperatures', 'showLayers', 'showRemaining', 'showControls', 'liquidMotion', 'printAlerts', 'wakeOnAlert')},
     },
 }
 CONNECTION_FIELDS = {

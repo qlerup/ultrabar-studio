@@ -3,11 +3,13 @@
 Only explicitly tagged Studio cards are rendered. The vendor APK stays intact.
 Frida is pinned to the matching device runtime and listens on device loopback.
 """
+import base64
 import hashlib
 import json
 import math
 import re
 import secrets
+import struct
 import threading
 import time
 import uuid
@@ -17,6 +19,29 @@ PACKAGE = 'com.ultrabar.launch'
 RUNTIME = '/data/local/tmp/studio-runtime-16.7.19'
 RUNTIME_SHA = 'fc60c38a6acb42d9eb2d5c0474bf84fd671c14870b9cab43129b38c5e364bb13'
 SUPPORTED_LINEOS = {'1.0.8', '1.0.9'}
+
+
+def alert_pcm(kind):
+    """Build the short alert on the PC as 16 kHz, mono signed PCM."""
+    notes = {'success': (523.25, 659.25, 783.99), 'error': (740, 440, 440)}[kind]
+    samples = bytearray()
+    frames = 2560
+    for frequency in notes:
+        for index in range(frames):
+            gain = min(1, index / 180, (frames - index - 1) / 380)
+            sample = round(8100 * gain * math.sin(2 * math.pi * frequency * index / 16000))
+            samples.extend(struct.pack('<h', sample))
+        samples.extend(bytes(960))
+    return base64.b64encode(samples).decode('ascii')
+
+
+def alert_options(specs):
+    options = {}
+    for spec in specs.values():
+        if spec.get('kind') == 'bambu' and spec.get('printAlerts', False):
+            key = spec.get('printerId')
+            options[key] = options.get(key, False) or spec.get('wakeOnAlert', True)
+    return options
 
 
 def check_lineos(package_dump):
@@ -183,21 +208,44 @@ class NativeWidgets:
         script = None
         pid = None
         applied_compact_profiles = None
-        def apply_sizes(value):
+        pending_alerts = []
+        wake_sent = set()
+
+        def wake_core():
+            try:
+                adb('-s', target, 'shell', 'input', 'keyevent', '224')
+                return True
+            except self.server.DeviceError:
+                return False
+
+        def call_runtime(method, *args):
             cancel = frida.Cancellable()
             timeout = threading.Timer(5, cancel.cancel)
             timeout.daemon = True
             timeout.start()
             try:
-                return script.exports_sync.set_compact_profiles(value, cancellable=cancel)
+                return getattr(script.exports_sync, method)(*args, cancellable=cancel)
             finally:
                 timeout.cancel()
         try:
             while not self.stop.is_set():
                 try:
+                    with self.lock:
+                        specs, presentations = self.specs, self.presentations
+                    options = alert_options(specs)
+                    pending_alerts.extend(self.server.bambu.take_alerts(options))
+                    now = time.monotonic()
+                    pending_alerts = [a for a in pending_alerts if now - a[1] < 8 and a[2] in options]
+                    wake_sent.intersection_update(pending_alerts)
                     new_pid = int(adb('-s', target, 'shell', 'pidof', PACKAGE).split()[0])
                     if session is None or session.is_detached or pid != new_pid:
                         self.ready.clear()
+                        if adb('-s', target, 'shell', 'getprop', 'ro.serialno') != self.device_id:
+                            self.status = 'Core identity changed; reconnect in Studio'
+                            return
+                        need_wake = {alert for alert in pending_alerts if options[alert[2]]} - wake_sent
+                        if need_wake and wake_core():
+                            wake_sent.update(need_wake)
                         # Attaching to an ART process while Zygote is still starting it
                         # can abort startup on this ARM32 firmware. Wait for a real window.
                         window = adb('-s', target, 'shell', 'dumpsys', 'window')
@@ -205,9 +253,6 @@ class NativeWidgets:
                             self.status = 'Waiting for Core home to finish opening'
                             self.stop.wait(1)
                             continue
-                        if adb('-s', target, 'shell', 'getprop', 'ro.serialno') != self.device_id:
-                            self.status = 'Core identity changed; reconnect in Studio'
-                            return
                         self.start_runtime(target)
                         if session and not session.is_detached:
                             session.detach()
@@ -234,13 +279,18 @@ class NativeWidgets:
                         pid = new_pid
                     compact_profiles = self.compact_profiles
                     if applied_compact_profiles != compact_profiles:
-                        apply_sizes(compact_profiles)
+                        call_runtime('set_compact_profiles', compact_profiles)
                         applied_compact_profiles = compact_profiles
                     import widget_presentation
                     from bambu_artwork import thumbnail
                     printers = self.server.bambu.sample()
-                    with self.lock:
-                        specs, presentations = self.specs, self.presentations
+                    if self.ready.is_set():
+                        while pending_alerts and not self.stop.is_set():
+                            kind, created, key = alert = pending_alerts.pop(0)
+                            if time.monotonic() - created < 8:
+                                if options[key] and alert not in wake_sent:
+                                    wake_core()
+                                call_runtime('play_print_alert', alert_pcm(kind))
                     widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
                     models = {printer.get('model') for printer in printers.values()}
                     images = {model: image for model in models if (image := thumbnail(model))}
@@ -261,7 +311,7 @@ class NativeWidgets:
         finally:
             if session and not session.is_detached:
                 if script is not None and applied_compact_profiles:
-                    try: apply_sizes({})
+                    try: call_runtime('set_compact_profiles', {})
                     except Exception: pass
                 session.detach()
             if port:
