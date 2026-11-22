@@ -115,6 +115,44 @@ class ProtocolTests(unittest.TestCase):
         for value in (data['code'],data['serial'],data['host'],data['pin']):self.assertNotIn(value,snapshot)
         link.close();self.assertFalse(link.request('pause'))
 
+    def test_h3c_publishes_all_nine_printtools_to_core_across_swaps(self):
+        printer = dict(profile(), model='h3c')
+        manager = bambu.Printers(None)
+        link = manager.links[printer['id']] = bambu.Link(printer)
+        link.connected = True
+        rack = [dict(id=16 + slot, addr_id=slot, temp=30 + slot) for slot in range(1, 9)]
+        mounted = dict(id=0, addr_id=0, temp=(220 << 16) | 218)
+
+        def accept(now, **devices):
+            link.state.accept(dict(print=dict(command='push_status', device=devices)), now)
+
+        accept(100, extruder=dict(info=[dict(id=0, temp=mounted['temp'])]), nozzle=dict(info=[mounted, *rack]))
+        temperatures = [218, *range(31, 39)]
+        with patch.object(bambu.time, 'monotonic', return_value=105):
+            payload = manager.sample()[printer['id']]
+            self.assertTrue(payload['fresh'])
+            self.assertEqual(payload['nozzle_readings'], [
+                dict(tool=slot, temperature=value) for slot, value in enumerate(temperatures)
+            ])
+            self.assertEqual(payload['nozzle_temper'], 218)
+
+            accept(102, nozzle=dict(info=[dict(id=16, addr_id=0, temp=175), dict(id=0, addr_id=8, temp=195)]))
+            accept(103, nozzle=dict(info=[dict(id=0, addr_id=8), dict(id=16, addr_id=8, temp=1), None]))
+            temperatures[0], temperatures[8] = 175, 195
+            self.assertEqual(manager.sample()[printer['id']]['nozzle_readings'], [
+                dict(tool=slot, temperature=value) for slot, value in enumerate(temperatures)
+            ])
+
+    def test_h2c_keeps_mounted_nozzle_readings_when_rack_has_no_temperatures(self):
+        link = bambu.Link(dict(profile(), model='h2c'))
+        link.state.accept(dict(print=dict(command='push_status', device=dict(
+            extruder=dict(info=[dict(id=0, temp=44), dict(id=1, temp=40)]),
+            nozzle=dict(info=[dict(id=0), dict(id=1), dict(id=16), dict(id=17)]),
+        ))), 100)
+        self.assertEqual(link.snapshot()['nozzle_readings'], [
+            dict(tool=0, temperature=44), dict(tool=1, temperature=40),
+        ])
+
     def test_signed_print_mode_keeps_known_lights_available_and_hides_print_controls(self):
         for flags in ('27FF1AFFF9CB7', 0x20000000):
             with self.subTest(flags=flags):

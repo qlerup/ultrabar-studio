@@ -1,4 +1,15 @@
-# UltraBar Studio — 0.52.12 Windows
+# UltraBar Studio — 0.52.14 Windows
+
+## 0.52.14 update
+
+- The unfolded Bambu H3C widget on Core shows the temperatures reported for
+  all nine PrintTools. Readings stay assigned to the same rack position when
+  the printer swaps tools.
+
+## 0.52.13 update
+
+- Bambu widgets can play print completion and failure sounds on CoreBAR,
+  with optional screen wake.
 
 ## 0.52.12 update
 

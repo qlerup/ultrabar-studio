@@ -280,7 +280,20 @@ class State:
                 active = nozzles.get(self.data.get('active_tool', 0))
                 if active:
                     self.data['nozzle_temper'], self.data['nozzle_target_temper'] = active
+            self.update_printtools(device.get('nozzle'))
         return True
+
+    def update_printtools(self, nozzle):
+        if not isinstance(nozzle, dict) or not isinstance(nozzle.get('info'), list):
+            return
+        for item in nozzle['info'][:16]:
+            if not isinstance(item, dict):
+                continue
+            address, live_id, packed = (item.get(key) for key in ('addr_id', 'id', 'temp'))
+            # SwapTek keeps the rack address when the mounted PrintTool reports live ID 0.
+            if (type(address) is int and 0 <= address < 9 and type(live_id) is int and
+                    live_id in (0, 16 + address) and type(packed) is int and 0 <= packed <= 0xffffffff):
+                self.data.setdefault('printtools', {})[address] = packed & 65535
 
     def fresh(self, now):
         return self.report_at > 0 and 0 <= now - self.report_at < 30
@@ -368,9 +381,12 @@ class Link:
             tools = self.state.data.get('tools', {})
             ordered_tools = sorted(tools.items())
             summary = '  ·  '.join(f'T{i} {v[0]} / {v[1]}°' for i, v in ordered_tools if len(tools) <= 2 or i == self.state.data.get('active_tool', 0))
-            data.update(name=self.profile['name'], model=self.profile.get('model', 'generic'), connection=self.status, detail=self.detail, fresh=fresh,
+            model = self.profile.get('model', 'generic')
+            printtools = self.state.data.get('printtools') if model == 'h3c' else None
+            readings = sorted(printtools.items()) if printtools else [(tool, reading[0]) for tool, reading in ordered_tools]
+            data.update(name=self.profile['name'], model=model, connection=self.status, detail=self.detail, fresh=fresh,
                         controls=self.profile['controls'], busy=bool(self.queued or self.pending), light=self.state.light(),
-                        nozzles=summary, nozzle_readings=[{'tool': tool, 'temperature': reading[0]} for tool, reading in ordered_tools])
+                        nozzles=summary, nozzle_readings=[{'tool': tool, 'temperature': temperature} for tool, temperature in readings])
             data['control_reason'] = ('Enable controls in Studio' if not self.profile['controls'] else
                                       'Waiting for live printer status' if not fresh else
                                       'Waiting for printer confirmation' if self.queued or self.pending else
