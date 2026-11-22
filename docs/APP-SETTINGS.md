@@ -23,10 +23,7 @@ field renderer while retaining their separate setting scopes and transports.
 
 ## Runtime and installation ownership
 
-Studio 0.52.15+ can install verified standalone Android apps directly on the
-connected Core with **Install on Core**. Store releases and manually added
-package folders use the same manifest, signature and device checks. This path
-does not deploy a layout or assign an app to start in the background.
+Install a Core app into the Studio library, add it to the layout or background apps, and use Deploy to install it on the connected Core.
 
 | Package | App and widget responsibilities | Studio responsibilities today |
 | --- | --- | --- |

@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.18 Windows
+# UltraBar Studio — 0.52.19 Windows
+
+## 0.52.19 update
+
+Core App cards now use the library and Deploy workflow. The separate Install on Core button has been removed.
 
 ## 0.52.18 update
 
