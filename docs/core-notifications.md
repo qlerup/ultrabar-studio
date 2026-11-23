@@ -51,8 +51,8 @@ The returned Bundle contains a string named `status`.
 
 | Status | Meaning |
 | --- | --- |
-| `accepted` | Core queued the banner |
-| `busy` | Another banner is active, or the same app posted within 12 seconds |
+| `accepted` | Core accepted the banner for immediate or queued display |
+| `busy` | The queue is full, or the sending app has three banners waiting |
 | `screen_off` | Core is asleep |
 | `overlay_unavailable` | Deploy must restore Core's banner permission |
 | `invalid` | The payload is invalid |
@@ -63,9 +63,10 @@ Core derives the source label from the Android calling package. Core owns the
 banner placement, colors, typography and four-second display duration. The
 banner passes through touch and doesn't wake the screen. The posting API is
 silent. Calling apps choose when to post, supply the text, and handle their own
-audio. Calls
-received while asleep or busy are dropped. Apps should post for meaningful
-events and avoid retrying in a loop. Declarative layouts alone do not post
+audio. As of Studio 0.52.34, Core shows accepted banners in the order received. Up to eight banners can wait, with a limit of three
+waiting per sending app. The queue is in memory and is discarded if Core is
+asleep when the next banner is due. Apps should post for meaningful events
+and avoid retrying in a loop. Declarative layouts alone do not post
 notifications. Use the app code that receives the event.
 
 ## Build the bundled APK

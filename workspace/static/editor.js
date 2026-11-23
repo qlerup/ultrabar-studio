@@ -8,6 +8,7 @@
   let backgroundIndex=-1;
   const notificationsIndex=-2;
   let notificationTestSound='complete', notificationTestVolume=50;
+  let notificationTestRequests=0, notificationTestRequest=Promise.resolve();
   const testVolumeKey='ultrabar-notification-test-volume';
   try{
     const saved=localStorage.getItem(testVolumeKey);
@@ -497,12 +498,19 @@
       volume.disabled=sound.value==='silent';
       soundField.append(sound);
       volumeField.append(volume,percent);
-      const test=button('Send test notification',()=>operation(async()=>{
-        const response=await api('/api/editor/core-notifications/test',{
-          method:'POST',body:JSON.stringify({device_id:draft.device_id,sound:notificationTestSound,volume:notificationTestVolume})
+      const test=button('Send test notification',()=>{
+        if(working||!draft)return;
+        if(notificationTestRequests>=4){message('Sending test notifications. Try again in a moment.',true);return;}
+        const body=JSON.stringify({device_id:draft.device_id,sound:notificationTestSound,volume:notificationTestVolume});
+        notificationTestRequests++;
+        notificationTestRequest=notificationTestRequest.then(async()=>{
+          try{
+            const response=await api('/api/editor/core-notifications/test',{method:'POST',body});
+            message((await response.json()).message);
+          }catch(error){message(error.message,true);}
+          finally{notificationTestRequests--;}
         });
-        message((await response.json()).message);
-      }));
+      });
       panel.replaceChildren(
         el('h3','','Core Notifications'),
         el('p','muted','Studio installs the built-in notification service when you deploy. Supported Core apps and widgets use it to show banners.'),

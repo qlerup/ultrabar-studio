@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.33 Windows
+# UltraBar Studio — 0.52.34 Windows
+
+## 0.52.34 update
+
+Core Notifications queues banners and shows them in the order received.
+Studio reports when a test banner is waiting behind another banner.
 
 ## 0.52.33 update
 

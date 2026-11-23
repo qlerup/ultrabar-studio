@@ -22,6 +22,12 @@ def main():
     output = ROOT.parent / 'workspace/assets/core-notifications.apk'
     with tempfile.TemporaryDirectory(prefix='core-notifications-') as directory:
         build = Path(directory)
+        tests = build / 'tests'
+        tests.mkdir()
+        run('javac', '--release', '8', '-d', tests,
+            ROOT / 'src/dk/ultrabarx/notifications/NotificationQueue.java',
+            ROOT / 'tests/NotificationQueueTest.java')
+        run('java', '-cp', tests, 'dk.ultrabarx.notifications.NotificationQueueTest')
         classes = build / 'classes'
         classes.mkdir()
         generated = build / 'generated'

@@ -57,10 +57,10 @@ def test_banner(server, target, sound='silent', volume=None):
         raise server.DeviceError('Deploy to Core before sending a test notification.')
     arg = sound if volume is None else f'{sound}:{volume}'
     status = call(server, target, 'test.v1', '--arg', arg)
-    if status == 'accepted':
-        return
+    if status in ('accepted', 'queued'):
+        return status
     messages = {
-        'busy': 'Wait a few seconds before sending another notification.',
+        'busy': 'The Core notification queue is full. Try again after a banner has been shown.',
         'screen_off': 'Wake the Core screen and try again.',
     }
     raise server.DeviceError(messages.get(status, 'Core Notifications is unavailable. Deploy to Core and try again.'))

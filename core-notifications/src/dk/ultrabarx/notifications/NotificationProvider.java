@@ -13,25 +13,23 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.os.Process;
-import android.os.SystemClock;
 import android.provider.Settings;
 import android.util.Log;
-import android.util.SparseLongArray;
 
 public final class NotificationProvider extends ContentProvider {
     public static final String POST = "dk.ultrabarx.notifications.POST";
     private static final String LAUNCHER = "com.ultrabar.launch";
     private static final long DURATION_MS = 4_000;
-    private static final long PER_APP_INTERVAL_MS = 12_000;
 
     private final Handler main = new Handler(Looper.getMainLooper());
-    private final SparseLongArray nextByUid = new SparseLongArray();
-    private long nextBanner;
+    private final NotificationQueue<Runnable> queue = new NotificationQueue<>();
+    private PowerManager power;
     private Banner banner;
     private TestSound testSound;
 
     @Override
     public boolean onCreate() {
+        power = getContext().getSystemService(PowerManager.class);
         banner = new Banner(getContext());
         testSound = new TestSound(getContext(), main);
         return true;
@@ -63,7 +61,7 @@ public final class NotificationProvider extends ContentProvider {
                 if (percentage < 0 || percentage > 100) return result("invalid");
             }
             return post(uid, "UltraBar Studio", "Core Notifications",
-                    "This is a test notification from Studio.", "info", sound, percentage);
+                    "This is a test notification from Studio.", "info", sound, percentage, true);
         }
         if (!"post.v1".equals(method)) return result("unknown_method");
 
@@ -91,32 +89,48 @@ public final class NotificationProvider extends ContentProvider {
         try {
             ApplicationInfo app = packages.getApplicationInfo(caller, 0);
             String label = clean(packages.getApplicationLabel(app).toString(), 48);
-            return post(uid, label.isEmpty() ? caller : label, title, message, kind, 0, -1);
+            return post(uid, label.isEmpty() ? caller : label, title, message, kind, 0, -1, false);
         } catch (PackageManager.NameNotFoundException removed) {
             return result("permission_denied");
         }
     }
 
-    private synchronized Bundle post(int uid, String source, String title, String message,
-                                     String kind, int sound, int percentage) {
-        Context context = getContext();
-        PowerManager power = context.getSystemService(PowerManager.class);
+    private Bundle post(int uid, String source, String title, String message, String kind,
+                        int sound, int percentage, boolean studioTest) {
         if (!power.isInteractive()) return result("screen_off");
         if (!canDrawOverlays()) return result("overlay_unavailable");
-        long now = SystemClock.elapsedRealtime();
-        if (now < nextBanner || now < nextByUid.get(uid)) return result("busy");
-        nextBanner = now + DURATION_MS;
-        nextByUid.put(uid, now + PER_APP_INTERVAL_MS);
-        main.post(() -> {
-            if (!power.isInteractive()) return;
-            try {
-                banner.show(source, title, message, kind, DURATION_MS, main);
-                if (sound != 0) testSound.play(sound, percentage);
-            } catch (SecurityException | android.view.WindowManager.BadTokenException error) {
-                Log.w("CoreNotifications", "Unable to display a banner", error);
-            }
-        });
-        return result("accepted");
+
+        Runnable display = () -> {
+            banner.show(source, title, message, kind, DURATION_MS, main);
+            if (sound != 0) testSound.play(sound, percentage);
+        };
+        switch (queue.offer(uid, display)) {
+            case START:
+                main.post(() -> show(display));
+                return result("accepted");
+            case QUEUED:
+                return result(studioTest ? "queued" : "accepted");
+            case FULL:
+                return result("busy");
+        }
+        throw new AssertionError("Unhandled queue result");
+    }
+
+    private void show(Runnable display) {
+        if (!power.isInteractive()) {
+            queue.clear();
+            return;
+        }
+        try {
+            display.run();
+        } catch (SecurityException | android.view.WindowManager.BadTokenException error) {
+            Log.w("CoreNotifications", "Unable to display a banner", error);
+        } finally {
+            main.postDelayed(() -> {
+                Runnable next = queue.next();
+                if (next != null) show(next);
+            }, DURATION_MS);
+        }
     }
 
     private boolean canDrawOverlays() {

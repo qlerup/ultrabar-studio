@@ -75,11 +75,16 @@ class DeferredAppBrowserTests(unittest.TestCase):
                         volume.press('Home')
                         volume.press('ArrowRight')
                         expect(volume).to_have_attribute('aria-valuetext', '1%')
-                        with page.expect_request('**/api/editor/core-notifications/test') as sent:
-                            page.route('**/api/editor/core-notifications/test', lambda r:r.fulfill(json={'message':'Test notification sent to Core.'}))
-                            page.get_by_role('button', name='Send test notification').click()
-                        self.assertEqual(sent.value.post_data_json, {'device_id': 'core', 'sound': 'error', 'volume': 1})
-                        expect(page.locator('#editor-notice')).to_contain_text('Test notification sent to Core.')
+                        payloads = []
+                        def test_notification(route):
+                            payloads.append(route.request.post_data_json)
+                            status = 'queued on' if len(payloads) > 1 else 'sent to'
+                            route.fulfill(json={'message': f'Test notification {status} Core.'})
+                        page.route('**/api/editor/core-notifications/test', test_notification)
+                        test_button = page.get_by_role('button', name='Send test notification')
+                        test_button.evaluate('(button) => { button.click(); button.click(); }')
+                        expect(page.locator('#editor-notice')).to_contain_text('Test notification queued on Core.')
+                        self.assertEqual(payloads, [{'device_id': 'core', 'sound': 'error', 'volume': 1}]*2)
                         self.assertFalse(page.evaluate('window.studioEditor.hasUnsaved()'))
                         widget = page.locator('#widget-library').get_by_role('button', name='Vivo Screen Sync', exact=True)
                         expect(widget).to_have_count(1)

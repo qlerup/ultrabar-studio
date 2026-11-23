@@ -462,8 +462,9 @@ def register_editor(server):
             volume = body.get('volume')
             if volume is not None and (type(volume) is not int or not 0 <= volume <= 100):
                 raise EditError('Choose a test volume between 0 and 100 percent.')
-            core_notifications.test_banner(server, server.connection['target'], sound, volume)
-            return jsonify(message='Test notification sent to Core.')
+            status = core_notifications.test_banner(server, server.connection['target'], sound, volume)
+            message = 'Test notification queued on Core.' if status == 'queued' else 'Test notification sent to Core.'
+            return jsonify(message=message)
 
     @app.get('/api/editor/catalog')
     def catalog():
