@@ -7,7 +7,12 @@
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
   const notificationsIndex=-2;
-  let notificationTestSound='complete';
+  let notificationTestSound='complete', notificationTestVolume=50;
+  const testVolumeKey='ultrabar-notification-test-volume';
+  try{
+    const saved=localStorage.getItem(testVolumeKey);
+    if(saved!==null&&/^([0-9]|[1-9][0-9]|100)$/.test(saved))notificationTestVolume=Number(saved);
+  }catch{}
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const pcWidgetForms=new Map();
   const appSettingsDefs=new Map();
@@ -471,18 +476,37 @@
       option(sound,'error','Print error');
       option(sound,'silent','Silent');
       sound.value=notificationTestSound;
-      sound.onchange=()=>{notificationTestSound=sound.value;};
+      const volumeField=el('label','property-field','Test volume');
+      const volume=el('input');
+      const percent=el('output','',notificationTestVolume+'%');
+      volume.type='range';
+      volume.min='0';
+      volume.max='100';
+      volume.value=String(notificationTestVolume);
+      volume.setAttribute('aria-valuetext',percent.value);
+      volume.oninput=()=>{
+        notificationTestVolume=Number(volume.value);
+        percent.value=volume.value+'%';
+        volume.setAttribute('aria-valuetext',percent.value);
+      };
+      volume.onchange=()=>{try{localStorage.setItem(testVolumeKey,volume.value);}catch{}};
+      sound.onchange=()=>{
+        notificationTestSound=sound.value;
+        volume.disabled=sound.value==='silent';
+      };
+      volume.disabled=sound.value==='silent';
       soundField.append(sound);
+      volumeField.append(volume,percent);
       const test=button('Send test notification',()=>operation(async()=>{
         const response=await api('/api/editor/core-notifications/test',{
-          method:'POST',body:JSON.stringify({device_id:draft.device_id,sound:notificationTestSound})
+          method:'POST',body:JSON.stringify({device_id:draft.device_id,sound:notificationTestSound,volume:notificationTestVolume})
         });
         message((await response.json()).message);
       }));
       panel.replaceChildren(
         el('h3','','Core Notifications'),
         el('p','muted','Studio installs the built-in notification service when you deploy. Supported Core apps and widgets use it to show banners.'),
-        soundField,test
+        soundField,volumeField,test
       );
       return;
     }

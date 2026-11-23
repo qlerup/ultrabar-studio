@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.32 Windows
+# UltraBar Studio — 0.52.33 Windows
+
+## 0.52.33 update
+
+Set the Core Notifications test volume in Studio. Core uses the nearest
+supported notification volume for playback and restores the prior level
+afterward.
 
 ## 0.52.32 update
 

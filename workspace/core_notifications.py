@@ -52,10 +52,11 @@ def provision(server, target):
             raise server.DeviceError('Core did not grant the built-in notification banner permission.')
 
 
-def test_banner(server, target, sound='silent'):
+def test_banner(server, target, sound='silent', volume=None):
     if installed_digest(server, target) != bundled_digest(server, server.ROOT / 'assets' / APK_NAME):
         raise server.DeviceError('Deploy to Core before sending a test notification.')
-    status = call(server, target, 'test.v1', '--arg', sound)
+    arg = sound if volume is None else f'{sound}:{volume}'
+    status = call(server, target, 'test.v1', '--arg', arg)
     if status == 'accepted':
         return
     messages = {

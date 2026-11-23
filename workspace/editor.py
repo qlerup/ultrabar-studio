@@ -459,7 +459,10 @@ def register_editor(server):
             sound = body.get('sound', 'silent')
             if sound not in core_notifications.TEST_SOUNDS:
                 raise EditError('Choose a test notification sound.')
-            core_notifications.test_banner(server, server.connection['target'], sound)
+            volume = body.get('volume')
+            if volume is not None and (type(volume) is not int or not 0 <= volume <= 100):
+                raise EditError('Choose a test volume between 0 and 100 percent.')
+            core_notifications.test_banner(server, server.connection['target'], sound, volume)
             return jsonify(message='Test notification sent to Core.')
 
     @app.get('/api/editor/catalog')

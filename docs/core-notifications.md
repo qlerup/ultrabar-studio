@@ -6,6 +6,9 @@ Select it and choose **Send test notification** to try the banner on Core.
 Studio 0.52.32 adds the Bambu print-complete and print-error sounds to that
 test panel. **Silent** previews the banner by itself. Core uses its notification
 volume and respects silent, vibrate and Do Not Disturb modes for test sounds.
+Studio 0.52.33 adds a **Test volume** slider. Core temporarily applies the
+nearest device volume step for the test, then restores the previous level.
+A setting of 0% plays no sound.
 
 An Android app or an app-backed widget can post directly from its Core process.
 Built-in widgets running inside the LineOS launcher use the same API. The
