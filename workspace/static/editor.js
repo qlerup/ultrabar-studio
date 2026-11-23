@@ -7,6 +7,7 @@
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
   const notificationsIndex=-2;
+  let notificationTestSound='complete';
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const pcWidgetForms=new Map();
   const appSettingsDefs=new Map();
@@ -464,16 +465,24 @@
   }
   function renderBackgroundProperties(panel){
     if(backgroundIndex===notificationsIndex){
+      const soundField=el('label','property-field','Test sound');
+      const sound=el('select');
+      option(sound,'complete','Print complete');
+      option(sound,'error','Print error');
+      option(sound,'silent','Silent');
+      sound.value=notificationTestSound;
+      sound.onchange=()=>{notificationTestSound=sound.value;};
+      soundField.append(sound);
       const test=button('Send test notification',()=>operation(async()=>{
         const response=await api('/api/editor/core-notifications/test',{
-          method:'POST',body:JSON.stringify({device_id:draft.device_id})
+          method:'POST',body:JSON.stringify({device_id:draft.device_id,sound:notificationTestSound})
         });
         message((await response.json()).message);
       }));
       panel.replaceChildren(
         el('h3','','Core Notifications'),
         el('p','muted','Studio installs the built-in notification service when you deploy. Supported Core apps and widgets use it to show banners.'),
-        test
+        soundField,test
       );
       return;
     }

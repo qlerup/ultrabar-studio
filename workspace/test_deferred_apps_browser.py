@@ -70,10 +70,11 @@ class DeferredAppBrowserTests(unittest.TestCase):
                         builtin = page.get_by_role('button', name='Core Notifications background settings')
                         expect(builtin).to_contain_text('Built in')
                         builtin.click()
+                        page.get_by_label('Test sound').select_option('error')
                         with page.expect_request('**/api/editor/core-notifications/test') as sent:
                             page.route('**/api/editor/core-notifications/test', lambda r:r.fulfill(json={'message':'Test notification sent to Core.'}))
                             page.get_by_role('button', name='Send test notification').click()
-                        self.assertEqual(sent.value.post_data_json, {'device_id': 'core'})
+                        self.assertEqual(sent.value.post_data_json, {'device_id': 'core', 'sound': 'error'})
                         expect(page.locator('#editor-notice')).to_contain_text('Test notification sent to Core.')
                         self.assertFalse(page.evaluate('window.studioEditor.hasUnsaved()'))
                         widget = page.locator('#widget-library').get_by_role('button', name='Vivo Screen Sync', exact=True)

@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.31 Windows
+# UltraBar Studio — 0.52.32 Windows
+
+## 0.52.32 update
+
+Core Notifications can play the Bambu print complete and print error sounds
+from the Studio test panel. Core apps continue to control their own audio,
+banner text and timing.
 
 ## 0.52.31 update
 

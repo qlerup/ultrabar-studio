@@ -456,7 +456,10 @@ def register_editor(server):
             snapshot = current()
             if not isinstance(body, dict) or body.get('device_id') != snapshot['device_id']:
                 raise EditError('The selected Core changed. Reopen the editor and try again.')
-            core_notifications.test_banner(server, server.connection['target'])
+            sound = body.get('sound', 'silent')
+            if sound not in core_notifications.TEST_SOUNDS:
+                raise EditError('Choose a test notification sound.')
+            core_notifications.test_banner(server, server.connection['target'], sound)
             return jsonify(message='Test notification sent to Core.')
 
     @app.get('/api/editor/catalog')

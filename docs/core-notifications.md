@@ -3,6 +3,9 @@
 Core Notifications is part of UltraBar Studio 0.52.31 and is installed on Core
 when you Deploy. It appears as a built-in entry under **Background apps**.
 Select it and choose **Send test notification** to try the banner on Core.
+Studio 0.52.32 adds the Bambu print-complete and print-error sounds to that
+test panel. **Silent** previews the banner by itself. Core uses its notification
+volume and respects silent, vibrate and Do Not Disturb modes for test sounds.
 
 An Android app or an app-backed widget can post directly from its Core process.
 Built-in widgets running inside the LineOS launcher use the same API. The
@@ -55,7 +58,9 @@ The returned Bundle contains a string named `status`.
 
 Core derives the source label from the Android calling package. Core owns the
 banner placement, colors, typography and four-second display duration. The
-banner is silent, passes through touch and doesn't wake the screen. Calls
+banner passes through touch and doesn't wake the screen. The posting API is
+silent. Calling apps choose when to post, supply the text, and handle their own
+audio. Calls
 received while asleep or busy are dropped. Apps should post for meaningful
 events and avoid retrying in a loop. Declarative layouts alone do not post
 notifications. Use the app code that receives the event.

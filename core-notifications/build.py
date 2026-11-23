@@ -24,14 +24,18 @@ def main():
         build = Path(directory)
         classes = build / 'classes'
         classes.mkdir()
+        generated = build / 'generated'
+        generated.mkdir()
+        unsigned = build / 'unsigned.apk'
+        run(TOOLS / f'aapt{EXE}', 'package', '-f', '-m', '-J', generated,
+            '-M', ROOT / 'AndroidManifest.xml', '-S', ROOT / 'res',
+            '-I', PLATFORM, '-F', unsigned)
+        sources = sorted((ROOT / 'src').rglob('*.java')) + sorted(generated.rglob('*.java'))
         run('javac', '-encoding', 'UTF-8', '--release', '8', '-classpath', PLATFORM,
-            '-d', classes, *sorted((ROOT / 'src').rglob('*.java')))
+            '-d', classes, *sources)
         run('java', '-cp', TOOLS / 'lib/d8.jar', 'com.android.tools.r8.D8',
             '--lib', PLATFORM, '--min-api', '26', '--output', build,
             *sorted(classes.rglob('*.class')))
-        unsigned = build / 'unsigned.apk'
-        run(TOOLS / f'aapt{EXE}', 'package', '-f', '-M', ROOT / 'AndroidManifest.xml',
-            '-I', PLATFORM, '-F', unsigned)
         with zipfile.ZipFile(unsigned, 'a', compression=zipfile.ZIP_DEFLATED) as apk:
             apk.write(build / 'classes.dex', 'classes.dex')
         aligned = build / 'aligned.apk'

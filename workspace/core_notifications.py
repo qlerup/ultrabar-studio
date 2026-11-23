@@ -5,6 +5,7 @@ import re
 PACKAGE = 'dk.ultrabarx.notifications'
 AUTHORITY = 'content://' + PACKAGE
 APK_NAME = 'core-notifications.apk'
+TEST_SOUNDS = ('silent', 'complete', 'error')
 APK_PATH = re.compile(r'(/data/app/[a-zA-Z0-9_./=~+\-]+/base\.apk)')
 DIGEST = re.compile(r'^([a-f0-9]{64})\s')
 
@@ -24,9 +25,9 @@ def installed_digest(server, target):
     return None
 
 
-def call(server, target, method):
+def call(server, target, method, *options):
     result = server.adb('-s', target, 'shell', 'content', 'call',
-                        '--uri', AUTHORITY, '--method', method)
+                        '--uri', AUTHORITY, '--method', method, *options)
     match = re.fullmatch(r'Result: Bundle\[\{status=([a-z_]+)\}\]', result)
     return match[1] if match else None
 
@@ -51,10 +52,10 @@ def provision(server, target):
             raise server.DeviceError('Core did not grant the built-in notification banner permission.')
 
 
-def test_banner(server, target):
+def test_banner(server, target, sound='silent'):
     if installed_digest(server, target) != bundled_digest(server, server.ROOT / 'assets' / APK_NAME):
         raise server.DeviceError('Deploy to Core before sending a test notification.')
-    status = call(server, target, 'test.v1')
+    status = call(server, target, 'test.v1', '--arg', sound)
     if status == 'accepted':
         return
     messages = {

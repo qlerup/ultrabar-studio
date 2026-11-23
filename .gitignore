@@ -35,6 +35,8 @@
 !/core-notifications/build.py
 !/core-notifications/src/
 !/core-notifications/src/**
+!/core-notifications/res/
+!/core-notifications/res/**
 **/__pycache__/
 *.pyc
 *.log

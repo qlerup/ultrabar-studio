@@ -66,8 +66,21 @@ class CoreNotificationsTests(unittest.TestCase):
             self.assertEqual(client.post(path, headers=headers, json={'device_id': 'other'}).status_code, 400)
             test.assert_not_called()
             self.assertEqual(client.post(path, headers=headers, json={'device_id': 'core'}).status_code, 200)
-            test.assert_called_once_with(server, self.target)
+            test.assert_called_once_with(server, self.target, 'silent')
+            test.reset_mock()
+            self.assertEqual(client.post(path, headers=headers, json={'device_id': 'core', 'sound': 'error'}).status_code, 200)
+            test.assert_called_once_with(server, self.target, 'error')
+            self.assertEqual(client.post(path, headers=headers, json={'device_id': 'core', 'sound': 'unknown'}).status_code, 400)
+            self.assertEqual(test.call_count, 1)
         self.context.adb.side_effect = [self.package_list, self.hash_line,
                                         'Result: Bundle[{status=screen_off}]']
         with self.assertRaisesRegex(server.DeviceError, 'Wake the Core screen'):
             notifications.test_banner(self.context, self.target)
+
+    def test_selected_sound_is_passed_as_a_test_argument(self):
+        self.context.adb.side_effect = [self.package_list, self.hash_line,
+                                        'Result: Bundle[{status=accepted}]']
+        notifications.test_banner(self.context, self.target, 'complete')
+        self.context.adb.assert_called_with('-s', self.target, 'shell', 'content', 'call',
+                                            '--uri', notifications.AUTHORITY, '--method', 'test.v1',
+                                            '--arg', 'complete')
