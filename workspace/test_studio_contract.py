@@ -25,6 +25,36 @@ class StudioContractTests(unittest.TestCase):
         panel['sounds']['success']=[[800,300],[900,300]]
         with self.assertRaises(ValueError):validate(panel,'scene')
 
+    def test_package_alert_content_and_version_floor(self):
+        from native_widgets import alert_pcm, widget_alert
+
+        template = dict(title='Job finished', message='{source} is ready.', kind='success')
+        bell = [[1046.5, 250, 'bell']]
+        panel = dict(api=2, settings=dict(api=1, fields=[
+            dict(key='showSeconds', label='Seconds', type='boolean', default=True)]),
+            notifications={'success': template}, sounds={'success': bell})
+        widget = dict(id='clock', name='Clock', kind='clock', studio=panel)
+        widgets = widget_package(json.dumps(dict(widgetApi=1, runtime='studio-native-v1', widgets=[widget])).encode())
+        with self.assertRaisesRegex(StoreError, '0.52.35'):
+            require_widget_version(widgets, dict(compatibility=dict(minStudioVersion='0.52.34')))
+        require_widget_version(widgets, dict(compatibility=dict(minStudioVersion='0.52.35')))
+
+        specs = {'card': dict(kind='bambu', printerId='printer', printAlerts=True,
+                              packageId='package', widgetKey='widget')}
+        payload, pcm = widget_alert(specs, {('package', 'widget'): panel},
+                                    'printer', 'success', {'name': 'Workshop A1'})
+        self.assertEqual(payload, dict(template, message='Workshop A1 is ready.'))
+        self.assertEqual(pcm, alert_pcm('success', bell))
+        self.assertNotEqual(pcm, alert_pcm('success', [[1046.5, 250]]))
+        other, fallback = widget_alert(specs, {}, 'printer', 'error', {})
+        self.assertIsNone(other)
+        self.assertEqual(fallback, alert_pcm('error'))
+
+        for invalid in ('{password}', '{source.name}', '{source'):
+            template['message'] = invalid
+            with self.assertRaisesRegex(ValueError, 'placeholder'):
+                validate(panel, 'clock')
+
     def test_updated_library_package_drives_existing_card_without_core_app(self):
         from studio_contract import apply_installed_settings
         from widget_presentation import resolve as presentation

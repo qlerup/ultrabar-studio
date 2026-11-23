@@ -29,8 +29,18 @@ def _text(value, name, limit=100):
         raise ValueError('studio: invalid '+name+'.')
 
 
+def requires_notification_runtime(widgets):
+    for widget in widgets:
+        panel = widget.get('studio', {})
+        if 'notifications' in panel:
+            return True
+        if any(len(note) == 3 for notes in panel.get('sounds', {}).values() for note in notes):
+            return True
+    return False
+
+
 def validate(descriptor, kind):
-    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation', 'layout','sounds'} or type(descriptor.get('api')) is not int or descriptor['api'] not in (1, 2):
+    if not isinstance(descriptor, dict) or set(descriptor)-{'api', 'settings', 'help', 'connection', 'sources', 'presentation', 'layout','sounds','notifications'} or type(descriptor.get('api')) is not int or descriptor['api'] not in (1, 2):
         raise ValueError('studio: use declarative panel API 1; code and custom transports are unsupported.')
     if not {'settings', 'connection'} & set(descriptor) and not (descriptor['api']==2 and 'layout' in descriptor):
         raise ValueError('studio: declare settings or a connection panel.')
@@ -46,10 +56,26 @@ def validate(descriptor, kind):
             if not re.fullmatch('[a-z][a-z0-9_.]{0,63}',event) or not isinstance(sequence,list) or not 1<=len(sequence)<=32:
                 raise ValueError('Invalid package sound sequence.')
             for note in sequence:
-                if (not isinstance(note,list) or len(note)!=2 or not all(type(v) in (float,int) for v in note)
-                        or not 0<=note[0]<=8000 or type(note[1]) is not int or not 1<=note[1]<=580):
-                    raise ValueError('Sound notes require frequency and milliseconds.')
+                if (not isinstance(note, list) or len(note) not in (2, 3)
+                        or type(note[0]) not in (float, int) or not 0 <= note[0] <= 8000
+                        or type(note[1]) is not int or not 1 <= note[1] <= 580
+                        or (len(note) == 3 and note[2] != 'bell')):
+                    raise ValueError('Sound notes require frequency, milliseconds and an optional bell timbre.')
             if sum(note[1] for note in sequence)>580:raise ValueError('A package sound must fit the audio buffer.')
+    if 'notifications' in descriptor:
+        events = descriptor['notifications']
+        if descriptor['api'] != 2 or not isinstance(events, dict) or not 1 <= len(events) <= 16:
+            raise ValueError('Invalid package notifications.')
+        for event, notification in events.items():
+            if (not re.fullmatch('[a-z][a-z0-9_.]{0,63}', event)
+                    or not isinstance(notification, dict) or set(notification) != {'title', 'message', 'kind'}
+                    or notification['kind'] not in ('info', 'success', 'warning')):
+                raise ValueError('Invalid package notification.')
+            _text(notification['title'], 'notification title', 80)
+            _text(notification['message'], 'notification message', 200)
+            remainder = notification['message'].replace('{source}', '')
+            if '{' in remainder or '}' in remainder:
+                raise ValueError('Notification messages support only the {source} placeholder.')
     if 'help' in descriptor:
         _text(descriptor['help'], 'help', 2000)
     if 'settings' in descriptor:

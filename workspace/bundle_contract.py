@@ -1,5 +1,6 @@
 """One reviewed APK may supply declarative templates for trusted native renderers."""
 import json,zipfile
+from studio_contract import requires_notification_runtime
 
 def validate(manifest,parse):
     if 'bundledWidgets' not in manifest:return []
@@ -8,6 +9,8 @@ def validate(manifest,parse):
     descriptor=manifest['bundledWidgets']
     if not isinstance(descriptor,dict):raise ValueError('bundledWidgets must be a widget.json object.')
     templates=parse(json.dumps(descriptor).encode())
+    if requires_notification_runtime(templates) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0, 52, 35):
+        raise ValueError('Widget notifications and bell sounds require Studio 0.52.35 or newer.')
     if any(preset.get('images') for w in templates for preset in w.get('studio', {}).get('presentation', {}).get('presets', [])) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,24):
         raise ValueError('Package image presets require Studio 0.52.24+.')
     if any(w.get('kind')=='scene' or 'sounds' in w.get('studio',{}) or 'expanded' in w.get('studio',{}).get('layout',{}) or any(isinstance(v,dict) for v in w.get('studio',{}).get('layout',{}).values()) for w in templates) and tuple(map(int, manifest['compatibility']['minStudioVersion'].split('.'))) < (0,52,23):

@@ -37,6 +37,20 @@ Java.perform(function () {
             try { profiles = next; resolve(updateLayout()); }
             catch (error) { reject(new Error(String(error))); }
         })));
+    rpc.exports.postCoreNotification = notification => new Promise(resolve => Java.perform(() => {
+        try {
+            const app = Java.use('android.app.ActivityThread').currentApplication();
+            const uri = Java.use('android.net.Uri').parse('content://dk.ultrabarx.notifications');
+            const payload = Java.use('android.os.Bundle').$new();
+            for (const key of ['title', 'message', 'kind']) payload.putString(key, notification[key]);
+            const result = app.getContentResolver().call
+                .overload('android.net.Uri', 'java.lang.String', 'java.lang.String', 'android.os.Bundle')
+                .call(app.getContentResolver(), uri, 'post.v1', null, payload);
+            resolve(result === null ? 'unavailable' : String(result.getString('status')));
+        } catch (_) {
+            resolve('unavailable');
+        }
+    }));
     rpc.exports.playPrintAlert = pcm => new Promise((resolve, reject) => Java.perform(() => {
         try {
             if (typeof pcm !== 'string' || pcm.length > 25000) throw new Error('Invalid print alert audio');

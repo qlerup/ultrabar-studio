@@ -27,11 +27,25 @@ def alert_pcm(kind, sequence=None):
         notes = {'success': (523.25, 659.25, 783.99), 'error': (740, 440, 440)}[kind]
         sequence = [note for hz in notes for note in ((hz,160),(0,30))]
     samples = bytearray()
-    for frequency, milliseconds in sequence:
-        frames=16*milliseconds
+    for note in sequence:
+        frequency, milliseconds = note[:2]
+        frames = 16 * milliseconds
+        bell = len(note) == 3
+        partials = [
+            (ratio, amplitude, decay)
+            for ratio, amplitude, decay in ((2.76, .32, 10), (4.07, .16, 16))
+            if bell and frequency * ratio < 8000
+        ]
         for index in range(frames):
             gain = min(1, index / 180, (frames - index - 1) / 380)
-            sample = round(8100 * gain * math.sin(2 * math.pi * frequency * index / 16000))
+            phase = 2 * math.pi * frequency * index / 16000
+            wave = math.sin(phase)
+            if bell:
+                progress = index / frames
+                wave *= math.exp(-4 * progress)
+                for ratio, amplitude, decay in partials:
+                    wave += amplitude * math.sin(phase * ratio) * math.exp(-decay * progress)
+            sample = round(8100 * gain * wave)
             samples.extend(struct.pack('<h', sample))
     return base64.b64encode(samples).decode('ascii')
 
@@ -43,6 +57,25 @@ def alert_options(specs):
             key = spec.get('printerId')
             options[key] = options.get(key, False) or spec.get('wakeOnAlert', True)
     return options
+
+
+def widget_alert(specs, panels, printer_id, kind, printer):
+    sequence = notification = None
+    for spec in specs.values():
+        if spec.get('kind') != 'bambu' or spec.get('printerId') != printer_id or not spec.get('printAlerts'):
+            continue
+        panel = panels.get((spec.get('packageId'), spec.get('widgetKey')), {})
+        if notification is None:
+            template = panel.get('notifications', {}).get(kind)
+            if template:
+                source = printer.get('name') or spec.get('_cardTitle') or template['title']
+                message = template['message'].replace('{source}', ' '.join(source.split()))
+                notification = dict(template, message=message[:200].strip() or template['title'])
+        if sequence is None:
+            sequence = panel.get('sounds', {}).get(kind)
+        if notification is not None and sequence is not None:
+            break
+    return notification, alert_pcm(kind, sequence)
 
 
 def check_lineos(package_dump):
@@ -118,7 +151,7 @@ class NativeWidgets:
         self.printer_actions = {}
         self.presentations = {}
         self.layouts = {}
-        self.soundsets = {}
+        self.alert_panels = {}
 
     def printer_action(self, event):
         # Transient events only: no file queue, retry or command replay on reconnect.
@@ -194,8 +227,8 @@ class NativeWidgets:
         records = self.server.store.records() if specs else {}
         import widget_scene
         layouts = {key:layout for key,spec in specs.items() if (layout:=widget_scene.installed(spec,records))}
-        soundsets = {(record.get('id'),widget.get('id')):widget.get('studio',{}).get('sounds',{})
-                     for record in records.values() for widget in record.get('widgets',[])}
+        alert_panels = {(record.get('id'), widget.get('id')): widget.get('studio', {})
+                        for record in records.values() for widget in record.get('widgets', [])}
         studio_contract.apply_installed_settings(specs, records)
         presentations = widget_presentation.bindings(specs, records) if specs else {}
         with self.lock:
@@ -208,7 +241,7 @@ class NativeWidgets:
             self.compact_profiles = compact_profiles or {}
             self.presentations = presentations
             self.layouts = layouts
-            self.soundsets = soundsets
+            self.alert_panels = alert_panels
             self.server.bambu.configure(specs)
             if not specs and not compact_profiles:
                 self.stop.set()
@@ -255,7 +288,7 @@ class NativeWidgets:
             while not self.stop.is_set():
                 try:
                     with self.lock:
-                        specs, presentations, layouts, soundsets = self.specs, self.presentations, self.layouts, self.soundsets
+                        specs, presentations, layouts, alert_panels = self.specs, self.presentations, self.layouts, self.alert_panels
                     options = alert_options(specs)
                     pending_alerts.extend(self.server.bambu.take_alerts(options))
                     now = time.monotonic()
@@ -314,11 +347,13 @@ class NativeWidgets:
                             if time.monotonic() - created < 8:
                                 if options[key] and alert not in wake_sent:
                                     wake_core()
-                                sequence=next((sounds[kind] for spec in specs.values()
-                                               if spec.get('printerId')==key and spec.get('printAlerts')
-                                               for sounds in [soundsets.get((spec.get('packageId'),spec.get('widgetKey')),{})]
-                                               if kind in sounds),None)
-                                call_runtime('play_print_alert', alert_pcm(kind,sequence))
+                                notification, pcm = widget_alert(specs, alert_panels, key, kind, printers.get(key, {}))
+                                if notification:
+                                    status = call_runtime('post_core_notification', notification)
+                                    if status == 'screen_off' and options[key] and not self.stop.wait(.25):
+                                        call_runtime('post_core_notification', notification)
+                                if not self.stop.is_set():
+                                    call_runtime('play_print_alert', pcm)
                     widgets = widget_presentation.apply(specs, presentations, {'bambu-lan': printers})
                     models = {printer.get('model') for printer in printers.values()}
                     images = {model: image for model in models if (image := thumbnail(model))}

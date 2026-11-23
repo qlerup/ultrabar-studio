@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.34 Windows
+# UltraBar Studio — 0.52.35 Windows
+
+## 0.52.35 update
+
+Native widget packages can provide Core Notification banner text for supported
+events and use a bell timbre for their own sounds.
 
 ## 0.52.34 update
 
