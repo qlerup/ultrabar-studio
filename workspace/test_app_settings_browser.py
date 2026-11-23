@@ -29,7 +29,7 @@ class AppSettingsBrowserTests(unittest.TestCase):
             saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
             self.assertEqual(saved['app_settings'][package],dict(actual,delay=2000,mode='quiet',enabled=False))
             panel.locator('[data-app-setting="delay"]').fill('2500');panel.locator('[data-app-setting="delay"]').press('Tab')
-            page.locator('#widget-undo').click();page.locator('#background-apps button').click();expect(panel.locator('[data-app-setting="delay"]')).to_have_value('2000')
+            page.locator('#widget-undo').click();page.locator('#background-apps button:not([data-builtin])').click();expect(panel.locator('[data-app-setting="delay"]')).to_have_value('2000')
             page.set_viewport_size(dict(width=1920,height=1100));out=Path(__file__).parent/'data/qa';out.mkdir(exist_ok=True,parents=True)
             page.screenshot(path=str(out/'app-settings-1920.png'),full_page=True)
             page.set_viewport_size(dict(width=390,height=900));page.screenshot(path=str(out/'app-settings-390.png'),full_page=True)
@@ -73,7 +73,7 @@ class AppSettingsBrowserTests(unittest.TestCase):
             page.wait_for_function("()=>("+pixel+")()==='240,153,35'")
             expanded_pixel('240,153,35')
             expect(color).to_have_value('#654321')
-            expect(page.locator('#background-apps button')).to_have_count(0)
+            expect(page.locator('#background-apps button:not([data-builtin])')).to_have_count(0)
             page.get_by_label('Enable chimes').uncheck()
             page.locator('#draft-save').click()
             expect(page.locator('#draft-status')).to_contain_text('Draft saved')

@@ -6,6 +6,7 @@
   let storePresets=[];
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
   let backgroundIndex=-1;
+  const notificationsIndex=-2;
   let inputChoices=[], actionType='', actionChoiceItems=[], editingActionIndex=null, actionSaving=false;
   const pcWidgetForms=new Map();
   const appSettingsDefs=new Map();
@@ -14,6 +15,7 @@
   const picturePrefix='/sdcard/Android/data/com.ultrabar.launch/files/studio-icons/';
   const screenSyncId='dk.ultrabarx.screensync';
   const pcStandbyId='dk.qlerup.corestandby';
+  const coreNotificationsId='dk.ultrabarx.notifications';
   const clone=v=>structuredClone(v);
   const current=()=>draft?.profiles[profileIndex];
   const types={CPU:'CPU usage',MEMORY:'RAM usage',STORAGE:'Disk usage',TIME:'Clock',APPS:'Core app',PC_CONTROL:'PC action'};
@@ -400,7 +402,7 @@
   }
   function addBackground(w){
     if(!w||w.type!=='APPS'){message('Background apps supports Core apps. Display widgets belong on the bar.',true);return;}
-    if(/^(android\.|com\.android\.|com\.ultrabar\.)/.test(w.id)){message('System apps cannot be added to Background apps.',true);return;}
+    if(w.id===coreNotificationsId||/^(android\.|com\.android\.|com\.ultrabar\.)/.test(w.id)){message('System apps cannot be added to Background apps.',true);return;}
     const existing=draft.background_apps.findIndex(a=>a.id===w.id);
     if(existing>=0){backgroundIndex=existing;renderBackground();renderProperties();return;}
     change(()=>{
@@ -421,7 +423,19 @@
   }
   function renderBackground(){
     const list=$('background-apps');list.replaceChildren();
-    $('background-count').textContent=draft.background_apps.length;$('background-empty').hidden=!!draft.background_apps.length;
+    $('background-count').textContent=draft.background_apps.length+1;
+    const selectNotifications=()=>{
+      backgroundIndex=notificationsIndex;
+      renderCanvas();
+      renderBackground();
+      renderProperties();
+    };
+    const notifications=button('',selectNotifications,'background-app'+(backgroundIndex===notificationsIndex?' selected':''));
+    notifications.dataset.builtin='';
+    notifications.setAttribute('aria-pressed',String(backgroundIndex===notificationsIndex));
+    notifications.setAttribute('aria-label','Core Notifications background settings');
+    notifications.append(el('span','background-app-dot'),el('span','','Core Notifications'),el('small','','Built in'));
+    list.append(notifications);
     draft.background_apps.forEach((app,i)=>{const chip=el('button','background-app'+(backgroundIndex===i?' selected':''));chip.type='button';chip.setAttribute('aria-pressed',String(backgroundIndex===i));chip.setAttribute('aria-label',app.name+' background settings');chip.append(el('span','background-app-dot'),el('span','',app.name),el('small','',appSettingsDefs.has(app.id)?'':app.id===pcStandbyId?'Follows Studio':app.id===screenSyncId?((draft.app_settings?.[app.id]?.enabled??app.settings.enabled)===false?'Always on':'Follow Core'):(app.settings.launch===false?'Install only':'Launch on Deploy')));chip.onclick=()=>{backgroundIndex=i;renderCanvas();renderBackground();renderProperties();};draggable(chip,{kind:'widget-background',index:i,widget:{id:app.id,type:'APPS',name:app.name}});list.append(chip);});
   }
   function studioBinding(spec){
@@ -449,6 +463,20 @@
     if(descriptor.help)panel.append(el('p','muted',descriptor.help));
   }
   function renderBackgroundProperties(panel){
+    if(backgroundIndex===notificationsIndex){
+      const test=button('Send test notification',()=>operation(async()=>{
+        const response=await api('/api/editor/core-notifications/test',{
+          method:'POST',body:JSON.stringify({device_id:draft.device_id})
+        });
+        message((await response.json()).message);
+      }));
+      panel.replaceChildren(
+        el('h3','','Core Notifications'),
+        el('p','muted','Studio installs the built-in notification service when you deploy. Supported Core apps and widgets use it to show banners.'),
+        test
+      );
+      return;
+    }
     const app=draft.background_apps[backgroundIndex];if(!app)return;
     panel.replaceChildren(el('h3','','Background app settings'),el('span','badge','NO BAR SPACE'),el('h4','',app.name));
     if(appSettingsDefs.has(app.id)){
@@ -891,7 +919,7 @@
     canvas.classList.toggle('mixed-widgets',grid);
     if(grid)canvas.style.setProperty('--layout-right',gridMargin+nextFreeColumn(positions)*cellPitch+'px');
     else canvas.style.removeProperty('--layout-right');
-    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex<0&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex<0&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);
+    current().homeData.forEach((w,i)=>{const card=el('button','canvas-widget'+(backgroundIndex===-1&&i===widgetIndex?' selected':''));card.setAttribute('aria-pressed',backgroundIndex===-1&&i===widgetIndex);card.setAttribute('aria-label',w.name||types[w.type]||w.type);card.append(el('span','canvas-glyph',glyphs[w.type]||'◇'),el('strong','',w.name||types[w.type]||w.type),el('small','',nativeSpec(w)?'Studio '+nativeSpec(w).kind:w.type==='PC_CONTROL'?'PC action':w.type));if(w.bgColor)card.style.backgroundColor=w.bgColor;if(isSmall(w))card.classList.add('small-widget');if(grid){const [col,row]=positions[w.id];card.style.left=gridMargin+col*cellPitch+'px';card.style.top=gridMargin+row*rowPitch+'px';}if(nativeSpec(w))renderNativePreview(w,card);
       card.onclick=event=>{
         if(event.target.closest('.bambu-unfold') || (event.target.closest('.package-scene') && (nativeSpec(w)?.kind==='bambu'||studioBinding(nativeSpec(w)||{})?.descriptor.layout?.expanded) && event.offsetY>=card.clientHeight*.78)){showBambuUnfolded(w);return;}
         backgroundIndex=-1;widgetIndex=i;renderCanvas();renderBackground();renderProperties();
@@ -906,7 +934,7 @@
   function field(label,value,onchange,type='text'){const wrap=el('label','property-field',label),input=el('input');input.type=type;input.value=value;input.onchange=()=>onchange(input.value);wrap.append(input);return wrap;}
   function button(text,fn,cls=''){const b=el('button',cls,text);b.type='button';b.onclick=fn;return b;}
   function renderProperties(){
-    if(backgroundIndex>=0){renderBackgroundProperties($('widget-properties'));return;}
+    if(backgroundIndex!==-1){renderBackgroundProperties($('widget-properties'));return;}
     const panel=$('widget-properties');panel.replaceChildren(el('h3','','Widget settings'));const w=current().homeData[widgetIndex];if(!w){panel.append(el('p','muted','Select a card to edit it.'));return;}
     const spec=nativeSpec(w),shortcut=pcWidgetSpec(w);
     const packagePanel=spec&&studioBinding(spec)?.descriptor.api===2;
@@ -1240,7 +1268,7 @@
   $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;pcWidgetForms.clear();resetActionComposer();renderEditor();};
   $('action-undo').onclick=()=>$('widget-undo').click();
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
-  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(Object.keys(draft.compact_profiles||{}).length)box.append(el('p','','Apply mixed widget sizes to CoreBAR.'));if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
+  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(Object.keys(draft.compact_profiles||{}).length)box.append(el('p','','Apply mixed widget sizes to CoreBAR.'));if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));box.append(el('p','','Background / Core Notifications (built in)'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
   $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
   $('deploy-progress-close').onclick=()=>$('deploy-progress').close();

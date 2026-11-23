@@ -23,7 +23,7 @@ class StudioShortcutBrowserTests(unittest.TestCase):
             website.click();launch.click()
             expect(page.locator('#core-canvas .canvas-widget')).to_have_count(before)
             website.drag_to(page.locator('#background-drop'))
-            expect(page.locator('#background-apps button')).to_have_count(0)
+            expect(page.locator('#background-apps button:not([data-builtin])')).to_have_count(0)
             expect(page.locator('#core-canvas .canvas-widget')).to_have_count(before)
             website.drag_to(page.locator('#core-screen'))
             expect(page.locator('#pc-widget-target')).to_be_visible()

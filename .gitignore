@@ -1,4 +1,4 @@
-# Publish only Studio and its native widget source. Research and local data stay local.
+# Publish only Studio and its bundled Core components. Research and local data stay local.
 /*
 !/.gitignore
 !/.gitattributes
@@ -29,6 +29,12 @@
 !/native-widgets/compile-stubs/**
 !/native-widgets/tests/
 !/native-widgets/tests/**
+!/core-notifications/
+/core-notifications/*
+!/core-notifications/AndroidManifest.xml
+!/core-notifications/build.py
+!/core-notifications/src/
+!/core-notifications/src/**
 **/__pycache__/
 *.pyc
 *.log

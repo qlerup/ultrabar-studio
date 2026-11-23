@@ -159,8 +159,6 @@ body.editing #connection-dialog #discovery-results{display:grid!important}
 .background-app small{font-size:10px;color:var(--muted);border-left:1px solid #45495e;padding-left:9px}
 .background-app.selected{border-color:var(--mint);background:var(--accent-soft)}
 .background-app-dot{width:6px;height:6px;border-radius:50%;background:var(--mint);flex-shrink:0}
-.background-empty{font-size:11px;color:#858da7;margin:14px 0 0}
-.background-empty[hidden]{display:none}
 #widget-properties>.badge+h4{margin:16px 0;font-size:15px}
 @media(max-width:500px){.background-drop{padding:12px}.background-app{flex-wrap:wrap}.background-app small{margin-left:15px}}
 

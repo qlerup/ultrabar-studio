@@ -53,7 +53,7 @@ class BambuUpgradeBrowserTests(unittest.TestCase):
             placed=page.locator('#core-canvas .canvas-widget').filter(has_text='My workshop printer');expect(placed).to_have_count(1);placed.click()
             expect(page.locator('#widget-setting-primary')).to_have_value('remaining');expect(page.locator('#widget-setting-expandedSlots')).to_have_value('5')
             expect(page.locator('#widget-setting-showControls')).not_to_be_checked()
-            expect(page.locator('#background-apps button')).to_have_count(0)
+            expect(page.locator('#background-apps button:not([data-builtin])')).to_have_count(0)
             page.locator('#draft-save').click();expect(page.locator('#draft-status')).to_contain_text('Draft saved')
             saved=page.request.get('http://'+host+'/api/editor',headers={'X-Studio-Token':server.SESSION_TOKEN}).json()['draft']
             spec=saved['profiles'][0]['homeData'][-1]['param']['payload']['params']

@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.52.30 Windows
+# UltraBar Studio — 0.52.31 Windows
+
+## 0.52.31 update
+
+Core Notifications is now built into Studio. Deploy installs it on Core, and
+its **Background apps** entry lets you send a test banner. Core apps and
+app-backed widgets can use the shared notification API while Studio is closed.
+See [Core Notifications API](../docs/core-notifications.md).
 
 ## 0.52.30 update
 

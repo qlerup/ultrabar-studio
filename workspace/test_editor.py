@@ -23,6 +23,9 @@ class EditorTests(unittest.TestCase):
         screensaver = patch.object(editor.core_screensaver, 'reconcile')
         screensaver.start()
         self.addCleanup(screensaver.stop)
+        notifications = patch.object(editor.core_notifications, 'provision')
+        self.notifications = notifications.start()
+        self.addCleanup(notifications.stop)
         self.patch=patch.object(server,'DATA_DIR',Path(self.folder.name));self.patch.start();self.addCleanup(self.patch.stop)
         self.snapshot=dict(target='10.10.0.181:5555',device_id='core1',profiles=profiles(),backup='a'*64+'.xml')
         self.conn=patch.dict(server.connection,dict(target=self.snapshot['target'],snapshot=self.snapshot));self.conn.start();self.addCleanup(self.conn.stop)
@@ -61,6 +64,7 @@ class EditorTests(unittest.TestCase):
             result = self.post('/api/editor/deploy')
             self.assertEqual(result.status_code, 200, result.json)
             self.assertEqual(bridge.call_args.args[4], editor.to_wire(rows))
+            self.notifications.assert_called_once_with(server, self.snapshot['target'])
         self.draft = result.json['draft']
         self.assertEqual(self.save(original).status_code, 400)
         with patch.object(server, 'read_snapshot', return_value=result.json['snapshot']):

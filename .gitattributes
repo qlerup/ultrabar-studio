@@ -11,5 +11,6 @@
 *.spec text eol=lf
 LICENSE text eol=lf
 *.dex binary
+*.apk binary
 *.ico binary
 workspace/assets/native/studio-runtime binary

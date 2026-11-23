@@ -15,6 +15,7 @@ from library_icons import CoreIcons
 import widget_images
 import app_settings
 import core_screensaver
+import core_notifications
 from pc_standby import placed as standby_placed
 
 
@@ -236,6 +237,7 @@ def validate_background(value):
         if not isinstance(app,dict) or set(app)-{'id','name','settings'}:raise EditError('Invalid background app.')
         key=app.get('id')
         if not isinstance(key,str) or not store.ANDROID_ID.fullmatch(key) or key.startswith(('android.','com.android.','com.ultrabar.')) or key in seen:raise EditError('Invalid or duplicate background app.')
+        if key == core_notifications.PACKAGE:raise EditError('Core Notifications is managed by Studio.')
         seen.add(key)
         if not isinstance(app.get('name'),str) or not 1<=len(app['name'])<=100:raise EditError('Give each background app a name.')
         settings=app.get('settings',{})
@@ -447,6 +449,16 @@ def register_editor(server):
             draft = load_draft(server, snapshot)
             return jsonify(draft=draft, conflict=draft['base_hash'] != digest(snapshot['profiles']))
 
+    @app.post('/api/editor/core-notifications/test')
+    def test_core_notifications():
+        body = request.get_json(silent=True)
+        with server.device_lock:
+            snapshot = current()
+            if not isinstance(body, dict) or body.get('device_id') != snapshot['device_id']:
+                raise EditError('The selected Core changed. Reopen the editor and try again.')
+            core_notifications.test_banner(server, server.connection['target'])
+            return jsonify(message='Test notification sent to Core.')
+
     @app.get('/api/editor/catalog')
     def catalog():
         with server.device_lock:
@@ -581,6 +593,8 @@ def register_editor(server):
             atomic_json(rollback_path, rollback)
             stage('Waking Core and waiting for the screen…')
             wake_for_deploy(server, server.connection['target'])
+            stage('Preparing Core Notifications...')
+            core_notifications.provision(server, server.connection['target'])
             stage('Preparing widget pictures on Core...')
             widget_images.deploy_pictures(server,draft['profiles'],server.connection['target'])
             screensaver = server.store.deploy_dependencies(draft['profiles'],draft['device_id'],stage,draft.get('background_apps',[]))

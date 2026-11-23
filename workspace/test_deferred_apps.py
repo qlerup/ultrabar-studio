@@ -27,6 +27,9 @@ def app_fixture():
 
 class DeferredAppTests(unittest.TestCase):
     def setUp(self):
+        notifications = patch.object(editor.core_notifications, 'provision')
+        self.notifications = notifications.start()
+        self.addCleanup(notifications.stop)
         self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         screensaver = patch.object(editor.core_screensaver, 'reconcile')
