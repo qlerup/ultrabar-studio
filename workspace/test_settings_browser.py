@@ -10,6 +10,60 @@ import server
 
 
 class SettingsBrowserTests(unittest.TestCase):
+    def test_core_connection_distinguishes_module_status_failure(self):
+        http = make_server('127.0.0.1', 0, server.app, threaded=True)
+        host = f'127.0.0.1:{http.server_port}'
+        with patch.dict(server.app.config, ALLOWED_HOSTS={host}):
+            threading.Thread(target=http.serve_forever, daemon=True).start()
+            try:
+                with sync_playwright() as pw:
+                    browser = pw.chromium.launch(channel='msedge')
+                    page = browser.new_page()
+                    target = '192.168.1.20:5555'
+                    module_error = 'Could not read current module status from CoreBridge. Retrying automatically.'
+                    hardware = {'devices': [], 'status_error': module_error}
+                    snapshot = dict(target=target, model='CB01', device_id='core', profiles=[],
+                                    hardware=hardware, read_at='2026-11-15T12:00:00Z')
+                    page.route('**/api/**', lambda r: r.fulfill(json={}))
+                    page.route('**/api/preferences', lambda r: r.fulfill(json={'target': target, 'setup_seen': True}))
+                    page.route('**/api/connect', lambda r: r.fulfill(json=snapshot))
+                    page.route('**/api/hardware', lambda r: r.fulfill(json={'target': target, 'hardware': hardware}))
+                    page.clock.install()
+                    page.goto('http://'+host)
+                    badge = page.locator('#connection-badge')
+                    module_status = page.locator('#hardware-status')
+                    core_status = page.locator('.core-unit .unit-state')
+                    expect(badge).to_have_class('badge connected')
+
+                    # Subsequent status polls can read the Core even if CoreBridge fails.
+                    with page.expect_response('**/api/hardware'):
+                        page.clock.fast_forward(5000)
+                    page.wait_for_function('!hardwarePolling')
+                    expect(module_status).to_have_text(module_error)
+                    expect(badge).to_have_class('badge connected')
+                    expect(core_status).to_have_text('Connected via ADB')
+
+                    page.route('**/api/hardware', lambda r: r.fulfill(status=502, json={'error': 'Core is offline.'}))
+                    page.clock.fast_forward(5000)
+                    expect(badge).to_have_text('Not connected')
+                    expect(core_status).to_have_text('Connection unverified')
+
+                    # The ADB connection can return while CoreBridge is still unavailable.
+                    page.unroute('**/api/hardware')
+                    page.route('**/api/hardware', lambda r: r.fulfill(json={'target': target, 'hardware': hardware}))
+                    page.clock.fast_forward(5000)
+                    expect(module_status).to_have_text(module_error)
+                    expect(badge).to_have_class('badge connected')
+                    expect(core_status).to_have_text('Connected via ADB')
+
+                    hardware['status_error'] = None
+                    page.clock.fast_forward(5000)
+                    expect(module_status).to_contain_text('updates every 5 seconds')
+                    expect(badge).to_have_class('badge connected')
+                    browser.close()
+            finally:
+                http.shutdown()
+
     def test_reconnect_retry_reload_and_settings(self):
         with tempfile.TemporaryDirectory() as tmp, patch.object(server, 'DATA_DIR', Path(tmp)):
             http = make_server('127.0.0.1', 0, server.app, threaded=True)

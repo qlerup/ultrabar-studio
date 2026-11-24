@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.35 Windows
+# UltraBar Studio — 0.52.36 Windows
+
+## 0.52.36 update
+
+Studio keeps showing CoreBAR as connected when WiFi ADB is working and
+CoreBridge cannot read live module status. The overview reports the module
+status error separately and continues checking automatically.
 
 ## 0.52.35 update
 

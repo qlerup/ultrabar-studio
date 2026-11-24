@@ -3,6 +3,7 @@ const $ = id => document.getElementById(id);
 const token = document.querySelector('meta[name="studio-token"]').content;
 let snapshot = null, selectedProfile = 0, busy = false, screenUrl = null;
 let hardwarePolling = false, connectionGeneration = 0;
+let coreConnected = false;
 let screenPolling = false, screenCapturedAt = null, coreScreenOff = false;
 let cubeImages = {}, cubeLoading = false, screenRefreshPending = false, cubeRefreshPending = false;
 let layoutDrag = null, layoutSaving = false, suppressHardwareClickUntil = 0;
@@ -44,7 +45,7 @@ function render() {
 }
 function createHardwareUnit(device=null){
   if(!device){
-  const core=el('button','hardware-unit core-unit'+(snapshot.hardware?.status_error?' is-unknown':''));core.dataset.layoutKey='core';core.append(el('div','unit-screen','COREBAR'),el('span','unit-name','CoreBAR'),el('span','unit-state',snapshot.hardware?.status_error?'Connection unverified':'Connected via ADB'));
+  const core=el('button','hardware-unit core-unit'+(coreConnected?'':' is-unknown'));core.dataset.layoutKey='core';core.append(el('div','unit-screen','COREBAR'),el('span','unit-name','CoreBAR'),el('span','unit-state',coreConnectionLabel()));
   paintCoreScreen(core.querySelector('.unit-screen'));return core;
   }
     const unit=el('button','hardware-unit '+device.type.toLowerCase()+(device.online===false?' is-offline':device.online===null?' is-unknown':''));
@@ -65,7 +66,7 @@ function showHardwareSelection(device=null) {
   }
   $('hardware-detail').textContent=device
     ? `${names[device.type]||device.name} · ${device.serial} · ${device.online===true?'CoreBAR reports online':device.online===false?'CoreBAR reports offline':'Status unknown'}`
-    : `CoreBAR · ${snapshot.hardware?.status_error?'Connection unverified':'Connected via ADB'}`;
+    : `CoreBAR · ${coreConnectionLabel()}`;
 }
 function renderHardware() {
   if(layoutDrag)return;
@@ -177,7 +178,11 @@ $('hardware-preview').addEventListener('keydown',event=>{
   $('hardware-preview').insertBefore(card,event.key==='ArrowLeft'?sibling:sibling.nextElementSibling);
   saveHardwareOrder(card.dataset.layoutKey);
 });
+function coreConnectionLabel() {
+  return coreConnected?'Connected via ADB':'Connection unverified';
+}
 function connectionStatus(connected) {
+  coreConnected=connected;
   $('connection-badge').textContent=connected?'Connected \u00b7 '+snapshot.target:'Not connected';
   $('connection-badge').classList.toggle('connected',connected);
   $('connection-open').textContent=connected?'Manage connection':'Connect device';
@@ -185,7 +190,6 @@ function connectionStatus(connected) {
 function openConnection(){if($('connection-dialog').open)return;clearTimeout(reconnectTimer);rememberedTarget='';$('manual-connection').open=false;$('connection-notice').textContent='';$('connection-dialog').showModal();discoverDevices();}
 $('connection-open').onclick=openConnection;
 function markHardwareUnknown(message) {
-  connectionStatus(false);
   if(!snapshot)return;
   snapshot.hardware={...snapshot.hardware,status_error:message,devices:(snapshot.hardware?.devices||[]).map(device=>({...device,online:null}))};
   renderHardware();
@@ -198,10 +202,17 @@ async function pollHardware() {
     const response=await api('/api/hardware');
     const data=await response.json();
     if(generation!==connectionGeneration||target!==snapshot?.target||data.target!==target)return;
+    // A successful profile read verifies ADB even if CoreBridge cannot report module status.
+    connectionStatus(true);
     if(data.hardware.status_error)markHardwareUnknown(data.hardware.status_error);
-    else{snapshot.hardware=data.hardware;connectionStatus(true);renderHardware();}
+    else{snapshot.hardware=data.hardware;renderHardware();}
     if(data.preview_revision&&data.preview_revision!==snapshot.preview_revision){snapshot.preview_revision=data.preview_revision;captureScreen();captureCubes();}
-  }catch(error){if(generation===connectionGeneration)markHardwareUnknown('Connection lost. Module status is unknown; retrying automatically.');}
+  }catch(error){
+    if(generation===connectionGeneration){
+      connectionStatus(false);
+      markHardwareUnknown('Connection lost. Module status is unknown; retrying automatically.');
+    }
+  }
   finally{hardwarePolling=false;}
 }
 setInterval(pollHardware,5000);
