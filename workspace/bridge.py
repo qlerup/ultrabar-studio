@@ -72,7 +72,7 @@ class Stream:
         line, self.buffer = self.buffer.split(b'\n', 1)
         return json.loads(line) if line.strip() else {}
 
-    def query(self, action, data, *, timeout=10):
+    def query(self, action, data, *, timeout=10, on_event=None):
         identity = str(uuid.uuid4())
         self.send(dict(id=identity, act=action, data=data))
         deadline = time.monotonic()+timeout
@@ -84,6 +84,8 @@ class Stream:
                 result = reply.get('data')
                 if action != 101 or not isinstance(result, dict) or result.get('state') != 0:
                     return result
+            elif on_event is not None:
+                on_event(reply)
             if time.monotonic() >= deadline:
                 break
         raise TimeoutError('No matching response')

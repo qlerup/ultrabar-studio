@@ -49,3 +49,19 @@ class HardwareTests(unittest.TestCase):
             result = inventory(data, '10.10.0.181:5555', None, Path('.'))
         self.assertEqual(result['devices'], [])
         self.assertIsNotNone(result['status_error'])
+
+    @patch('hardware.Stream')
+    def test_attached_can_module_is_detected_without_a_profile(self, stream_type):
+        stream = stream_type.return_value.__enter__.return_value
+        frame = {'act': 30102, 'data': {'serialNumber': 'cube', 'productId': 268435459, 'interfaceType': 'can'}}
+
+        def query(action, data, *, timeout, on_event):
+            if action == 30100:
+                on_event(frame)
+
+        stream.query.side_effect = query
+        stream.receive.side_effect = [frame, TimeoutError]
+        with patch('hardware.read_online', return_value={}):
+            result = inventory({'profiles': []}, '10.10.0.181:5555', None, Path('.'), discover=True)
+        self.assertEqual(result['devices'], [dict(serial='cube', type='VIVO_CUBE', name='VivoCube', interface='can', online=True)])
+        self.assertEqual([call.args[0] for call in stream.query.call_args_list], [30100, 30101])

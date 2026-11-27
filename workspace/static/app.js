@@ -37,7 +37,7 @@ async function load(connect, target=$('target').value, automatic=false) {
       if(approved&&$('connection-dialog').open)$('connection-dialog').close();
     }else if($('connection-dialog').open)$('connection-dialog').close();
   }catch(error){notice(error.message+(automatic?' Retrying automatically in 15 seconds. Use Connect device to choose another connection.':''),true);connectionStatus(false);markHardwareUnknown('Status could not be refreshed. Retrying automatically.');}
-  finally{busy=false;controls();if(snapshot){if(approved)pollHardware();captureScreen();captureCubes();}}
+  finally{busy=false;controls();if(snapshot){if(connect&&coreConnected)pollHardware();captureScreen();captureCubes();}}
 }
 async function requestCoreApproval(){
   if(!snapshot||!coreConnected||corePairing)return false;
@@ -232,9 +232,12 @@ async function pollHardware() {
     if(generation!==connectionGeneration||target!==snapshot?.target||data.target!==target)return;
     // A successful profile read verifies ADB even if CoreBridge cannot report module status.
     connectionStatus(true);
+    const cubes=hardware=>(hardware?.devices||[]).filter(device=>device.type==='VIVO_CUBE').map(device=>device.serial).sort().join(',');
+    const cubeMembershipChanged=cubes(snapshot.hardware)!==cubes(data.hardware);
     if(data.hardware.status_error)markHardwareUnknown(data.hardware.status_error);
     else{snapshot.hardware=data.hardware;renderHardware();}
     if(data.preview_revision&&data.preview_revision!==snapshot.preview_revision){snapshot.preview_revision=data.preview_revision;captureScreen();captureCubes();}
+    else if(cubeMembershipChanged&&!data.hardware.status_error)captureCubes();
   }catch(error){
     if(generation===connectionGeneration){
       connectionStatus(false);

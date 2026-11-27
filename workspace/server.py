@@ -342,7 +342,7 @@ def hardware_status():
         # No profile backup or profile reload is needed for status polling.
         raw = adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True)
         data = parse_profiles(raw)
-        result = inventory(data, target, adb, ROOT)
+        result = inventory(data, target, adb, ROOT, discover=True)
         from previews import revision
         preview_revision = revision(data, target, adb)
         connection['snapshot']['hardware'] = result

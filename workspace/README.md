@@ -4,8 +4,8 @@
 
 Studio requests CoreBridge approval when you add a CoreBAR. Confirm on the
 CoreBAR screen to let Studio read live module status. You can resend the
-request from Manage connection. A previously approved connection can resume
-and load module status when Studio starts.
+request from Manage connection. Studio automatically scans for magnetic
+modules at startup and while connected, including modules outside the profile.
 
 ## 0.52.37 update
 
