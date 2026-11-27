@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.52.39 Windows
+# UltraBar Studio — 0.52.40 Windows
+
+## 0.52.40 update
+
+Studio collects magnetic module replies across multiple CoreBAR search
+rounds and can read additional discovery replies directly from the CAN bus.
+Cards stay visible when a module misses a reply, and the overview marks
+older sightings as unconfirmed before removing them.
 
 ## 0.52.39 update
 

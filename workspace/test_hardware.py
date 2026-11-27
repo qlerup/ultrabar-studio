@@ -1,8 +1,9 @@
 import unittest
+import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 from bridge import CLIENT_ID, PairingRequired, Stream, read_token
-from hardware import inventory
+from hardware import EXPIRED_SIGHTING, RECENT_SIGHTING, ModuleDiscovery, decode_can_modules, discover_attached, inventory
 
 
 class HardwareTests(unittest.TestCase):
@@ -54,14 +55,53 @@ class HardwareTests(unittest.TestCase):
     def test_attached_can_module_is_detected_without_a_profile(self, stream_type):
         stream = stream_type.return_value.__enter__.return_value
         frame = {'act': 30102, 'data': {'serialNumber': 'cube', 'productId': 268435459, 'interfaceType': 'can'}}
+        cancelled = threading.Event()
+        observed = {}
 
         def query(action, data, *, timeout, on_event):
             if action == 30100:
                 on_event(frame)
 
         stream.query.side_effect = query
-        stream.receive.side_effect = [frame, TimeoutError]
+        def receive(_timeout):
+            cancelled.set()
+            return frame
+
+        stream.receive.side_effect = receive
+        discover_attached('10.10.0.181:5555', None, Path('.'),
+                          lambda device: observed.update({device['serial']: dict(device, online=True)}), cancelled)
         with patch('hardware.read_online', return_value={}):
-            result = inventory({'profiles': []}, '10.10.0.181:5555', None, Path('.'), discover=True)
+            result = inventory({'profiles': []}, '10.10.0.181:5555', None, Path('.'), discovered=observed.values())
         self.assertEqual(result['devices'], [dict(serial='cube', type='VIVO_CUBE', name='VivoCube', interface='can', online=True)])
         self.assertEqual([call.args[0] for call in stream.query.call_args_list], [30100, 30101])
+
+    def test_discovery_keeps_late_and_missed_modules_by_core_until_they_expire(self):
+        scanner = ModuleDiscovery()
+        scanner.device = ('core-id', '10.10.0.181:5555')
+        times = iter((100, 122))
+        with patch('hardware.time.monotonic', side_effect=lambda: next(times)), patch('hardware.observe_can'), patch('hardware.discover_attached') as scan:
+            def discover(_target, _adb, _root, observe, _cancelled):
+                observe(dict(serial='cube', type='VIVO_CUBE'))
+                observe(dict(serial='sense', type='SENSE_CUBE'))
+            scan.side_effect = discover
+            scanner.scan(scanner.device[1], None, Path('.'), scanner.cancelled)
+        with patch('hardware.time.monotonic', return_value=123):
+            self.assertEqual([device['serial'] for device in scanner.recent(scanner.device)], ['cube', 'sense'])
+            self.assertEqual(scanner.recent(('different-core', scanner.device[1])), [])
+        with patch('hardware.time.monotonic', return_value=100 + RECENT_SIGHTING):
+            self.assertEqual([device['online'] for device in scanner.recent(scanner.device)], [None, True])
+        with patch('hardware.time.monotonic', return_value=100 + EXPIRED_SIGHTING):
+            self.assertEqual([device['serial'] for device in scanner.recent(scanner.device)], ['sense'])
+
+    def test_passive_discovery_validates_headers_and_payloads_and_handles_reordered_frames(self):
+        header = '<0x47c> [8] f0 7c 00 08 42 10 a0 5b'
+        product = '<0x47c> [8] 10 00 00 01 00 00 00 7c'
+        serial = '<0x47c> [8] 10 20 30 40 50 60 70 80'
+        other_module = '<0x462> [8] 10 00 00 03 00 00 00 62'
+        capture = '\n'.join((header, product, other_module, serial))
+        self.assertEqual(list(decode_can_modules(capture)), [
+            dict(serial='1020304050607080', type='DOT_KEY', name='DotKey', interface='can'),
+        ])
+        self.assertEqual(list(decode_can_modules(capture.replace('a0 5b', 'a0 5a'))), [])
+        self.assertEqual(list(decode_can_modules(capture.replace('70 80', '70 81'))), [])
+        self.assertEqual(list(decode_can_modules('\n'.join((header, serial)))), [])

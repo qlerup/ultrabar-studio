@@ -16,6 +16,7 @@ from flask import Flask, jsonify, request, send_file
 import updates
 import startup
 import webbrowser
+from hardware import ModuleDiscovery, inventory
 
 ROOT = Path(__file__).resolve().parent
 PACKAGED = getattr(sys, 'frozen', False)
@@ -30,6 +31,7 @@ device_lock = threading.Lock()
 connection = {'target': None, 'snapshot': None}
 discovery_lock = threading.Lock()
 pairing_lock = threading.Lock()
+module_discovery = ModuleDiscovery()
 
 
 class DeviceError(Exception):
@@ -98,8 +100,7 @@ def read_snapshot(target):
         temp.write_bytes(raw)
         temp.replace(path)
     snapshot['backup'] = path.name
-    from hardware import inventory
-    snapshot['hardware'] = inventory(data, target, adb, ROOT)
+    snapshot['hardware'] = inventory(data, target, adb, ROOT, discovered=module_discovery.recent((device_id, target)))
     from previews import revision
     snapshot['preview_revision'] = revision(data, target, adb)
     return snapshot
@@ -333,7 +334,6 @@ def screen():
 
 @app.get('/api/hardware')
 def hardware_status():
-    from hardware import inventory
     with device_lock:
         target = connection['target']
         if not target:
@@ -342,7 +342,10 @@ def hardware_status():
         # No profile backup or profile reload is needed for status polling.
         raw = adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True)
         data = parse_profiles(raw)
-        result = inventory(data, target, adb, ROOT, discover=True)
+        device = (connection['snapshot']['device_id'], target)
+        result = inventory(data, target, adb, ROOT, discovered=module_discovery.recent(device))
+        if not result['status_error']:
+            module_discovery.start(device, target, adb, ROOT)
         from previews import revision
         preview_revision = revision(data, target, adb)
         connection['snapshot']['hardware'] = result
