@@ -1,7 +1,7 @@
 [Setup]
 AppId={{B5CF5A95-A196-49BD-969D-031B243623DB}
 AppName=UltraBar Studio
-AppVersion=0.52.41
+AppVersion=0.52.42
 AppPublisher=UltraBar Studio
 DefaultDirName={localappdata}\Programs\UltraBar Studio
 DefaultGroupName=UltraBar Studio
@@ -10,7 +10,7 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0
 OutputDir=release
-OutputBaseFilename=UltraBarStudio-Setup-0.52.41
+OutputBaseFilename=UltraBarStudio-Setup-0.52.42
 SetupIconFile=assets\studio.ico
 UninstallDisplayIcon={app}\UltraBar Studio.exe
 Compression=lzma2
@@ -52,32 +52,24 @@ end;
 
 
 procedure CurStepChanged(CurStep: TSetupStep);
-var Locator, Services, Processes, Process: Variant;
-    I, Code: Integer;
-    AdbPath, ProcessPath: String;
+var Code: Integer;
+    AdbPath, Command: String;
 begin
   if CurStep <> ssInstall then Exit;
   AdbPath := ExpandConstant('{app}\_internal\platform-tools\adb.exe');
   if not FileExists(AdbPath) then Exit;
   { Stop only ADB from this installation after Restart Manager closes Studio. }
-  try
-    Locator := CreateOleObject('WbemScripting.SWbemLocator');
-    Services := Locator.ConnectServer('', 'root\CIMV2');
-    Processes := Services.ExecQuery('SELECT * FROM Win32_Process WHERE Name = ''adb.exe''');
-    for I := 0 to Processes.Count - 1 do begin
-      Process := Processes.ItemIndex(I);
-      if not VarIsNull(Process.ExecutablePath) then begin
-        ProcessPath := Process.ExecutablePath;
-        if CompareText(ProcessPath, AdbPath) = 0 then begin
-          Code := Process.Terminate(0);
-          if Code <> 0 then
-            RaiseException('Could not close the Studio ADB background process. Close Studio and retry installation.');
-          Log('Closed ADB from this Studio installation.');
-        end;
-      end;
-    end;
-    Sleep(500);
-  except
-    RaiseException('Could not release Studio background files. Close Studio and its bundled adb.exe, then retry. ' + GetExceptionMessage);
-  end;
+  StringChangeEx(AdbPath, #39, #39#39, True);
+  Command := '$target = ' + #39 + AdbPath + #39 + '; ' +
+    'foreach ($process in Get-Process -Name adb -ErrorAction SilentlyContinue) { ' +
+    '  try { $path = $process.Path } catch { continue }; ' +
+    '  if ($path -ne $target) { continue }; ' +
+    '  try { if (!$process.HasExited) { $process.Kill() }; ' +
+    '        if (!$process.WaitForExit(3000)) { exit 1 } } ' +
+    '  catch { if (!$process.HasExited) { exit 1 } } ' +
+    '}; exit 0';
+  if not Exec(ExpandConstant('{sys}\WindowsPowerShell\v1.0\powershell.exe'),
+      '-NoLogo -NoProfile -NonInteractive -Command "' + Command + '"',
+      '', SW_HIDE, ewWaitUntilTerminated, Code) or (Code <> 0) then
+    Log('Could not stop the bundled ADB process. Setup will check for files still in use.');
 end;

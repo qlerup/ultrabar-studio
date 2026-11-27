@@ -19,5 +19,5 @@ if ($LASTEXITCODE -ne 0) { throw 'App build failed.' }
 if ($LASTEXITCODE -ne 0) { throw 'Installer build failed.' }
 & $studioPython make_update_feed.py
 if ($LASTEXITCODE -ne 0) { throw 'Update feed build failed.' }
-Get-FileHash 'release/UltraBarStudio-Setup-0.52.41.exe' -Algorithm SHA256
+Get-FileHash 'release/UltraBarStudio-Setup-0.52.42.exe' -Algorithm SHA256
 

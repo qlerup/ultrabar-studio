@@ -1,4 +1,13 @@
-# UltraBar Studio — 0.52.41 Windows
+# UltraBar Studio — 0.52.42 Windows
+
+## 0.52.42 update
+
+Windows setup can update Studio when the bundled ADB process is running
+or exits during setup. The cleanup targets the ADB executable in the
+Studio installation folder.
+
+If you're updating from 0.52.40, Deploy now offers **Deploy anyway** when
+CoreBAR's profiles have changed and backs up the current profiles first.
 
 ## 0.52.41 update
 
