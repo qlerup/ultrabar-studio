@@ -105,6 +105,33 @@ class OnboardingTests(unittest.TestCase):
       page.keyboard.press('Escape')
       expect(page.locator('#updates-dialog')).not_to_be_visible()
 
+      target='192.168.1.20:5555'
+      hardware=dict(devices=[], pairing_required=True, status_error='Approval required')
+      snapshot=dict(target=target, device_id='core-a', model='CB01', profiles=[], layout_order=[], hardware=hardware)
+      requests=[]
+      def pair_core(route):
+       requests.append(route.request.post_data_json['target'])
+       if len(requests)==1:
+        route.fulfill(status=409,json=dict(error='Approval expired. Try again.'))
+       else:
+        hardware.update(pairing_required=False, status_error=None, devices=[
+            dict(serial='cube', type='VIVO_CUBE', name='VivoCube', online=True)])
+        route.fulfill(json=dict(ok=True))
+      page.route('**/api/connect',lambda r:r.fulfill(json=snapshot))
+      page.route('**/api/core/pair',pair_core)
+      page.route('**/api/hardware',lambda r:r.fulfill(json=dict(target=target,hardware=hardware)))
+      page.unroute('**/api/discover')
+      page.route('**/api/discover',discover)
+      page.locator('#connection-open').click()
+      page.locator('.discovered-device').first.click()
+      page.locator('#discovery-connect').click()
+      expect(page.locator('#connection-notice')).to_have_text('Approval expired. Try again.')
+      page.locator('#connection-pair').click()
+      expect(page.locator('#connection-notice')).to_contain_text('CoreBAR approved')
+      page.keyboard.press('Escape')
+      expect(page.locator('.hardware-unit.vivo_cube')).to_be_visible()
+      self.assertEqual(requests,[target,target])
+
       assert not errors, errors
       browser.close()
     finally: http.shutdown()

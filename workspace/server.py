@@ -29,6 +29,7 @@ SESSION_TOKEN = secrets.token_urlsafe(32)
 device_lock = threading.Lock()
 connection = {'target': None, 'snapshot': None}
 discovery_lock = threading.Lock()
+pairing_lock = threading.Lock()
 
 
 class DeviceError(Exception):
@@ -287,6 +288,28 @@ def refresh():
         snapshot = read_snapshot(connection['target'])
         connection['snapshot'] = snapshot
     return jsonify(snapshot)
+
+
+@app.post('/api/core/pair')
+def pair_core():
+    from bridge import BridgeRejected, pair
+
+    body = request.get_json(silent=True)
+    target = body.get('target') if isinstance(body, dict) else None
+    with device_lock:
+        if not target or target != connection['target']:
+            return jsonify(error='Connect to this CoreBAR before requesting approval.'), 409
+    if not pairing_lock.acquire(blocking=False):
+        return jsonify(error='CoreBAR approval is already in progress.'), 409
+    try:
+        pair(target, adb, ROOT)
+    except (BridgeRejected, TimeoutError):
+        return jsonify(error='Approval did not complete. Try again and confirm on the CoreBAR screen.'), 409
+    except (OSError, ValueError):
+        return jsonify(error='Could not start CoreBAR approval. Check that CoreBAR is awake and connected.'), 502
+    finally:
+        pairing_lock.release()
+    return jsonify(ok=True)
 
 
 @app.get('/api/screen')

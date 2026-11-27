@@ -48,6 +48,21 @@ class StudioTests(unittest.TestCase):
         finally:
             server.connection.update(old)
 
+    def test_core_pairing_uses_only_the_current_connection(self):
+        target = '10.10.0.181:5555'
+        with patch.dict(server.connection, {'target': target}), patch('bridge.pair') as pair:
+            stale = self.client.post('/api/core/pair', json={'target': '10.10.0.180:5555'}, headers=self.headers)
+            self.assertEqual(stale.status_code, 409)
+            pair.assert_not_called()
+            self.assertEqual(self.client.post('/api/core/pair', json={'target': target}, headers=self.headers).status_code, 200)
+            pair.assert_called_once_with(target, server.adb, server.ROOT)
+
+    def test_core_pairing_timeout_keeps_connection_available_for_retry(self):
+        target = '10.10.0.181:5555'
+        with patch.dict(server.connection, {'target': target}), patch('bridge.pair', side_effect=[TimeoutError, None]):
+            self.assertEqual(self.client.post('/api/core/pair', json={'target': target}, headers=self.headers).status_code, 409)
+            self.assertEqual(self.client.post('/api/core/pair', json={'target': target}, headers=self.headers).status_code, 200)
+
     def test_layout_is_local_persistent_and_independent_of_ip(self):
         with tempfile.TemporaryDirectory() as folder, patch.object(server, 'DATA_DIR', Path(folder)), patch.dict(server.connection, {'snapshot': {'device_id': 'core-serial'}, 'target': '10.10.0.181:5555'}), patch.object(server, 'adb') as adb:
             order = ['0000019F2F1D2913', 'core', '0000019FD6D46D08']
