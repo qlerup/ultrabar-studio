@@ -2,6 +2,7 @@
 (() => {
   let draft=null, dirty=false, working=false, profileIndex=0, widgetIndex=0, moduleSerial='', inputKey='', mode='layout', apps=[], pcActions=[], history=[], drag=null;
   let editorGeneration=0, pcMetrics={}, pcRequest=null;
+  let coreConflictHash=null;
   let printerMetrics={}, printerRequest=false, renderBambuUnfolded=null;
   let storePresets=[];
   const storeIconByPackage=new Map(),storeIconByApp=new Map(),libraryIconCache=new Map(),libraryIconFailures=new Map();
@@ -51,7 +52,8 @@
       const data=await (await api('/api/editor')).json();
       if(generation!==editorGeneration)return;
       draft=data.draft;dirty=false;history=[];profileIndex=Math.min(selectedProfile,draft.profiles.length-1);widgetIndex=0;
-      message(data.conflict?'Core settings have changed since this draft was created. Use Draft & recovery tools to reload before deploying.':'Changes stay in your draft until you deploy.',data.conflict);
+      coreConflictHash=data.core_profile_hash??null;
+      message(data.conflict?'Core settings have changed. You can review and replace them when you deploy.':'Changes stay in your draft until you deploy.',data.conflict);
       renderEditor();
       await Promise.allSettled([loadCatalog(),refreshPc(),loadStorePresets()]);
     }catch(error){message(error.message,true);}
@@ -1309,11 +1311,22 @@
   $('widget-undo').onclick=()=>{if(working||!history.length)return;Object.assign(draft,history.pop());backgroundIndex=-1;dirty=true;pcWidgetForms.clear();resetActionComposer();renderEditor();};
   $('action-undo').onclick=()=>$('widget-undo').click();
   $('draft-save').onclick=()=>operation(async()=>{await save();message('Draft saved on this PC. Core has not been changed.');});
-  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(Object.keys(draft.compact_profiles||{}).length)box.append(el('p','','Apply mixed widget sizes to CoreBAR.'));if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));box.append(el('p','','Background / Core Notifications (built in)'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));$('deploy-dialog').showModal();};
+  function showDeployConfirmation(){
+    const dialog=$('deploy-dialog'),overwrite=Boolean(coreConflictHash);
+    $('deploy-conflict').hidden=!overwrite;
+    $('deploy-title').textContent=overwrite?'Replace settings on CoreBAR?':'Deploy settings to Core?';
+    $('deploy-confirm').textContent=overwrite?'Deploy anyway':'Deploy settings';
+    if(overwrite)dialog.setAttribute('aria-describedby','deploy-conflict');
+    else dialog.removeAttribute('aria-describedby');
+    dialog.showModal();
+    if(overwrite)$('deploy-cancel').focus();
+  }
+  $('draft-deploy').onclick=()=>{if(!draft||working)return;if(draft.profiles.some(p=>p.homeData.some(w=>w._pcPending))){message('Finish the website or PC app settings and choose Apply settings before Deploy.',true);return;}const box=$('deploy-summary');box.replaceChildren();draft.profiles.forEach((p,i)=>{if(JSON.stringify(p)!==JSON.stringify(draft.base_profiles[i]))box.append(el('p','',`${p.name}: ${p.homeData.length} widgets · ${p.module.length} module configurations`));});if(Object.keys(draft.compact_profiles||{}).length)box.append(el('p','','Apply mixed widget sizes to CoreBAR.'));if(!box.children.length)box.append(el('p','','Deploy will verify and resend this layout and apply background app changes.'));box.append(el('p','','Background / Core Notifications (built in)'));for(const app of draft.background_apps||[])box.append(el('p','','Background / '+app.name+' (no bar space)'));showDeployConfirmation();};
   $('deploy-cancel').onclick=()=>$('deploy-dialog').close();
   $('deploy-progress').addEventListener('cancel',event=>{if($('deploy-progress-close').disabled)event.preventDefault();});
   $('deploy-progress-close').onclick=()=>$('deploy-progress').close();
   $('deploy-confirm').onclick=()=>{$('deploy-dialog').close();operation(async()=>{
+    const overwriteCoreHash=coreConflictHash;
     const box=$('deploy-progress'),label=$('deploy-progress-message'),close=$('deploy-progress-close'),spinner=$('deploy-progress-spinner');
     const requestId=crypto.randomUUID(),started=Date.now();let polling=false,finished=false;
     box.dataset.state='running';box.setAttribute('aria-busy','true');$('deploy-progress-title').textContent='Deploying to Core';
@@ -1327,18 +1340,27 @@
     },750);
     try{
       await save();label.textContent='Contacting Core…';
-      const response=await fetch('/api/editor/deploy',{method:'POST',headers:{'X-Studio-Token':token,'Content-Type':'application/json'},body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,request_id:requestId})});
-      const data=await response.json();if(!response.ok)throw new Error(data.error||'Deployment failed.');
+      const response=await fetch('/api/editor/deploy',{method:'POST',headers:{'X-Studio-Token':token,'Content-Type':'application/json'},body:JSON.stringify({device_id:draft.device_id,revision:draft.revision,request_id:requestId,overwrite_core_hash:overwriteCoreHash})});
+      const data=await response.json();
+      if(response.status===409&&data.core_profile_hash){
+        coreConflictHash=data.core_profile_hash;
+        message('Core settings have changed. You can review and replace them when you deploy.',true);
+        box.close();
+        showDeployConfirmation();
+        return;
+      }
+      if(!response.ok)throw new Error(data.error||'Deployment failed.');
+      coreConflictHash=null;
       draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);label.textContent=data.message;
       const complete=data.activated===true && data.widgets_ready===true;
       box.dataset.state=complete?'success':'error';$('deploy-progress-title').textContent=complete?'Deployment complete':data.activated?'Layout saved - widgets pending':'Layout saved - home unavailable';close.textContent='Done';
       $('deploy-progress-help').textContent='You can close this window and continue editing.';
       setTimeout(()=>{captureScreen();captureCubes();},1000);
     }catch(error){box.dataset.state='error';$('deploy-progress-title').textContent='Deployment interrupted';close.textContent='Close';$('deploy-progress-help').textContent='Review the message above before trying again.';label.textContent=error.message;message(error.message,true);}
-    finally{finished=true;clearInterval(timer);spinner.hidden=true;close.disabled=false;box.setAttribute('aria-busy','false');$('deploy-progress-time').textContent=Math.floor((Date.now()-started)/1000)+' seconds elapsed';close.focus();}
+    finally{finished=true;clearInterval(timer);spinner.hidden=true;close.disabled=false;box.setAttribute('aria-busy','false');$('deploy-progress-time').textContent=Math.floor((Date.now()-started)/1000)+' seconds elapsed';if(box.open)close.focus();}
   });};
-  $('draft-reset').onclick=()=>{if(!confirm('Replace the local draft with current Core settings? Download the draft first if you want to keep it.'))return;operation(async()=>{const data=await (await api('/api/editor/reset',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Draft reloaded from Core.');});};
-  $('draft-restore').onclick=()=>{if(!confirm('Replace this draft with the saved pre-deploy settings? Core changes only when you deploy.'))return;operation(async()=>{const data=await (await api('/api/editor/restore-draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Pre-deploy settings loaded as a draft. Review, then deploy to restore Core.');});};
+  $('draft-reset').onclick=()=>{if(!confirm('Replace the local draft with current Core settings? Download the draft first if you want to keep it.'))return;operation(async()=>{const data=await (await api('/api/editor/reset',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();coreConflictHash=null;draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Draft reloaded from Core.');});};
+  $('draft-restore').onclick=()=>{if(!confirm('Replace this draft with the saved pre-deploy settings? Core changes only when you deploy.'))return;operation(async()=>{const data=await (await api('/api/editor/restore-draft',{method:'POST',body:JSON.stringify({device_id:draft.device_id,revision:draft.revision})})).json();coreConflictHash=null;draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message('Pre-deploy settings loaded as a draft. Review, then deploy to restore Core.');});};
   $('draft-export').onclick=()=>{const url=URL.createObjectURL(new Blob([JSON.stringify(draft,null,2)],{type:'application/json'}));const a=el('a');a.href=url;a.download='ultrabar-studio-draft.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
   window.addEventListener('beforeunload',event=>{if(dirty){event.preventDefault();event.returnValue='';}});
   window.studioEditor={async deployFromStore(device){

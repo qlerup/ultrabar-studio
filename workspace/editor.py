@@ -420,6 +420,11 @@ def matches(expected, actual):
     return expected == actual
 
 
+def deploy_conflict(core_hash):
+    return jsonify(error='Settings on CoreBAR changed. Confirm that you want to replace them with your draft.',
+                   core_profile_hash=core_hash), 409
+
+
 def register_editor(server):
     import vivo
     @server.app.get('/api/editor/vivo-picture/<digest>')
@@ -447,7 +452,9 @@ def register_editor(server):
             if not snapshot['profiles']:
                 raise EditError('Create a profile on CoreBAR before using the editor.')
             draft = load_draft(server, snapshot)
-            return jsonify(draft=draft, conflict=draft['base_hash'] != digest(snapshot['profiles']))
+            core_hash = digest(snapshot['profiles'])
+            conflict = draft['base_hash'] != core_hash
+            return jsonify(draft=draft, conflict=conflict, core_profile_hash=core_hash if conflict else None)
 
     @app.post('/api/editor/core-notifications/test')
     def test_core_notifications():
@@ -509,7 +516,8 @@ def register_editor(server):
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Reopen the editor before saving.'), 409
             profiles = body.get('profiles')
-            validate(profiles, draft['base_profiles'], draft.get('restored_profile_removals', ()))
+            validate(profiles, draft.get('restored_validation_profiles', draft['base_profiles']),
+                     draft.get('restored_profile_removals', ()))
             compact_profiles = validate_compact_profiles(body.get('compact_profiles', draft['compact_profiles']), profiles, server.store.records())
             candidate=dict(profiles=profiles,background_apps=body.get('background_apps',draft.get('background_apps',[])),app_settings=body.get('app_settings',draft.get('app_settings',{})))
             validate_background(candidate['background_apps'])
@@ -576,7 +584,8 @@ def register_editor(server):
             draft = load_draft(server, snapshot)
             if body.get('device_id') != snapshot['device_id'] or body.get('revision') != draft['revision']:
                 return jsonify(error='The device or draft changed. Save the current draft before deploying.'), 409
-            validate(draft['profiles'], draft['base_profiles'], draft.get('restored_profile_removals', ()))
+            validate(draft['profiles'], draft.get('restored_validation_profiles', draft['base_profiles']),
+                     draft.get('restored_profile_removals', ()))
             compact_profiles = validate_compact_profiles(draft['compact_profiles'], draft['profiles'], server.store.records())
             core_layouts = core_widget_layouts(compact_profiles)
             from native_widgets import specifications
@@ -589,8 +598,12 @@ def register_editor(server):
             payload = to_wire(draft['profiles'])
             stage('Reading Core settings and creating a backup…')
             latest = server.read_snapshot(server.connection['target'])  # Also saves original XML before any write.
-            if latest['device_id'] != draft['device_id'] or digest(latest['profiles']) != draft['base_hash']:
-                return jsonify(error='Settings changed on CoreBAR since this draft was started. Download your draft, then reload from Core before editing again.'), 409
+            if latest['device_id'] != draft['device_id']:
+                return jsonify(error='The connected CoreBAR changed. Reconnect before deploying.'), 409
+            core_hash = digest(latest['profiles'])
+            overwrite = core_hash != draft['base_hash']
+            if overwrite and body.get('overwrite_core_hash') != core_hash:
+                return deploy_conflict(core_hash)
             approval_error = 'CoreBAR approval is required. Open Manage connection, request CoreBAR approval, and tap Confirm on CoreBAR before retrying Deploy.'
             if latest.get('hardware', {}).get('pairing_required'):
                 return jsonify(error=approval_error), 409
@@ -614,6 +627,11 @@ def register_editor(server):
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'], core_layouts)
+            if overwrite:
+                raw = server.adb('-s', server.connection['target'], 'exec-out', 'cat', server.PREFERENCES, binary=True)
+                before_write = digest(server.parse_profiles(raw)['profiles'])
+                if before_write != core_hash:
+                    return deploy_conflict(before_write)
             # A timeout is ambiguous: always read back, and never blindly resend a write.
             stage('Sending the layout and settings to Core…')
             acknowledged = True
@@ -709,17 +727,15 @@ def register_editor(server):
                 return jsonify(error='The connected CoreBAR changed.'), 409
             restored = fresh_draft(latest)
             restored['profiles'] = retain_cleared_slots(previous['profiles'], latest['profiles'])
-            saved_ids = {p['id'] for p in restored['profiles']}
-            restored['restored_profile_removals'] = [
-                p['id'] for p in latest['profiles']
-                if p['id'] not in saved_ids and STUDIO_PROFILE_ID.fullmatch(p['id'])
-            ]
+            # An approved overwrite can replace the whole profile set. Use the
+            # saved rollback as the trusted editing baseline for this draft.
+            restored['restored_validation_profiles'] = deepcopy(restored['profiles'])
             restored['background_apps']=previous.get('background_apps',[])
             restored['app_settings']=previous.get('app_settings',{})
             restored['vivo_screens']=previous.get('vivo_screens',{})
             restored['compact_profiles']=validate_compact_profiles(previous.get('compact_profiles', {}), restored['profiles'])
             validate_background(restored['background_apps'])
-            validate(restored['profiles'], restored['base_profiles'], restored['restored_profile_removals'])
+            validate(restored['profiles'], restored['restored_validation_profiles'])
             atomic_json(draft_path(server, snapshot['device_id']), restored)
             server.connection['snapshot'] = latest
             return jsonify(draft=restored, snapshot=latest)

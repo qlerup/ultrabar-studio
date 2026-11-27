@@ -149,7 +149,11 @@
       <div class="editor-buttons"><button id="new-profile-cancel" type="button">Cancel</button><button id="new-profile-save" type="submit" class="primary">Save profile</button></div>
     </form>
   </dialog>
-  <dialog id="deploy-dialog" aria-labelledby="deploy-title"><h2 id="deploy-title">Deploy settings to Core?</h2><div id="deploy-summary"></div><p class="muted">Studio checks for newer settings, backs up the current profile package and verifies the saved result. Core's LineOS home app briefly restarts to display the updated layout.</p><div class="editor-buttons"><button id="deploy-cancel">Cancel</button><button id="deploy-confirm" class="primary">Deploy settings</button></div></dialog>
+  <dialog id="deploy-dialog" aria-labelledby="deploy-title"><h2 id="deploy-title">Deploy settings to Core?</h2>
+    <p id="deploy-conflict" hidden>Settings on CoreBAR have changed since you started this draft. Deploying anyway will replace the current profiles, widgets and module actions on CoreBAR with your draft. Studio saves a backup before writing.</p>
+    <div id="deploy-summary"></div><p class="muted">Studio backs up the current profile package and verifies the saved result. Core's LineOS home app briefly restarts to display the updated layout.</p>
+    <div class="editor-buttons"><button id="deploy-cancel">Cancel</button><button id="deploy-confirm" class="primary">Deploy settings</button></div>
+  </dialog>
   <dialog id="deploy-progress" data-state="running" aria-labelledby="deploy-progress-title" aria-describedby="deploy-progress-message" aria-busy="true">
     <div class="deploy-heading"><span class="deploy-state-icon" aria-hidden="true"></span><div><div class="eyebrow">COREBAR / DEPLOYMENT</div><h2 id="deploy-progress-title">Deploying to Core</h2></div></div>
     <div class="deploy-status"><p id="deploy-progress-message" role="status" aria-live="polite"></p><p id="deploy-progress-help" class="muted">Keep CoreBAR connected while Studio applies your changes.</p></div>

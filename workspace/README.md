@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.40 Windows
+# UltraBar Studio — 0.52.41 Windows
+
+## 0.52.41 update
+
+If CoreBAR's profiles have changed since you started a draft, you can now
+choose **Deploy anyway** after reviewing what will be replaced. Studio
+backs up the current profiles before replacing them with your draft.
 
 ## 0.52.40 update
 

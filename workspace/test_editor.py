@@ -170,11 +170,52 @@ class EditorTests(unittest.TestCase):
         rows[0]['homeData'][-1]['_pcPending']='invalid'
         self.assertEqual(self.save(rows).status_code,400)
 
-    def test_changed_core_aborts_before_write(self):
+    def test_changed_core_requires_confirmation_before_write(self):
         latest=deepcopy(self.snapshot);latest['profiles'][0]['name']='Changed elsewhere'
         with patch.object(server,'read_snapshot',return_value=latest),patch.object(editor.bridge,'request') as bridge:
-            self.assertEqual(self.post('/api/editor/deploy').status_code,409)
+            response=self.post('/api/editor/deploy')
+            self.assertEqual(response.status_code,409)
+            self.assertEqual(response.json['core_profile_hash'], editor.digest(latest['profiles']))
             bridge.assert_not_called()
+
+    def test_confirmed_deploy_replaces_factory_profiles_and_keeps_them_for_restore(self):
+        factory = [dict(profiles()[0], id='factory-stock', name='Factory stock', module=[])]
+        latest = dict(self.snapshot, profiles=factory)
+        request = dict(device_id='core1', revision=self.draft['revision'], overwrite_core_hash=editor.digest(factory))
+
+        def send(*args):
+            path = editor.draft_path(server, 'core1').with_suffix('.rollback.json')
+            self.assertEqual(json.loads(path.read_text(encoding='utf-8'))['profiles'], factory)
+            self.assertEqual(args[-1], editor.to_wire(profiles()))
+
+        with patch.object(server, 'read_snapshot', return_value=latest), \
+                patch.object(editor.bridge, 'request', side_effect=send) as bridge, \
+                patch.object(server, 'adb', return_value=b'x'), \
+                patch.object(server, 'parse_profiles', side_effect=[{'profiles':factory}, {'profiles':profiles()}]):
+            response = self.post('/api/editor/deploy', request)
+        self.assertEqual(response.status_code, 200, response.json)
+        self.assertTrue(response.json['acknowledged'])
+        bridge.assert_called_once()
+        self.draft = response.json['draft']
+        with patch.object(server, 'read_snapshot', return_value=response.json['snapshot']):
+            restored = self.post('/api/editor/restore-draft')
+        self.assertEqual(restored.status_code, 200, restored.json)
+        self.assertEqual(restored.json['draft']['profiles'], factory)
+        self.draft = restored.json['draft']
+        self.assertEqual(self.save(factory).status_code, 200)
+
+    def test_overwrite_reprompts_if_core_changes_after_confirmation(self):
+        factory = [dict(profiles()[0], name='Factory stock')]
+        newer = [dict(factory[0], name='Changed again')]
+        latest = dict(self.snapshot, profiles=factory)
+        request = dict(device_id='core1', revision=self.draft['revision'], overwrite_core_hash=editor.digest(factory))
+        with patch.object(server, 'read_snapshot', return_value=latest), \
+                patch.object(editor.bridge, 'request') as send, patch.object(server, 'adb', return_value=b'x'), \
+                patch.object(server, 'parse_profiles', return_value={'profiles':newer}):
+            response = self.post('/api/editor/deploy', request)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json['core_profile_hash'], editor.digest(newer))
+        send.assert_not_called()
 
     def test_backup_precedes_write_and_readback(self):
         order=[]

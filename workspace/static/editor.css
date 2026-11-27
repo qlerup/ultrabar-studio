@@ -172,3 +172,4 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .bambu-temperature-panel{flex:3 1 340px;min-width:0;display:grid;grid-template-columns:minmax(0,3fr) minmax(65px,1fr);gap:6px}
 .bambu-side-temperatures{display:grid;grid-auto-rows:1fr;gap:4px;margin:0}
 .bambu-side-temperatures .bambu-temperature{align-content:center}
+#deploy-conflict{margin:14px 0;padding:10px 12px;border-left:2px solid #e6c27a;background:#e6c27a0c;color:#f3d59c;line-height:1.5}
