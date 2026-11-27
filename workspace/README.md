@@ -1,4 +1,9 @@
-# UltraBar Studio — 0.52.36 Windows
+# UltraBar Studio — 0.52.37 Windows
+
+## 0.52.37 update
+
+The CoreBAR setup guide explains how to use the physical Mode button to
+enter recovery and reconnect to Studio after a factory reset.
 
 ## 0.52.36 update
 
