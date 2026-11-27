@@ -591,6 +591,9 @@ def register_editor(server):
             latest = server.read_snapshot(server.connection['target'])  # Also saves original XML before any write.
             if latest['device_id'] != draft['device_id'] or digest(latest['profiles']) != draft['base_hash']:
                 return jsonify(error='Settings changed on CoreBAR since this draft was started. Download your draft, then reload from Core before editing again.'), 409
+            approval_error = 'CoreBAR approval is required. Open Manage connection, request CoreBAR approval, and tap Confirm on CoreBAR before retrying Deploy.'
+            if latest.get('hardware', {}).get('pairing_required'):
+                return jsonify(error=approval_error), 409
             rollback = dict(device_id=latest['device_id'], profiles=latest['profiles'], backup=latest['backup'])
             rollback['background_apps']=saved_background(server,latest['device_id'])
             rollback['app_settings']=saved_app_settings(server,latest['device_id'])
@@ -616,6 +619,11 @@ def register_editor(server):
             acknowledged = True
             try:
                 bridge.request(server.connection['target'], server.adb, server.ROOT, 1108, payload)
+            except bridge.PairingRequired:
+                return jsonify(error=approval_error, backup=latest['backup']), 409
+            except bridge.BridgeRejected:
+                return jsonify(error='CoreBAR rejected the layout. Your draft and pre-deploy backup are preserved.',
+                               backup=latest['backup'], acknowledged=False), 502
             except Exception:
                 acknowledged = False
             stage('Reading back and verifying the saved settings…')

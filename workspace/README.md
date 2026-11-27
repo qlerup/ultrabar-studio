@@ -1,4 +1,14 @@
-# UltraBar Studio — 0.52.38 Windows
+# UltraBar Studio — 0.52.39 Windows
+
+## 0.52.39 update
+
+Deploy now identifies missing CoreBAR approval and directs you to Manage
+connection. If CoreBAR explicitly rejects a layout, Studio reports the
+rejection and keeps the draft and backup.
+
+If you're updating from 0.52.36, the CoreBAR setup guide now covers the Mode
+button recovery menu. Studio requests approval when you add a CoreBAR and
+automatically scans for magnetic modules while connected.
 
 ## 0.52.38 update
 

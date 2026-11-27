@@ -232,6 +232,26 @@ class EditorTests(unittest.TestCase):
             response=self.post('/api/editor/deploy')
         self.assertEqual(response.status_code,200);self.assertFalse(response.json['acknowledged']);self.assertEqual(bridge.call_count,1)
 
+    def test_missing_core_approval_stops_before_preparing_a_deploy(self):
+        latest = dict(self.snapshot, hardware={'pairing_required': True})
+        with patch.object(server, 'read_snapshot', return_value=latest), patch.object(editor.bridge, 'request') as send:
+            response = self.post('/api/editor/deploy')
+        self.assertEqual(response.status_code, 409)
+        self.assertIn('Manage connection', response.json['error'])
+        self.wake_mock.assert_not_called()
+        self.notifications.assert_not_called()
+        send.assert_not_called()
+
+    def test_core_rejection_cannot_report_an_unchanged_draft_as_deployed(self):
+        with patch.object(server, 'read_snapshot', return_value=self.snapshot), \
+                patch.object(editor.bridge, 'request', side_effect=editor.bridge.BridgeRejected), \
+                patch.object(server, 'parse_profiles', return_value={'profiles': profiles()}) as readback:
+            response = self.post('/api/editor/deploy')
+        self.assertEqual(response.status_code, 502)
+        self.assertIn('rejected the layout', response.json['error'])
+        readback.assert_not_called()
+        self.assertEqual(self.client.get('/api/editor', headers=self.headers).json['draft']['revision'], self.draft['revision'])
+
     def test_mismatch_preserves_draft_and_backup(self):
         with patch.object(server,'read_snapshot',return_value=self.snapshot),patch.object(editor.bridge,'request'),patch.object(server,'adb',return_value=b'x'),patch.object(server,'parse_profiles',return_value={'profiles':[]}),patch.object(editor.time,'sleep'),patch.object(server.store,'mark_deployed') as activated:
             self.assertEqual(self.post('/api/editor/deploy').status_code,502)
