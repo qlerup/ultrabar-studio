@@ -21,6 +21,28 @@ RUNTIME_SHA = 'fc60c38a6acb42d9eb2d5c0474bf84fd671c14870b9cab43129b38c5e364bb13'
 SUPPORTED_LINEOS = {'1.0.8', '1.0.9'}
 
 
+def install_runtime(server, target, source):
+    def checksum(path):
+        result = server.adb('-s', target, 'shell', f'if [ -f {path} ]; then sha256sum {path}; fi')
+        return result.split()[:1] == [RUNTIME_SHA]
+
+    if checksum(RUNTIME):
+        return
+    staged = RUNTIME + '-' + uuid.uuid4().hex + '.tmp'
+    try:
+        server.adb('-s', target, 'push', str(source), staged, timeout=180)
+        if not checksum(staged):
+            raise EditError('Widget runtime transfer failed its checksum. Retry Deploy.')
+        server.adb('-s', target, 'shell', 'mv', staged, RUNTIME)
+    except server.DeviceError as exc:
+        raise EditError('Widget runtime transfer could not be completed. Your Core layout has not been sent. Retry Deploy.') from exc
+    finally:
+        try:
+            server.adb('-s', target, 'shell', 'rm', '-f', staged)
+        except server.DeviceError:
+            pass
+
+
 def alert_pcm(kind, sequence=None):
     """Build the short alert on the PC as 16 kHz, mono signed PCM."""
     if sequence is None:
@@ -210,9 +232,7 @@ class NativeWidgets:
                 adb('-s', target, 'shell', 'rm', '-f', staged)
             except self.server.DeviceError:
                 pass
-        present = adb('-s', target, 'shell', 'ls', '/data/local/tmp')
-        if 'studio-runtime-16.7.19' not in present.split():
-            adb('-s', target, 'push', str(assets/'studio-runtime'), RUNTIME)
+        install_runtime(self.server, target, assets/'studio-runtime')
         adb('-s', target, 'shell', 'chmod', '700', RUNTIME)
         self.token = adb('-s', target, 'shell', 'cat /data/local/tmp/studio-runtime-token 2>/dev/null || true')
         if not re.fullmatch(r'[a-f0-9]{64}', self.token):

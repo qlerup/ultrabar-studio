@@ -9,6 +9,25 @@ def card(key,drive):
 
 
 class NativeWidgetTests(unittest.TestCase):
+    def test_partial_runtime_is_replaced_only_after_verification(self):
+        from unittest.mock import Mock
+        from native_widgets import install_runtime, RUNTIME, RUNTIME_SHA
+        for digest in ('incomplete', RUNTIME_SHA):
+            server = Mock()
+            server.DeviceError = RuntimeError
+            server.adb.side_effect = ['partial', '', digest, '', '']
+            if digest == RUNTIME_SHA:
+                install_runtime(server, 'core', 'local-file')
+            else:
+                with self.assertRaises(EditError):
+                    install_runtime(server, 'core', 'local-file')
+            calls = server.adb.call_args_list
+            staged = calls[1].args[-1]
+            self.assertNotEqual(staged, RUNTIME)
+            self.assertGreater(calls[1].kwargs['timeout'], 15)
+            self.assertEqual(any(c.args[-3:] == ('mv', staged, RUNTIME) for c in calls), digest == RUNTIME_SHA)
+            self.assertEqual(calls[-1].args[-3:], ('rm', '-f', staged))
+
     def test_supported_active_lineos_versions(self):
         for version in ('1.0.8','1.0.9'):
             self.assertEqual(check_lineos('Packages:\n  versionName='+version+'\nHidden system packages:\n versionName=1.0.3'),version)

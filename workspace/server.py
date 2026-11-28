@@ -38,9 +38,9 @@ class DeviceError(Exception):
     pass
 
 
-def adb(*args, binary=False, input_data=None):
+def adb(*args, binary=False, input_data=None, timeout=15):
     try:
-        result = subprocess.run([str(ADB), *args], capture_output=True, timeout=15, input=input_data,
+        result = subprocess.run([str(ADB), *args], capture_output=True, timeout=timeout, input=input_data,
                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
     except subprocess.TimeoutExpired as exc:
         raise DeviceError('The device is not responding. Check WiFi ADB and the IP address.') from exc

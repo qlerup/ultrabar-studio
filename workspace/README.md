@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.44 Windows
+# UltraBar Studio — 0.52.45 Windows
+
+## 0.52.45 update
+
+Deploy allows three minutes for the first widget runtime transfer over WiFi. Studio verifies the file before activating it and replaces incomplete copies on the next deployment.
 
 ## 0.52.44 update
 
