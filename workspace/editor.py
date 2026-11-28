@@ -677,41 +677,46 @@ def register_editor(server):
             new_draft['vivo_screens']=deepcopy(draft.get('vivo_screens',{}))
             new_draft['compact_profiles']=compact_profiles
             atomic_json(draft_path(server, snapshot['device_id']), new_draft)
-            # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
-            # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
-            target = server.connection['target']
-            if screensaver:
-                stage('Configuring the Core screensaver...')
-            core_screensaver.reconcile(server, target, latest['device_id'], screensaver)
-            stage('Restarting the Core home screen…')
-            target = server.connection['target']
-            activated = open_home(server, target, restart=True)
-            stage('Waiting for widgets to become ready...')
-            server.native_widgets.configure(verified, target, core_layouts)
-            needs_runtime = bool(server.native_widgets.specs or core_layouts)
-            if activated and needs_runtime:
-                server.native_widgets.ready.wait(8)
-            # Home can crash after the initial launch, while restoring its widgets.
-            if not home_visible(server, target):
-                stage('Opening the Core home screen again...')
-                activated = open_home(server, target, restart=False)
+            from store import StoreError
+            try:
+                # BatchProfileMessage saves/reloads modules but does not publish the home refresh event.
+                # Restart only LineOS (not CoreBridge, Android, or our screen-sync service).
+                target = server.connection['target']
+                if screensaver:
+                    stage('Configuring the Core screensaver...')
+                core_screensaver.reconcile(server, target, latest['device_id'], screensaver)
+                stage('Restarting the Core home screen…')
+                target = server.connection['target']
+                activated = open_home(server, target, restart=True)
+                stage('Waiting for widgets to become ready...')
+                server.native_widgets.configure(verified, target, core_layouts)
+                needs_runtime = bool(server.native_widgets.specs or core_layouts)
                 if activated and needs_runtime:
                     server.native_widgets.ready.wait(8)
-            activated = home_visible(server, target)
-            widgets_ready = not needs_runtime or server.native_widgets.ready.is_set()
-            if screensaver:
-                core_screensaver.activate(server, target, latest['device_id'], screensaver)
-            if not activated:
-                note = 'Studio could not confirm the Core home screen after reopening it. Your layout is already saved.'
-            elif not widgets_ready:
-                note = 'Core home is open. Studio is still waiting for the widgets. Keep Studio connected.'
-            else:
-                note = 'Core home is open with the updated layout.'
-            standby_enabled = standby_placed(draft['profiles'], draft.get('background_apps', []))
-            if standby_enabled or standby_placed(rollback['profiles'], rollback['background_apps']):
-                stage('Confirming PC Standby with Studio…')
-            server.pc_standby.reconcile(target, latest['device_id'], standby_enabled)
-            server.store.mark_deployed(latest['device_id'],package_plan)
+                # Home can crash after the initial launch, while restoring its widgets.
+                if not home_visible(server, target):
+                    stage('Opening the Core home screen again...')
+                    activated = open_home(server, target, restart=False)
+                    if activated and needs_runtime:
+                        server.native_widgets.ready.wait(8)
+                activated = home_visible(server, target)
+                widgets_ready = not needs_runtime or server.native_widgets.ready.is_set()
+                if screensaver:
+                    core_screensaver.activate(server, target, latest['device_id'], screensaver)
+                if not activated:
+                    note = 'Studio could not confirm the Core home screen after reopening it. Your layout is already saved.'
+                elif not widgets_ready:
+                    note = 'Core home is open. Studio is still waiting for the widgets. Keep Studio connected.'
+                else:
+                    note = 'Core home is open with the updated layout.'
+                standby_enabled = standby_placed(draft['profiles'], draft.get('background_apps', []))
+                if standby_enabled or standby_placed(rollback['profiles'], rollback['background_apps']):
+                    stage('Confirming PC Standby with Studio…')
+                server.pc_standby.reconcile(target, latest['device_id'], standby_enabled)
+                server.store.mark_deployed(latest['device_id'],package_plan)
+            except (StoreError, server.DeviceError, EditError) as exc:
+                return jsonify(draft=new_draft, snapshot=snapshot, layout_saved=True,
+                               error='Layout saved on CoreBAR. ' + str(exc)), 502
             return jsonify(draft=new_draft, snapshot=snapshot, backup=latest['backup'], acknowledged=acknowledged,
                            activated=activated, widgets_ready=widgets_ready, message='Settings saved and verified. '+note)
 

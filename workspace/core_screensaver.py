@@ -167,7 +167,14 @@ def reconcile(server, target, device, component):
             raise ValueError('Invalid screensaver service.')
         if shell('getprop', 'ro.serialno') != device or shell('id', '-u') != '0':
             raise ValueError('Core identity or root-enabled WiFi ADB changed.')
-        native = bridge.screensaver(target, server.adb, server.ROOT)
+        try:
+            native = bridge.screensaver(target, server.adb, server.ROOT)
+        except bridge.BridgeRejected:
+            # LineOS replies "query fail" when a factory-reset Core has no setting.
+            raw = server.adb('-s', target, 'exec-out', 'cat', server.PREFERENCES, binary=True)
+            if server.parse_profiles(raw).get('screensaver') is not None:
+                raise
+            native = {'featureEnabled': False}
         if type(native.get('featureEnabled')) is not bool:
             raise ValueError('Invalid LineOS screensaver state.')
         raw = shell('settings', 'get', 'secure', 'enabled_accessibility_services')
@@ -210,7 +217,8 @@ def reconcile(server, target, device, component):
         elif not legacy:
             configured = state['configured']
             if all(native.get(key) == configured.get(key) for key in ('featureEnabled', 'uri', 'ver')):
-                set_native(dict(native, featureEnabled=previous['featureEnabled']))
+                if native['featureEnabled'] != previous['featureEnabled']:
+                    set_native(dict(native, featureEnabled=previous['featureEnabled']))
         shell('settings', 'delete', 'secure', STATE)
         path.unlink(missing_ok=True)
     except Exception as exc:

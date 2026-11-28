@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.45 Windows
+# UltraBar Studio — 0.52.46 Windows
+
+## 0.52.46 update
+
+Deploy handles a Core with no native screensaver setting after reset. If app setup fails after the layout is verified, Studio keeps the editor in sync for retry.
 
 ## 0.52.45 update
 

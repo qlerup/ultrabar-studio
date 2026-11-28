@@ -1349,6 +1349,12 @@
         showDeployConfirmation();
         return;
       }
+      if(!response.ok && data.layout_saved && data.draft && data.snapshot){
+        draft=data.draft;snapshot=data.snapshot;coreConflictHash=null;dirty=false;history=[];render();renderEditor();
+        box.dataset.state='error';$('deploy-progress-title').textContent='Layout saved - setup interrupted';
+        label.textContent=data.error;message(data.error,true);close.textContent='Close';
+        $('deploy-progress-help').textContent='Your editor is ready to retry Deploy.';return;
+      }
       if(!response.ok)throw new Error(data.error||'Deployment failed.');
       coreConflictHash=null;
       draft=data.draft;snapshot=data.snapshot;dirty=false;history=[];render();renderEditor();message(data.message);label.textContent=data.message;
