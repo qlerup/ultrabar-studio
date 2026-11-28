@@ -19,6 +19,15 @@ class LocalPackagesTests(unittest.TestCase):
         self.assertTrue(p['id'].startswith('local.'));self.assertEqual(p['origin'],'local')
         self.assertEqual(raw,self.raw);self.assertEqual(icon,self.icon_raw)
         self.assertNotIn('publisher',p)
+    def test_plugin_size_boundary(self):
+        path = self.folder / 'plugin.json'
+        payload = self.raw.ljust(128 * 1024)
+        path.write_bytes(payload)
+        self.assertEqual(read_folder(server, self.folder)[1], payload)
+        path.write_bytes(payload + b' ')
+        with self.assertRaisesRegex(store.StoreError, 'oversized'):
+            read_folder(server, self.folder)
+
     def test_same_named_folders_have_distinct_stable_ids(self):
         other=self.root/'another-project'/self.folder.name;other.mkdir(parents=True)
         for name in ('plugin.json','icon.png'):(other/name).write_bytes((self.folder/name).read_bytes())

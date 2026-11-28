@@ -21,7 +21,7 @@ def read_folder(server,folder):
     present=[kind for kind,name in types.items() if (root/name).is_file()]
     kind=manifest.get('type') if manifest else present[0] if len(present)==1 else None
     if kind not in types:raise StoreError('Choose a folder with widget.json, plugin.json or app.apk and a matching manifest.json.')
-    payload=read(types[kind],MAX_SIZE if kind=='corebar-app' else 65536)
+    payload=read(types[kind],MAX_SIZE if kind=='corebar-app' else 128*1024)
     if kind=='corebar-widget':widget_package(payload)
     if kind=='studio-plugin':plugin_templates(payload)
     if kind=='corebar-app' and not manifest:raise StoreError('APK testing requires manifest.json with Android identity, permissions and compatibility.')

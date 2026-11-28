@@ -578,7 +578,7 @@ class Store:
                     record['bundledWidgets']=copy.deepcopy(p['bundledWidgets'])
                     record['widgets']=bundle_contract.validate(p,widget_package)
                 if p['type'] in ('studio-plugin','corebar-widget'):
-                    if size>65536:raise StoreError('Plugin preset file is too large.')
+                    if size>128*1024:raise StoreError('Widget and plugin JSON files must be at most 128 KiB.')
                     record['widgets']=widget_package(path.read_bytes()) if p['type']=='corebar-widget' else plugin_templates(path.read_bytes())
                     require_widget_version(record['widgets'],p)
                 elif deferred:

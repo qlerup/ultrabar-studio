@@ -35,7 +35,7 @@ def inspect_apk(path,manifest):
     with zipfile.ZipFile(path) as archive:
         matches=[i for i in archive.infolist() if i.filename=='assets/ultrabar-widgets.json']
         if not matches and 'bundledWidgets' not in manifest:return None
-        if len(matches)!=1 or matches[0].file_size>65536:raise ValueError('APK requires one bounded assets/widget.json descriptor.')
+        if len(matches)!=1 or matches[0].file_size>128*1024:raise ValueError('APK requires one bounded assets/widget.json descriptor.')
         descriptor=json.loads(archive.read(matches[0]))
         if 'bundledWidgets' in manifest and descriptor!=manifest['bundledWidgets']:raise ValueError('APK widget descriptor differs from its recorded bundle.')
         return descriptor

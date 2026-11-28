@@ -1,4 +1,8 @@
-# UltraBar Studio — 0.52.46 Windows
+# UltraBar Studio — 0.52.47 Windows
+
+## 0.52.47 update
+
+Store and local installations support widget and plugin JSON files up to 128 KiB.
 
 ## 0.52.46 update
 
