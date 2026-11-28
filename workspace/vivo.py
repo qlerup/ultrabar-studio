@@ -10,6 +10,7 @@ from editor import EditError,clean
 SERIAL=re.compile(r'[0-9A-F]{16}')
 ARTWORK_DIR='/data/user/0/com.ultrabar.launch/cache/tgz'
 UNREGISTERED='This VivoCube is not registered on CoreBAR. Open Overview → Add modules, select the VivoCube, then retry Deploy.'
+CORE_UPLOAD_TIMEOUTS = {'timeout', 'write timeout', 'write update command success,update timeout'}
 
 def validate(screens,profiles):
     if not isinstance(screens,dict) or len(screens)>32:raise EditError('Invalid Vivo screen settings.')
@@ -62,20 +63,27 @@ def build_package(raw,button=101):
             entry=tarfile.TarInfo(name);entry.size=len(data);entry.mode=0o644;archive.addfile(entry,io.BytesIO(data))
     return gzip.compress(result.getvalue(),mtime=0)
 
-def upload(server,target,serial,raw):
+def upload(server,target,serial,raw,stage=lambda message:None):
     port=server.adb('-s',target,'forward','tcp:0','tcp:8080')
     if not isinstance(port,str) or not port.isdigit() or not 1<=int(port)<=65535:raise EditError('Could not connect to Core’s Vivo artwork service.')
     try:
         boundary='StudioVivo'+uuid.uuid4().hex
         body=(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="{serial}.tgz"\r\nContent-Type: application/gzip\r\n\r\n'.encode()+raw+f'\r\n--{boundary}--\r\n'.encode())
         request=Request('http://127.0.0.1:'+port+'/upload?'+urlencode(dict(serialNo=serial)),data=body,headers={'Content-Type':'multipart/form-data; boundary='+boundary},method='POST')
-        with build_opener(ProxyHandler({}),NoRedirect).open(request,timeout=12) as response:result=json.loads(response.read(4097))
-        if not isinstance(result,dict) or result.get('state')!=200:raise EditError('VivoCube did not confirm the screen package. Check that it is online and retry Deploy. Its screen may already have changed.')
-        for name in (serial.lower(),serial):
-            path=ARTWORK_DIR+'/'+name+'.tgz'
-            size=server.adb('-s',target,'shell',f'if [ -f {path} ]; then stat -c %s {path}; else echo 0; fi')
-            if size==str(len(raw)) and server.adb('-s',target,'exec-out','cat',path,binary=True)==raw:break
-        else:raise EditError('Saved Vivo artwork could not be verified. Your draft and backup are preserved.')
+        opener=build_opener(ProxyHandler({}),NoRedirect)
+        for attempt in range(2):
+            with opener.open(request,timeout=12) as response:
+                result=json.loads(response.read(4097))
+            if isinstance(result,dict) and result.get('state')==200:
+                break
+            reason = result.get('message') if isinstance(result,dict) else None
+            if not isinstance(reason,str) or reason.strip().lower() not in CORE_UPLOAD_TIMEOUTS:
+                raise EditError(f'CoreBAR rejected the screen package for VivoCube {serial[-6:]}. The CoreBAR layout was not sent.')
+            if attempt:
+                raise EditError(f'VivoCube {serial[-6:]} timed out twice while applying its screen package. The CoreBAR layout was not sent. Your draft is saved.')
+            stage(f'VivoCube {serial[-6:]} timed out. Retrying its screen package…')
+        if not cached_package_matches(server,target,serial,raw):
+            raise EditError('Saved Vivo artwork could not be verified. Your draft and backup are preserved.')
     except EditError:raise
     except (OSError,ValueError) as exc:raise EditError('Vivo screen update could not be confirmed. Its screen may already have changed; your draft and backup are preserved. Reconnect and retry Deploy.') from exc
     finally:server.adb('-s',target,'forward','--remove','tcp:'+port)
@@ -155,4 +163,4 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
     with screen_sync.pause_for_artwork(server,target):
         for serial,raw in packages.items():
             stage('Sending screen image to VivoCube '+serial[-6:]+'…')
-            upload(server,target,serial,raw)
+            upload(server,target,serial,raw,stage)

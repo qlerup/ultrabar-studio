@@ -121,6 +121,8 @@ class ModuleDiscovery:
         self.device = None
         self.sightings = {}
         self.cancelled = threading.Event()
+        self.search_finished = threading.Event()
+        self.active_cancel = None
         self.running = False
 
     def start(self, device, target, adb, root):
@@ -132,8 +134,19 @@ class ModuleDiscovery:
                 self.cancelled = threading.Event()
             if self.running:
                 return
+            if self.cancelled.is_set():
+                self.cancelled = threading.Event()
             self.running = True
+            self.active_cancel = self.cancelled
+            self.search_finished.clear()
             threading.Thread(target=self.scan, args=(target, adb, root, self.cancelled), daemon=True).start()
+
+    def stop(self):
+        with self.lock:
+            if not self.running:
+                return True
+            self.active_cancel.set()
+        return self.search_finished.wait(10)
 
     def scan(self, target, adb, root, cancelled):
         def observe(device):
@@ -150,6 +163,7 @@ class ModuleDiscovery:
             LOG.debug('Could not scan for CoreBAR modules.', exc_info=True)
         finally:
             finished.set()
+            self.search_finished.set()
             capture.join()
             with self.lock:
                 self.running = False

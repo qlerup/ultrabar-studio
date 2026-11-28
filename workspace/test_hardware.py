@@ -7,6 +7,16 @@ from hardware import EXPIRED_SIGHTING, RECENT_SIGHTING, ModuleDiscovery, decode_
 
 
 class HardwareTests(unittest.TestCase):
+    def test_stop_cancels_active_search_without_waiting_for_passive_capture(self):
+        scanner = ModuleDiscovery()
+        self.assertTrue(scanner.stop())
+        scanner.running = True
+        scanner.active_cancel = scanner.cancelled
+        with patch.object(scanner.search_finished, 'wait', return_value=True) as wait:
+            self.assertTrue(scanner.stop())
+        self.assertTrue(scanner.active_cancel.is_set())
+        wait.assert_called_once_with(10)
+
     def test_reset_reports_corebridge_approval_required(self):
         adb = Mock(return_value=b'cat: /data/user/0/com.ultrabar.hub/shared_prefs/my_prefs.xml: No such file or directory\n')
         result = inventory({}, '10.10.0.181:5555', adb, Path('.'))

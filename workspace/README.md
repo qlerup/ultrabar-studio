@@ -1,4 +1,10 @@
-# UltraBar Studio — 0.52.43 Windows
+# UltraBar Studio — 0.52.44 Windows
+
+## 0.52.44 update
+
+Deploy stops an active module search before sending VivoCube artwork and
+retries once when CoreBAR explicitly reports a VivoCube timeout. Studio
+still verifies the completed transfer before applying the Core layout.
 
 ## 0.52.43 update
 

@@ -62,6 +62,27 @@ class VivoTests(unittest.TestCase):
         self.assertEqual(server.adb.call_args.args,('-s','target','forward','--remove','tcp:50000'))
         opener.open.return_value=io.BytesIO(b'{"state":-1}')
         with patch.object(vivo,'build_opener',return_value=opener),self.assertRaises(EditError):vivo.upload(server,'target',SERIAL,raw)
+
+    def test_confirmed_firmware_timeout_retries_the_same_archive_once(self):
+        raw = vivo.build_package(None)
+        def adb(*args, **kwargs):
+            if 'forward' in args:return '50000'
+            return raw if kwargs.get('binary') else str(len(raw))
+        server = SimpleNamespace(adb=Mock(side_effect=adb))
+        response = b'{"state":-1,"message":"timeout"}'
+        for second in (b'{"state":200}', response):
+            with self.subTest(second=second):
+                opener, stage = Mock(), Mock()
+                opener.open.side_effect = [io.BytesIO(response), io.BytesIO(second)]
+                with patch.object(vivo, 'build_opener', return_value=opener):
+                    if second == response:
+                        with self.assertRaisesRegex(EditError, 'timed out twice'):
+                            vivo.upload(server, 'target', SERIAL, raw, stage)
+                    else:
+                        vivo.upload(server, 'target', SERIAL, raw, stage)
+                self.assertEqual(opener.open.call_count, 2)
+                self.assertIs(opener.open.call_args_list[0].args[0], opener.open.call_args_list[1].args[0])
+                stage.assert_called_once()
     def test_deploy_serializes_artwork_with_sync_and_restores_after_failure(self):
         for fail in (False,True):
             with self.subTest(failed_upload=fail),tempfile.TemporaryDirectory() as tmp:

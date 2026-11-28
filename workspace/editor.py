@@ -624,6 +624,11 @@ def register_editor(server):
             server.store.stop_removed_background(rollback['background_apps'],draft.get('background_apps',[]),draft['profiles'])
             stage('Applying app settings and waiting for confirmation...')
             app_settings.deploy(server, app_settings.deployment_values(server, draft))
+            if (draft.get('vivo_screens') or any(module.get('productId') == 'VIVO_CUBE'
+                    for profile in draft['profiles'] for module in profile['module'])):
+                stage('Stopping the module search before sending VivoCube artwork…')
+                if not server.module_discovery.stop():
+                    raise EditError('The module search is still stopping. Wait for it to finish, then retry Deploy.')
             vivo.deploy(server,draft['profiles'],draft.setdefault('vivo_screens',{}),server.connection['target'],stage,lambda:atomic_json(draft_path(server,draft['device_id']),draft),previous_screens=rollback['vivo_screens'])
             stage('Preparing the widget runtime on Core…')
             server.native_widgets.prepare(draft['profiles'], server.connection['target'], core_layouts)
