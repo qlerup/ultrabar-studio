@@ -9,6 +9,8 @@ let cubeImages = {}, cubeLoading = false, screenRefreshPending = false, cubeRefr
 let layoutDrag = null, layoutSaving = false, suppressHardwareClickUntil = 0;
 let selectedHardwareKey = 'core';
 const names = {DOT_KEY:'DotKey',VIVO_CUBE:'VivoCube',KNOB_KEY:'KnobKey',SENSE_CUBE:'SenseCube',MEMORY:'Memory',STORAGE:'Storage',TIME:'Clock',APPS:'App',PC_CONTROL:'PC action'};
+let moduleSearchBusy=false, moduleResultsKey='';
+const selectedModules=new Set();
 const symbols = {DOT_KEY:'⠿',VIVO_CUBE:'▣',KNOB_KEY:'◉',SENSE_CUBE:'◇',MEMORY:'▥',STORAGE:'▤',TIME:'◷',APPS:'▦',PC_CONTROL:'↗'};
 function el(tag, className, text) { const node=document.createElement(tag); if(className) node.className=className; if(text!==undefined) node.textContent=text; return node; }
 function notice(text, error=false) { $('notice').textContent=text; $('connection-notice').textContent=text; $('connection-notice').classList.toggle('error',error); $('notice').classList.toggle('error',error); $('setup-error-help').hidden=!error; }
@@ -102,7 +104,7 @@ function renderHardware() {
   const online=devices.filter(d=>d.online===true).length;
   const offline=devices.filter(d=>d.online===false).length;
   const unknown=devices.length-online-offline;
-  $('hardware-status').textContent=hardware.status_error||`${online} online · ${offline} offline${unknown?' · '+unknown+' unknown':''} · checked ${new Date(hardware.checked_at||snapshot.read_at).toLocaleTimeString('en-GB')} · updates every 5 seconds`;
+  $('hardware-status').textContent=hardware.status_error||(devices.length?`${online} online · ${offline} offline${unknown?' · '+unknown+' unknown':''} · checked ${new Date(hardware.checked_at||snapshot.read_at).toLocaleTimeString('en-GB')} · updates every 5 seconds`:'No modules are registered on this CoreBAR. Use Add modules to get started.');
   const strip=$('hardware-preview'),focusedKey=strip.contains(document.activeElement)?document.activeElement.dataset.layoutKey:null;
   strip.replaceChildren();
   const core=createHardwareUnit();strip.append(core);
@@ -222,6 +224,79 @@ function markHardwareUnknown(message) {
   snapshot.hardware={...snapshot.hardware,status_error:message,devices:(snapshot.hardware?.devices||[]).map(device=>({...device,online:null}))};
   renderHardware();
 }
+function renderModuleSearch(){
+  const dialog=$('modules-dialog');
+  if(!dialog.open)return;
+  const hardware=snapshot?.hardware||{}, available=hardware.available||[];
+  const resultsKey=JSON.stringify(available);
+  if(resultsKey!==moduleResultsKey){
+    moduleResultsKey=resultsKey;
+    const list=$('modules-results'), focused=document.activeElement?.value;
+    list.replaceChildren();
+    for(const module of available){
+      const row=el('label','module-result'), choice=el('input');
+      choice.type='checkbox';choice.value=module.serial;choice.disabled=module.online!==true;
+      choice.checked=selectedModules.has(module.serial);
+      choice.onchange=()=>{
+        if(choice.checked)selectedModules.add(module.serial);
+        else selectedModules.delete(module.serial);
+        renderModuleSearch();
+      };
+      row.append(choice,el('span','',names[module.type]||module.name),
+        el('span','muted',module.serial+(choice.disabled?' · Not responding':'')));
+      list.append(row);
+      if(focused===module.serial&&!choice.disabled)choice.focus();
+    }
+  }
+  if(!moduleSearchBusy){
+    $('modules-status').textContent=hardware.discovering?'Searching for modules. You can add modules as they appear.':
+      available.length?'Select the modules you want to add.':'No unregistered modules found. Attach a module and search again.';
+  }
+  $('modules-scan').disabled=moduleSearchBusy||Boolean(hardware.discovering);
+  $('modules-select-all').disabled=moduleSearchBusy||!available.some(module=>module.online===true&&!selectedModules.has(module.serial));
+  $('modules-add').disabled=moduleSearchBusy||!available.some(module=>module.online===true&&selectedModules.has(module.serial));
+}
+async function searchModules(){
+  if(moduleSearchBusy)return;
+  moduleSearchBusy=true;$('modules-error').textContent='';
+  renderModuleSearch();$('modules-status').textContent='Starting the module search…';
+  try{
+    await api('/api/modules/scan',{method:'POST'});
+    snapshot.hardware={...snapshot.hardware,discovering:true};
+  }catch(error){$('modules-error').textContent=error.message;}
+  finally{moduleSearchBusy=false;renderModuleSearch();pollHardware();}
+}
+$('modules-open').onclick=()=>{
+  if(!snapshot||busy)return;
+  selectedModules.clear();moduleResultsKey='';$('modules-error').textContent='';
+  $('modules-dialog').showModal();searchModules();
+};
+$('modules-scan').onclick=searchModules;
+$('modules-select-all').onclick=()=>{
+  for(const choice of $('modules-results').querySelectorAll('input:not(:disabled)')){
+    choice.checked=true;
+    selectedModules.add(choice.value);
+  }
+  renderModuleSearch();
+};
+$('modules-add').onclick=async()=>{
+  if(!snapshot||moduleSearchBusy)return;
+  const deviceId=snapshot.device_id;
+  const serials=(snapshot.hardware.available||[]).filter(module=>module.online===true&&selectedModules.has(module.serial)).map(module=>module.serial);
+  if(!serials.length)return;
+  moduleSearchBusy=true;$('modules-error').textContent='';renderModuleSearch();
+  $('modules-status').textContent='Saving the selected modules on CoreBAR…';
+  try{
+    const response=await api('/api/modules/register',{method:'POST',body:JSON.stringify({device_id:deviceId,serials})});
+    const data=await response.json();
+    if(snapshot?.device_id!==deviceId)return;
+    snapshot.hardware=data.hardware;
+    renderHardware();captureCubes();
+    $('modules-dialog').close();
+    notice('Selected modules were saved on CoreBAR.');
+  }catch(error){$('modules-error').textContent=error.message;}
+  finally{moduleSearchBusy=false;renderModuleSearch();}
+};
 async function pollHardware() {
   if(!snapshot||busy||hardwarePolling||corePairing||document.hidden)return;
   const generation=connectionGeneration,target=snapshot.target;
@@ -234,8 +309,7 @@ async function pollHardware() {
     connectionStatus(true);
     const cubes=hardware=>(hardware?.devices||[]).filter(device=>device.type==='VIVO_CUBE').map(device=>device.serial).sort().join(',');
     const cubeMembershipChanged=cubes(snapshot.hardware)!==cubes(data.hardware);
-    if(data.hardware.status_error)markHardwareUnknown(data.hardware.status_error);
-    else{snapshot.hardware=data.hardware;renderHardware();}
+    snapshot.hardware=data.hardware;renderHardware();renderModuleSearch();
     if(data.preview_revision&&data.preview_revision!==snapshot.preview_revision){snapshot.preview_revision=data.preview_revision;captureScreen();captureCubes();}
     else if(cubeMembershipChanged&&!data.hardware.status_error)captureCubes();
   }catch(error){

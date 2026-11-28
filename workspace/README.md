@@ -1,4 +1,11 @@
-# UltraBar Studio — 0.52.42 Windows
+# UltraBar Studio — 0.52.43 Windows
+
+## 0.52.43 update
+
+Use **Overview → Add modules** to discover and register magnetic modules on
+CoreBAR. The overview keeps registered modules visible while it checks their
+status. After a factory reset, add the modules again to reuse their saved
+actions and VivoCube artwork from your Studio draft.
 
 ## 0.52.42 update
 

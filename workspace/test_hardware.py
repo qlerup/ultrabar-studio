@@ -3,7 +3,7 @@ import threading
 from pathlib import Path
 from unittest.mock import Mock, patch
 from bridge import CLIENT_ID, PairingRequired, Stream, read_token
-from hardware import EXPIRED_SIGHTING, RECENT_SIGHTING, ModuleDiscovery, decode_can_modules, discover_attached, inventory
+from hardware import EXPIRED_SIGHTING, RECENT_SIGHTING, ModuleDiscovery, decode_can_modules, discover_attached, inventory, register_can_modules
 
 
 class HardwareTests(unittest.TestCase):
@@ -35,26 +35,28 @@ class HardwareTests(unittest.TestCase):
     def test_live_membership_is_independent_of_profile_actions(self):
         data = {'profiles': [], 'configuration': {'canGateway': {'endpoints': [
             {'serialNumber': 'cube-a', 'productId': 'VIVO_CUBE'},
-            {'serialNumber': 'stale', 'productId': 'KNOB_KEY'}]}}}
+            {'serialNumber': 'stale', 'productId': 'KNOB_KEY'},
+            {'serialNumber': 'cube-off', 'productId': 'VIVO_CUBE'}]}}}
         with patch('hardware.read_online', return_value={'cube-a': True, 'new-cube': True, 'cube-off': False}):
             result = inventory(data, '10.10.0.181:5555', None, Path('.'))
         devices = {d['serial']: d for d in result['devices']}
-        self.assertEqual(set(devices), {'cube-a', 'new-cube', 'cube-off'})
+        self.assertEqual(set(devices), {'cube-a', 'stale', 'cube-off'})
         self.assertEqual(devices['cube-a']['type'], 'VIVO_CUBE')
-        self.assertTrue(devices['new-cube']['online'])
+        self.assertIsNone(devices['stale']['online'])
         self.assertFalse(devices['cube-off']['online'])
 
     def test_error_does_not_misrepresent_stored_inventory_as_live(self):
         data = {'configuration': {'canGateway': {'endpoints': [{'serialNumber': 'old'}]}}}
         with patch('hardware.read_online', side_effect=TimeoutError):
             result = inventory(data, '10.10.0.181:5555', None, Path('.'))
-        self.assertEqual(result['devices'], [])
+        self.assertIsNone(result['devices'][0]['online'])
         self.assertIsNotNone(result['status_error'])
 
     @patch('hardware.Stream')
     def test_attached_can_module_is_detected_without_a_profile(self, stream_type):
         stream = stream_type.return_value.__enter__.return_value
-        frame = {'act': 30102, 'data': {'serialNumber': 'cube', 'productId': 268435459, 'interfaceType': 'can'}}
+        serial = '0000000000000001'
+        frame = {'act': 30102, 'data': {'serialNumber': serial, 'productId': 268435459, 'interfaceType': 'can', 'netId': 98, 'workMode': 1}}
         cancelled = threading.Event()
         observed = {}
 
@@ -72,7 +74,8 @@ class HardwareTests(unittest.TestCase):
                           lambda device: observed.update({device['serial']: dict(device, online=True)}), cancelled)
         with patch('hardware.read_online', return_value={}):
             result = inventory({'profiles': []}, '10.10.0.181:5555', None, Path('.'), discovered=observed.values())
-        self.assertEqual(result['devices'], [dict(serial='cube', type='VIVO_CUBE', name='VivoCube', interface='can', online=True)])
+        self.assertEqual(result['devices'], [])
+        self.assertEqual(result['available'], [dict(serial=serial, type='VIVO_CUBE', name='VivoCube', online=True)])
         self.assertEqual([call.args[0] for call in stream.query.call_args_list], [30100, 30101])
 
     def test_discovery_keeps_late_and_missed_modules_by_core_until_they_expire(self):
@@ -100,8 +103,24 @@ class HardwareTests(unittest.TestCase):
         other_module = '<0x462> [8] 10 00 00 03 00 00 00 62'
         capture = '\n'.join((header, product, other_module, serial))
         self.assertEqual(list(decode_can_modules(capture)), [
-            dict(serial='1020304050607080', type='DOT_KEY', name='DotKey', interface='can'),
+            dict(serial='1020304050607080', type='DOT_KEY', name='DotKey', interface='can', net_id=124, work_mode=1),
         ])
         self.assertEqual(list(decode_can_modules(capture.replace('a0 5b', 'a0 5a'))), [])
         self.assertEqual(list(decode_can_modules(capture.replace('70 80', '70 81'))), [])
         self.assertEqual(list(decode_can_modules('\n'.join((header, serial)))), [])
+
+    def test_manual_registration_preserves_both_gateways_and_rejects_address_conflicts(self):
+        serial = '0000000000000002'
+        configuration = dict(canGateway=dict(endpoints=[dict(serialNumber='0000000000000001', netId=124, uid='1')]),
+                             meshGateway=dict(endpoints=[dict(serialNumber='0000000000000003', netId=98, uid='2')]))
+        found = dict(serial=serial, name='VivoCube', type='VIVO_CUBE', interface='can', net_id=98, work_mode=1, online=True)
+        updated = register_can_modules(configuration, [found], [serial])
+        self.assertEqual(updated['canGateway']['endpoints'][-1], dict(serialNumber=serial, name='VivoCube',
+                         productId='VIVO_CUBE', interfaceType='can', netId=98, workMode=1, uid='3'))
+        self.assertEqual(updated['canGateway']['endpoints'][:-1], configuration['canGateway']['endpoints'])
+        self.assertEqual(updated['meshGateway'], configuration['meshGateway'])
+        self.assertEqual(register_can_modules(updated, [], [serial]), updated)
+        with self.assertRaisesRegex(ValueError, 'same address'):
+            register_can_modules(configuration, [dict(found, net_id=124)], [serial])
+        with self.assertRaisesRegex(ValueError, 'Search again'):
+            register_can_modules(configuration, [dict(found, online=None)], [serial])

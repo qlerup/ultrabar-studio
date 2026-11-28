@@ -173,3 +173,8 @@ body.editing>.sidebar~main>.heading,body.editing .connect-panel,body.editing #di
 .bambu-side-temperatures{display:grid;grid-auto-rows:1fr;gap:4px;margin:0}
 .bambu-side-temperatures .bambu-temperature{align-content:center}
 #deploy-conflict{margin:14px 0;padding:10px 12px;border-left:2px solid #e6c27a;background:#e6c27a0c;color:#f3d59c;line-height:1.5}
+#modules-dialog{width:min(520px,calc(100vw - 32px));padding:24px;max-height:calc(100dvh - 32px);overflow:auto}
+#modules-status,#modules-results,#modules-error{margin:12px 0}
+.module-result{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0;border-bottom:1px solid var(--line)}
+.module-result input{width:auto}
+.module-result .muted{font-size:12px;margin-left:auto;overflow-wrap:anywhere}

@@ -16,7 +16,7 @@ from flask import Flask, jsonify, request, send_file
 import updates
 import startup
 import webbrowser
-from hardware import ModuleDiscovery, inventory
+from hardware import MODULE_SERIAL, ModuleDiscovery, inventory, register_can_modules
 
 ROOT = Path(__file__).resolve().parent
 PACKAGED = getattr(sys, 'frozen', False)
@@ -80,18 +80,9 @@ def parse_profiles(raw):
         raise DeviceError('Could not read the profile format. No settings have been changed.') from exc
 
 
-def read_snapshot(target):
-    model = adb('-s', target, 'shell', 'getprop', 'ro.product.model')
-    if model != 'CB01':
-        raise DeviceError('The connected device is not the expected CoreBAR (CB01).')
-    device_id = adb('-s', target, 'shell', 'getprop', 'ro.serialno') or target
-    raw = adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True)
-    data = parse_profiles(raw)
-    digest = hashlib.sha256(raw).hexdigest()
-    snapshot = {'target': target, 'model': model, 'read_at': datetime.now(timezone.utc).isoformat(),
-                'sha256': digest, 'profiles': data['profiles'], 'device_id': device_id,
-                'layout_order': read_layouts().get(device_id, [])}
+def save_profile_backup(raw):
     # Content-addressed backups: repeated refreshes do not create duplicate files.
+    digest = hashlib.sha256(raw).hexdigest()
     directory = DATA_DIR / 'backups'
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f'{digest}.xml'
@@ -99,7 +90,20 @@ def read_snapshot(target):
         temp = path.with_suffix('.tmp')
         temp.write_bytes(raw)
         temp.replace(path)
-    snapshot['backup'] = path.name
+    return digest, path.name
+
+
+def read_snapshot(target):
+    model = adb('-s', target, 'shell', 'getprop', 'ro.product.model')
+    if model != 'CB01':
+        raise DeviceError('The connected device is not the expected CoreBAR (CB01).')
+    device_id = adb('-s', target, 'shell', 'getprop', 'ro.serialno') or target
+    raw = adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True)
+    data = parse_profiles(raw)
+    digest, backup = save_profile_backup(raw)
+    snapshot = {'target': target, 'model': model, 'read_at': datetime.now(timezone.utc).isoformat(),
+                'sha256': digest, 'backup': backup, 'profiles': data['profiles'], 'device_id': device_id,
+                'layout_order': read_layouts().get(device_id, [])}
     snapshot['hardware'] = inventory(data, target, adb, ROOT, discovered=module_discovery.recent((device_id, target)))
     from previews import revision
     snapshot['preview_revision'] = revision(data, target, adb)
@@ -344,12 +348,70 @@ def hardware_status():
         data = parse_profiles(raw)
         device = (connection['snapshot']['device_id'], target)
         result = inventory(data, target, adb, ROOT, discovered=module_discovery.recent(device))
-        if not result['status_error']:
-            module_discovery.start(device, target, adb, ROOT)
+        result['discovering'] = module_discovery.active(device)
         from previews import revision
         preview_revision = revision(data, target, adb)
         connection['snapshot']['hardware'] = result
     return jsonify(target=target, hardware=result, preview_revision=preview_revision)
+
+
+@app.post('/api/modules/scan')
+def search_modules():
+    from bridge import PairingRequired, read_token
+
+    with device_lock:
+        target, current = connection['target'], connection['snapshot']
+        if not target or not current:
+            return jsonify(error='Connect to CoreBAR first.'), 409
+        try:
+            read_token(target, adb)
+        except PairingRequired:
+            return jsonify(error='Request CoreBAR approval under Manage connection before searching.'), 409
+        module_discovery.start((current['device_id'], target), target, adb, ROOT)
+    return jsonify(ok=True)
+
+
+@app.post('/api/modules/register')
+def add_modules():
+    from bridge import BridgeRejected, PairingRequired, request as bridge_request
+    from editor import clean
+
+    body = request.get_json(silent=True)
+    serials = body.get('serials') if isinstance(body, dict) else None
+    if (not isinstance(serials, list) or not 1 <= len(serials) <= 32
+            or any(not isinstance(serial, str) or not MODULE_SERIAL.fullmatch(serial) for serial in serials)
+            or len(set(serials)) != len(serials)):
+        return jsonify(error='Select valid modules from the search results.'), 400
+    with device_lock:
+        target, current = connection['target'], connection['snapshot']
+        if (not target or not current or body.get('device_id') != current['device_id']
+                or (adb('-s', target, 'shell', 'getprop', 'ro.serialno') or target) != current['device_id']):
+            return jsonify(error='The connected CoreBAR changed. Search for modules again.'), 409
+        device = (current['device_id'], target)
+        raw = adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True)
+        data = parse_profiles(raw)
+        original = clean(data.get('configuration') or {})
+        try:
+            updated = register_can_modules(original, module_discovery.recent(device), serials)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 409
+        if updated != original:
+            save_profile_backup(raw)
+            try:
+                bridge_request(target, adb, ROOT, 30300, updated)
+            except PairingRequired:
+                return jsonify(error='Request CoreBAR approval under Manage connection before adding modules.'), 409
+            except BridgeRejected:
+                return jsonify(error='CoreBAR rejected the module registration.'), 502
+            except (OSError, EOFError):
+                pass  # A transport interruption may occur after the configuration was saved.
+            data = parse_profiles(adb('-s', target, 'exec-out', 'cat', PREFERENCES, binary=True))
+            if clean(data.get('configuration') or {}) != updated:
+                return jsonify(error='Could not verify the module registration. Reload the search before retrying.'), 502
+        result = inventory(data, target, adb, ROOT, discovered=module_discovery.recent(device))
+        result['discovering'] = module_discovery.active(device)
+        current['hardware'] = result
+    return jsonify(hardware=result)
 
 
 @app.get('/api/cube-previews')

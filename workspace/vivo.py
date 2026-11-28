@@ -9,6 +9,7 @@ from editor import EditError,clean
 
 SERIAL=re.compile(r'[0-9A-F]{16}')
 ARTWORK_DIR='/data/user/0/com.ultrabar.launch/cache/tgz'
+UNREGISTERED='This VivoCube is not registered on CoreBAR. Open Overview → Add modules, select the VivoCube, then retry Deploy.'
 
 def validate(screens,profiles):
     if not isinstance(screens,dict) or len(screens)>32:raise EditError('Invalid Vivo screen settings.')
@@ -101,13 +102,14 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
             if endpoint.get('productId')=='VIVO_CUBE':endpoints[endpoint['serialNumber']]=endpoint
     for module in modules:
         serial=module['serialNo'];endpoint=endpoints.get(serial)
+        slots=[slot for slot in module['config'] if any(isinstance(slot.get(kind),dict) and slot[kind].get('actions') for kind in ('singleClick','doubleClick','longPress'))]
+        if endpoint is None and (serial in screens or slots):raise EditError(UNREGISTERED)
         if serial in screens or endpoint is None:continue
         has_layout=(endpoint.get('extraConfig') or {}).get('dataConfig')
         if has_layout:
             paths=[ARTWORK_DIR+'/'+serial+'.tgz',ARTWORK_DIR+'/'+serial.lower()+'.tgz']
             exists=server.adb('-s',target,'shell',f'if [ -f {paths[0]} ] || [ -f {paths[1]} ]; then echo yes; else echo no; fi')
             if exists=='yes':continue
-        slots=[slot for slot in module['config'] if any(isinstance(slot.get(kind),dict) and slot[kind].get('actions') for kind in ('singleClick','doubleClick','longPress'))]
         if len(slots)==1:
             picture=widget_images.store_picture(server,widget_images.default_png('url'),source='default')
             screens[serial]=dict(image=picture['sha256'],clear=False,button=slots[0]['keyCode'],source='action')
@@ -115,7 +117,7 @@ def deploy(server,profiles,screens,target,stage=lambda message:None,persist=lamb
     if not screens:return
     packages={}
     for serial,value in screens.items():
-        if serial not in endpoints:raise EditError('This VivoCube is not registered on Core. Reconnect it before Deploy.')
+        if serial not in endpoints:raise EditError(UNREGISTERED)
         try:raw=None if value['clear'] else widget_images.read_picture(server,value['image'])
         except (OSError,ValueError) as exc:raise EditError('Vivo picture is missing. Upload it again before Deploy.') from exc
         package=build_package(raw,value['button'])

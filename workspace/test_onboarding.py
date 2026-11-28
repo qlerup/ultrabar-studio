@@ -132,6 +132,33 @@ class OnboardingTests(unittest.TestCase):
       expect(page.locator('.hardware-unit.vivo_cube')).to_be_visible()
       self.assertEqual(requests,[target,target])
 
+      module=dict(serial='0000000000000002', type='DOT_KEY', name='DotKey', online=True)
+      scanned=[]
+      registered=[]
+      def search(route):
+       scanned.append(True)
+       hardware.update(available=[module],discovering=True)
+       route.fulfill(json=dict(ok=True))
+      def add_module(route):
+       registered.append(route.request.post_data_json)
+       hardware.update(available=[],devices=[*hardware['devices'],dict(module,online=None)])
+       route.fulfill(json=dict(hardware=hardware))
+      page.route('**/api/modules/scan',search)
+      page.route('**/api/modules/register',add_module)
+      expect(page.locator('.hardware-unit.dot_key')).to_have_count(0)
+      self.assertEqual(scanned,[])
+      page.locator('#modules-open').click()
+      expect(page.locator('#modules-status')).to_contain_text('Searching')
+      choice=page.get_by_role('checkbox',name='DotKey 0000000000000002')
+      expect(choice).to_be_visible()
+      assert page.locator('#modules-dialog').evaluate('(dialog) => dialog.scrollWidth <= dialog.clientWidth')
+      page.locator('#modules-select-all').click()
+      expect(choice).to_be_checked()
+      page.locator('#modules-add').click()
+      expect(page.locator('#modules-dialog')).not_to_be_visible()
+      expect(page.locator('.hardware-unit.dot_key')).to_contain_text('Unknown')
+      self.assertEqual(registered,[dict(device_id='core-a',serials=[module['serial']])])
+
       assert not errors, errors
       browser.close()
     finally: http.shutdown()
