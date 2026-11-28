@@ -30,7 +30,7 @@ def install_runtime(server, target, source):
         return
     staged = RUNTIME + '-' + uuid.uuid4().hex + '.tmp'
     try:
-        server.adb('-s', target, 'push', str(source), staged, timeout=180)
+        server.adb('-s', target, 'push', str(source), staged, timeout=60)
         if not checksum(staged):
             raise EditError('Widget runtime transfer failed its checksum. Retry Deploy.')
         server.adb('-s', target, 'shell', 'mv', staged, RUNTIME)

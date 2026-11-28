@@ -2,7 +2,7 @@
 
 ## 0.52.45 update
 
-Deploy allows three minutes for the first widget runtime transfer over WiFi. Studio verifies the file before activating it and replaces incomplete copies on the next deployment.
+Deploy allows 60 seconds for the first widget runtime transfer over WiFi. Studio verifies the file before activating it and replaces incomplete copies on the next deployment.
 
 ## 0.52.44 update
 

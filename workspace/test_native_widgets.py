@@ -24,7 +24,7 @@ class NativeWidgetTests(unittest.TestCase):
             calls = server.adb.call_args_list
             staged = calls[1].args[-1]
             self.assertNotEqual(staged, RUNTIME)
-            self.assertGreater(calls[1].kwargs['timeout'], 15)
+            self.assertEqual(calls[1].kwargs['timeout'], 60)
             self.assertEqual(any(c.args[-3:] == ('mv', staged, RUNTIME) for c in calls), digest == RUNTIME_SHA)
             self.assertEqual(calls[-1].args[-3:], ('rm', '-f', staged))
 
